@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -18,18 +18,30 @@ vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("../components/DataTable", () => ({
-  DataTable: ({ columns, data }: {
-    columns: Array<{ id: string; cell: (row: unknown) => ReactNode }>;
-    data: unknown[];
+vi.mock("../components/CursorPagedTable", () => ({
+  default: ({ columns }: {
+    columns: Array<{ id: string; cell: (row: TransparencyRow) => ReactNode }>;
   }) => {
     const cumulative = columns.find((column) => column.id === "cumulative");
-    return <div>{data.length > 0 && cumulative?.cell(data[0])}</div>;
+    return <div>{cumulative?.cell(makeRow())}</div>;
   },
 }));
 
 vi.mock("../auth/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "viewer-1", role: "admin" } }),
+  useAuth: () => ({
+    user: {
+      id: "viewer-1",
+      role: "admin",
+      hierarchy_node_id: null,
+      scope_root_ids: [],
+      active_deputy_grants: [],
+      is_commander: false,
+      is_duty_manager: false,
+      can_view_transparency: true,
+    },
+    authScopeReady: true,
+    refreshMe: vi.fn(),
+  }),
 }));
 
 const mockOpenSoldierModal = vi.fn();
@@ -90,7 +102,7 @@ describe("TransparencyPage cumulative score button", () => {
     );
 
     const scoreButton = await screen.findByTestId("transparency-cumulative-score-s1");
-    scoreButton.click();
+    fireEvent.click(scoreButton);
     await waitFor(() => expect(mockOpenSoldierModal).toHaveBeenCalledWith(
       "s1",
       undefined,

@@ -45,6 +45,8 @@ const MANAGER_ONLY_NOTIFICATION_TYPES = new Set([
   "range_reminder_shortfall", "range_excusal_no_backfill", "range_absence_reported_to_commander",
 ]);
 
+const HIERARCHY_TREE_STALE_TIME_MS = 30_000;
+
 export default function ProfilePage() {
   const { t } = useTranslation();
   const [message, setMessage] = useState<string | null>(null);
@@ -262,7 +264,9 @@ export default function ProfilePage() {
   const hierarchyTreeQuery = useQuery({
     queryKey: queryKeys.hierarchyTreeVisible(),
     queryFn: fetchTree,
-    enabled: isCommanderLike,
+    enabled: false,
+    retry: false,
+    staleTime: HIERARCHY_TREE_STALE_TIME_MS,
   });
   const hierarchyNodes = useMemo(() => {
     const flat: NodeDTO[] = [];
@@ -842,14 +846,38 @@ export default function ProfilePage() {
           <form onSubmit={handleAddScope} className="flex flex-wrap gap-2 items-end pt-2 border-t dark:border-gray-600">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500">{t("notifications.scope_node")}</label>
-              <div className="min-w-[180px]">
+              <div
+                className="min-w-[180px]"
+                onFocusCapture={() => {
+                  const cachedTreeState = queryClient.getQueryState(queryKeys.hierarchyTreeVisible());
+                  const cachedTreeIsStale = hierarchyTreeQuery.data === undefined ||
+                    !cachedTreeState ||
+                    cachedTreeState.isInvalidated ||
+                    Date.now() - cachedTreeState.dataUpdatedAt >= HIERARCHY_TREE_STALE_TIME_MS;
+                  if (cachedTreeIsStale && !hierarchyTreeQuery.isFetching && !hierarchyTreeQuery.isError) {
+                    void hierarchyTreeQuery.refetch();
+                  }
+                }}
+              >
                 <Combobox
                   items={sortNodesByTree(hierarchyNodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
                   value={addNodeId}
                   onChange={setAddNodeId}
+                  testId="commander-scope-node-picker"
                   placeholder="— בחר ענף —"
                 />
               </div>
+              {hierarchyTreeQuery.isFetching && (
+                <p role="status" className="text-xs text-gray-500">{t("team.hierarchy_loading")}</p>
+              )}
+              {hierarchyTreeQuery.isError && (
+                <p role="alert" className="text-xs text-red-600">
+                  {t("team.hierarchy_load_failed")} {" "}
+                  <button type="button" className="underline" onClick={() => void hierarchyTreeQuery.refetch()}>
+                    {t("team.hierarchy_retry")}
+                  </button>
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500">{t("notifications.scope_depth")}</label>

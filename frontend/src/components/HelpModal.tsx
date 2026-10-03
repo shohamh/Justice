@@ -5,9 +5,9 @@ import { authenticated, canApprove, canPlan, PermissionUser } from "../auth/perm
 import { BurdenShareBreakdown, getBurdenShareBreakdown } from "../api/scoring";
 import { DutyType, listDutyTypes } from "../api/dutyConfig";
 import { useModalBackClose } from "../hooks/useModalBackClose";
-import { NodeDTO, fetchTree } from "../api/hierarchy";
 import { ShiftTemplate, listTemplates } from "../api/shiftTemplates";
 import AlgorithmModeExplainer from "./AlgorithmModeExplainer";
+import HierarchyNodePickerModal from "./HierarchyNodePickerModal";
 
 interface Props {
   onClose: () => void;
@@ -1343,34 +1343,25 @@ function ImportTab() {
   );
 }
 
-function flattenNodes(nodes: NodeDTO[]): NodeDTO[] {
-  const out: NodeDTO[] = [];
-  for (const n of nodes) {
-    out.push(n);
-    if (n.children) out.push(...flattenNodes(n.children));
-  }
-  return out;
-}
-
 function HierarchyEligibilityTab({ user }: { user: PermissionUser | null }) {
-  const [nodes, setNodes] = useState<NodeDTO[]>([]);
   const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string>("");
+  const [selectedNode, setSelectedNode] = useState<{
+    id: string;
+    name: string;
+    path: string[];
+    pathIds: string[];
+  } | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-
-  useEffect(() => {
-    fetchTree().then((tree) => setNodes(flattenNodes(tree))).catch(() => setNodes([]));
-  }, []);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!canPlan(user)) return;
     listTemplates().then(setTemplates).catch(() => setTemplates([]));
   }, [user]);
 
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId);
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
   const eligible = selectedNode && selectedTemplate
-    ? !selectedTemplate.eligible_node_ids || selectedTemplate.eligible_node_ids.some((id) => selectedNode.path_ids.includes(id))
+    ? selectedTemplate.eligible_node_ids == null || selectedTemplate.eligible_node_ids.some((id) => selectedNode.pathIds.includes(id))
     : null;
 
   return (
@@ -1382,20 +1373,26 @@ function HierarchyEligibilityTab({ user }: { user: PermissionUser | null }) {
 
       <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 border border-gray-200 dark:border-gray-600 space-y-2">
         <p className="font-medium text-gray-800 dark:text-gray-200">🔎 בדיקת כשירות חיה</p>
-        <label className="block text-xs text-gray-600 dark:text-gray-300">
-          בחר צומת
-          <select
-            aria-label="בחר צומת"
-            className="mt-1 w-full border rounded px-2 py-1 dark:bg-gray-800 dark:border-gray-600"
-            value={selectedNodeId}
-            onChange={(e) => setSelectedNodeId(e.target.value)}
-          >
-            <option value="">— בחר —</option>
-            {nodes.map((n) => (
-              <option key={n.id} value={n.id}>{n.name}</option>
-            ))}
-          </select>
-        </label>
+        <button
+          type="button"
+          aria-label={selectedNode ? selectedNode.path.join(" \u203a ") : "\u05d1\u05d7\u05e8 \u05e6\u05d5\u05de\u05ea"}
+          className="mt-1 w-full border rounded px-2 py-1 text-right dark:bg-gray-800 dark:border-gray-600"
+          onClick={() => setPickerOpen(true)}
+          data-testid="eligibility-open-picker"
+        >
+          {selectedNode
+            ? <span data-testid="eligibility-selected-path">{selectedNode.path.join(" \u203a ")}</span>
+            : "\u05d1\u05d7\u05e8 \u05e6\u05d5\u05de\u05ea"}
+        </button>
+        {pickerOpen && (
+          <HierarchyNodePickerModal
+            onClose={() => setPickerOpen(false)}
+            onPicked={(id, name, path, pathIds) => {
+              setSelectedNode({ id, name, path: path?.length ? path : [name], pathIds: pathIds ?? [id] });
+              setPickerOpen(false);
+            }}
+          />
+        )}
         {canPlan(user) && (
           <label className="block text-xs text-gray-600 dark:text-gray-300">
             בחר סוג תורנות

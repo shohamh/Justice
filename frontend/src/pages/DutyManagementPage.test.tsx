@@ -23,6 +23,26 @@ vi.mock("../api/assignments", () => ({
 
 vi.mock("../api/soldiers", () => ({
   listSoldiers: vi.fn(() => Promise.resolve([])),
+  listSoldierRosterPage: vi.fn(() => Promise.resolve({
+    items: [],
+    next_cursor: null,
+    has_more: false,
+  })),
+}));
+
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({
+    user: {
+      id: "admin-1",
+      role: "admin",
+      hierarchy_node_id: null,
+      scope_root_ids: [],
+      active_deputy_grants: [],
+      is_commander: false,
+      is_duty_manager: false,
+    },
+    authScopeReady: true,
+  }),
 }));
 
 vi.mock("../api/algorithm", () => ({
@@ -50,6 +70,22 @@ describe("DutyManagementContent weapon-ineligibility markers", () => {
     vi.mocked(soldiersApi.listSoldiers).mockResolvedValue([
       { id: "soldier-1", full_name: "חייל אחד" } as SoldierDTO,
     ]);
+    vi.mocked(soldiersApi.listSoldierRosterPage).mockResolvedValue({
+      items: [{
+        id: "soldier-1",
+        personal_number: "1111111",
+        full_name: "חייל אחד",
+        role: "soldier",
+        hierarchy_node_id: null,
+        left_at: null,
+        telegram_linked: false,
+        is_commander: false,
+        commander_node_name: null,
+        hierarchy_path: [],
+      }],
+      next_cursor: null,
+      has_more: false,
+    });
     vi.mocked(assignmentsApi.listAssignments).mockResolvedValue([
       {
         id: "assignment-bad",

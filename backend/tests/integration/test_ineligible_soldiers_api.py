@@ -4,6 +4,9 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy import event
+
+from app.db import session as db_session
 from app.db.models import (
     DutyAssignment,
     DutyManagerScope,
@@ -121,10 +124,16 @@ def test_commander_view_includes_descendants_and_excludes_duty_manager_only_node
     )
 
     response = _list(client, commander, "commander")
+    count_response = client.get(
+        "/api/ranges/ineligible-soldiers/count?audience=commander",
+        headers=auth_headers(commander),
+    )
 
     assert response.status_code == 200, response.text
+    assert count_response.status_code == 200, count_response.text
     body = response.json()
     assert body["count"] == 2
+    assert count_response.json() == {"count": body["count"]}
     assert {soldier["soldier_id"] for soldier in body["soldiers"]} == {
         str(root_soldier.id),
         str(descendant_soldier.id),
@@ -287,6 +296,46 @@ def test_admin_sees_all_nodes_and_count_matches_planning_list(client, admin_sess
     assert count_response.json() == {"count": len(planning_body["soldiers"])}
 
 
+def test_count_reuses_scoped_soldiers_and_skips_list_only_range_details(
+    client, admin_session
+) -> None:
+    admin = create_soldier(admin_session, personal_number=f"count-admin-{_uid()}", role="admin")
+    node = create_node(admin_session, level="division", name=f"count-node-{_uid()}")
+    soldier = create_soldier(
+        admin_session, personal_number=f"count-soldier-{_uid()}", hierarchy_node_id=node.id
+    )
+    _add_future_weapon_duty_and_matching_range(
+        admin_session, soldier=soldier, node=node
+    )
+
+    statements: list[str] = []
+
+    def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+        statements.append(" ".join(statement.lower().split()))
+
+    event.listen(db_session._engine, "before_cursor_execute", capture_sql)
+    try:
+        response = client.get(
+            "/api/ranges/ineligible-soldiers/count", headers=auth_headers(admin)
+        )
+    finally:
+        event.remove(db_session._engine, "before_cursor_execute", capture_sql)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"count": 1}
+    assert not any(
+        "from duty_assignments join duty_types" in sql for sql in statements
+    ), "soldiers already lacking a valid qualification need no future-duty scan"
+    assert not any(
+        "from soldiers" in sql and "join soldier_range_qualifications" in sql
+        for sql in statements
+    ), "the count must reuse the scoped soldier rows for profile dates"
+    assert not any(
+        "select range_events.id" in sql and "join range_assignments" in sql
+        for sql in statements
+    ), "the count must skip range details used only by the list response"
+
+
 def test_rejects_users_without_the_requested_audience_authority(client, admin_session) -> None:
     commander = create_soldier(
         admin_session, personal_number=f"forbidden-commander-{_uid()}", role="commander"
@@ -309,6 +358,10 @@ def test_rejects_users_without_the_requested_audience_authority(client, admin_se
     assert _list(client, duty_manager, "commander").status_code == 403
     assert _list(client, soldier, "planning").status_code == 403
     assert _list(client, soldier, "commander").status_code == 403
+    assert client.get(
+        "/api/ranges/ineligible-soldiers/count?audience=commander",
+        headers=auth_headers(duty_manager),
+    ).status_code == 403
 
 
 def test_planning_scope_with_no_soldiers_returns_an_empty_list_and_zero_count(
@@ -345,6 +398,11 @@ def test_includes_currently_qualified_soldier_when_qualification_expires_before_
         personal_number=f"expiry-soldier-{_uid()}",
         hierarchy_node_id=node.id,
     )
+    qualified_soldier = create_soldier(
+        admin_session,
+        personal_number=f"current-soldier-{_uid()}",
+        hierarchy_node_id=node.id,
+    )
     duty_location = create_duty_location(admin_session, name=f"expiry-duty-location-{_uid()}")
     duty_type = DutyType(
         name=f"expiry-duty-{_uid()}",
@@ -359,6 +417,11 @@ def test_includes_currently_qualified_soldier_when_qualification_expires_before_
                 soldier_id=soldier.id,
                 range_type=RangeType.laser,
                 valid_until=date.today() + timedelta(days=1),
+            ),
+            SoldierRangeQualification(
+                soldier_id=qualified_soldier.id,
+                range_type=RangeType.laser,
+                valid_until=date.today() + timedelta(days=30),
             ),
         ]
     )
@@ -376,8 +439,13 @@ def test_includes_currently_qualified_soldier_when_qualification_expires_before_
     admin_session.commit()
 
     response = _list(client, admin, "planning")
+    count_response = client.get(
+        "/api/ranges/ineligible-soldiers/count", headers=auth_headers(admin)
+    )
 
     assert response.status_code == 200, response.text
+    assert count_response.status_code == 200, count_response.text
+    assert count_response.json() == {"count": response.json()["count"]} == {"count": 1}
     row = next(row for row in response.json()["soldiers"] if row["soldier_id"] == str(soldier.id))
     assert row["valid_qualifications"] == [
         {"range_type": "laser", "valid_until": (date.today() + timedelta(days=1)).isoformat()}

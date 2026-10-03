@@ -4,7 +4,7 @@ import uuid
 from datetime import date as date_type
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -229,12 +229,13 @@ def _response(session: Session, *, roots: set[uuid.UUID] | None) -> IneligibleSo
 
 @router.get("/ineligible-soldiers/count", response_model=IneligibleSoldierCountOut)
 def get_ineligible_soldier_count(
+    audience: Audience = Query(default="planning"),
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> IneligibleSoldierCountOut:
-    roots = _resolve_roots(session, user=user, audience="planning")
-    records = svc.list_ineligible_soldiers(session, roots=roots, as_of=date_type.today())
-    return IneligibleSoldierCountOut(count=len(records))
+    roots = _resolve_roots(session, user=user, audience=audience)
+    count = svc.count_ineligible_soldiers(session, roots=roots, as_of=date_type.today())
+    return IneligibleSoldierCountOut(count=count)
 
 
 @router.get("/ineligible-soldiers", response_model=IneligibleSoldiersOut)

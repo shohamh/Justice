@@ -1,17 +1,27 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "../queryKeys";
-import { DataTable, type ColDef } from "../components/DataTable";
+import { type ColDef } from "../components/DataTable";
+import CursorPagedTable from "../components/CursorPagedTable";
 import Layout from "../components/Layout";
-import HierarchyTree from "../components/HierarchyTree";
+import LazyHierarchyTree from "../components/LazyHierarchyTree";
 import { useAuth } from "../auth/AuthContext";
 import { useSoldierModal } from "../contexts/SoldierModalContext";
-import { fetchTree } from "../api/hierarchy";
-import { sortNodesByTree } from "../utils/sortNodesByTree";
-import Combobox from "../components/Combobox";
-import { SoldierDTO, listSoldiers, onboardSoldier, promoteSoldierToAdmin, resetSoldierPassword, softDeleteSoldier } from "../api/soldiers";
+import { fetchTree, NodeDTO } from "../api/hierarchy";
+import {
+  SoldierDTO,
+  SoldierRosterItemDTO,
+  SoldierRosterSort,
+  isStaleSoldierRosterCursorError,
+  lookupSoldierByPersonalNumber,
+  listSoldierRosterPage,
+  onboardSoldier,
+  promoteSoldierToAdmin,
+  resetSoldierPassword,
+  softDeleteSoldier,
+} from "../api/soldiers";
 import { createTransferRequest } from "../api/hierarchyTransfers";
 import TelegramBadge from "../components/TelegramBadge";
 import { usePortfolioDialog } from "../hooks/usePortfolioDialog";
@@ -29,13 +39,15 @@ export default function TeamHierarchyPage() {
   const [pn, setPn] = useState("");
   const [name, setName] = useState("");
   const [nodeId, setNodeId] = useState("");
+  const [selectedNodeName, setSelectedNodeName] = useState("");
+  const [portfolioNodes, setPortfolioNodes] = useState<NodeDTO[]>([]);
   const [tempPw, setTempPw] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [resetTargetId, setResetTargetId] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
   const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [promotionTarget, setPromotionTarget] = useState<SoldierDTO | null>(null);
+  const [promotionTarget, setPromotionTarget] = useState<Pick<SoldierDTO, "id" | "full_name" | "role"> | null>(null);
   const [promotionPassword, setPromotionPassword] = useState("");
   const [promotionAcknowledged, setPromotionAcknowledged] = useState(false);
   const [promotionError, setPromotionError] = useState<string | null>(null);
@@ -43,38 +55,63 @@ export default function TeamHierarchyPage() {
   const isAdmin = user?.role === "admin";
   const canManageLevelTypes = user?.role === "admin" || (user?.is_duty_manager ?? false);
   const canDeleteSoldier = user?.can_delete_soldier ?? false;
-
-  const nodesQuery = useQuery({ queryKey: queryKeys.hierarchyTreeVisible(), queryFn: fetchTree });
-  const nodes = Array.isArray(nodesQuery.data) ? nodesQuery.data : [];
-
-  const soldiersQuery = useQuery({ queryKey: queryKeys.soldiers(), queryFn: listSoldiers });
-  const soldiers: SoldierDTO[] = Array.isArray(soldiersQuery.data) ? soldiersQuery.data : [];
+  const roleOrder = useMemo(
+    () =>
+      ([...(["admin", "commander", "duty_manager", "soldier"] as const)]).sort((left, right) =>
+        t(`role.${left}`).localeCompare(t(`role.${right}`), "he"),
+      ),
+    [t],
+  );
+  const rosterScopeKey = JSON.stringify({
+    id: user?.id,
+    role: user?.role,
+    hierarchyNodeId: user?.hierarchy_node_id,
+    isCommander: user?.is_commander,
+    isDutyManager: user?.is_duty_manager,
+    deputyGrants: user?.active_deputy_grants,
+  });
+  const rosterRowId = useCallback((soldier: SoldierRosterItemDTO) => soldier.id, []);
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.hierarchyTreeVisible() });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.soldiers() });
+    await Promise.all([
+      queryClient.resetQueries({ queryKey: queryKeys.hierarchyBranches(rosterScopeKey) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.hierarchySearches(rosterScopeKey) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.hierarchyTreeVisible() }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.soldiers(),
+        exact: true,
+      }),
+      queryClient.resetQueries({ queryKey: queryKeys.soldierRoster() }),
+    ]);
   }
 
-  const portfolioDialog = usePortfolioDialog(nodes, refresh);
+  const portfolioDialog = usePortfolioDialog(portfolioNodes, refresh);
+
+  async function openPortfolio(soldierId: string, soldierName: string) {
+    try {
+      const nodes = await fetchTree();
+      setPortfolioNodes(nodes);
+      portfolioDialog.open(soldierId, soldierName);
+    } catch {
+      setMessage(t("team.roster_load_failed"));
+    }
+  }
 
   async function addSoldier(e: FormEvent) {
     e.preventDefault();
-    const existing = soldiers.find((s) => s.personal_number === pn && !s.left_at);
-    if (existing) {
-      // Assigning an existing soldier to this node goes through the
-      // hierarchy-transfer request flow (pending the destination's
-      // approval), not a direct update — see HierarchyTree's handleQuickAdd
-      // for the same pattern. No node selected means nothing to request.
-      if (nodeId) await createTransferRequest(existing.id, nodeId);
-      setPn(""); setName(""); setNodeId("");
-    } else {
-      try {
+    try {
+      const existing = await lookupSoldierByPersonalNumber(pn);
+      if (existing) {
+        // Existing soldiers still enter the destination's approval flow.
+        if (nodeId) await createTransferRequest(existing.id, nodeId);
+        setPn(""); setName(""); setNodeId(""); setSelectedNodeName("");
+      } else {
         const res = await onboardSoldier({ personal_number: pn, full_name: name, hierarchy_node_id: nodeId || null });
         setTempPw(res.temp_password);
-        setPn(""); setName(""); setNodeId("");
-      } catch {
-        setMessage("שגיאה בהוספת החייל למערכת");
+        setPn(""); setName(""); setNodeId(""); setSelectedNodeName("");
       }
+    } catch {
+      setMessage(t("team.roster_load_failed"));
     }
     await refresh();
   }
@@ -95,13 +132,13 @@ export default function TeamHierarchyPage() {
     }
   }
 
-  function onRemove(id: string) {
-    const commandedNode = nodes.find((n) => n.commander_id === id);
-    if (commandedNode) {
-      setMessage(`${t("team.cannot_delete_commander")} "${commandedNode.name}". ${t("team.reassign_commander_first")}`);
+  function onRemove(soldier: SoldierRosterItemDTO) {
+    if (soldier.is_commander) {
+      const nodeName = soldier.commander_node_name ?? soldier.full_name;
+      setMessage(`${t("team.cannot_delete_commander")} "${nodeName}". ${t("team.reassign_commander_first")}`);
       return;
     }
-    setRemoveTargetId(id);
+    setRemoveTargetId(soldier.id);
   }
 
   async function confirmRemove() {
@@ -117,7 +154,7 @@ export default function TeamHierarchyPage() {
     }
   }
 
-  function openPromotion(soldier: SoldierDTO) {
+  function openPromotion(soldier: Pick<SoldierDTO, "id" | "full_name" | "role">) {
     setPromotionTarget(soldier);
     setPromotionPassword("");
     setPromotionAcknowledged(false);
@@ -158,7 +195,17 @@ export default function TeamHierarchyPage() {
         <div className="flex items-center gap-3">
           <h3 className="font-medium">{t("team.title")}</h3>
         </div>
-        <HierarchyTree nodes={nodes} soldiers={soldiers} onChanged={refresh} canManageLevelTypes={canManageLevelTypes} />
+        <LazyHierarchyTree
+          scopeKey={rosterScopeKey}
+          roleOrder={[...roleOrder]}
+          onChanged={refresh}
+          canManageLevelTypes={canManageLevelTypes}
+          onSelectedNodeChange={(node) => {
+            setNodeId(node?.id ?? "");
+            setSelectedNodeName(node?.name ?? "");
+          }}
+          onOpenPortfolio={(soldierId, soldierName) => void openPortfolio(soldierId, soldierName)}
+        />
 
         {isAdmin && (
           <form onSubmit={addSoldier} className="flex flex-wrap items-end gap-2" data-testid="onboard-form">
@@ -172,13 +219,15 @@ export default function TeamHierarchyPage() {
             </label>
             <label className="block">
               <span className="text-xs">{t("team.title")}</span>
-              <Combobox
-                items={sortNodesByTree(nodes).map(({ node, depth }) => ({ id: node.id, name: node.name, depth }))}
-                value={nodeId}
-                onChange={setNodeId}
-                placeholder="—"
-                testId="onboard-node"
-              />
+              <button
+                type="button"
+                className="block max-w-64 truncate border rounded p-1 text-right dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                onClick={() => document.querySelector<HTMLElement>('[data-testid="node-tree"]')?.focus()}
+                data-testid="onboard-node"
+                title={selectedNodeName || t("team.select_node_from_tree")}
+              >
+                {selectedNodeName || t("team.select_node_from_tree")}
+              </button>
             </label>
             <button type="submit" className="bg-indigo-600 text-white px-3 py-1 rounded" data-testid="onboard-submit">
               {t("team.add_soldier")}
@@ -189,9 +238,8 @@ export default function TeamHierarchyPage() {
         {tempPw && <div className="text-sm text-green-600" data-testid="temp-password">{t("team.temp_password_is", { pw: tempPw })}</div>}
         {removeError && <div className="text-sm text-red-600" data-testid="remove-error">{removeError}</div>}
 
-        <div className="overflow-x-auto">
-          {(() => {
-            const soldierCols: ColDef<SoldierDTO>[] = [
+        {(() => {
+            const soldierCols: ColDef<SoldierRosterItemDTO>[] = [
               {
                 id: "personal_number",
                 header: t("team.personal_number"),
@@ -223,11 +271,8 @@ export default function TeamHierarchyPage() {
                 header: t("team.node"),
                 cell: (s) => {
                   if (!s.hierarchy_node_id) return <span className="text-gray-400">—</span>;
-                  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-                  const soldierNode = nodeMap.get(s.hierarchy_node_id);
-                  if (!soldierNode) return <span className="text-gray-400">—</span>;
-                  const chain = soldierNode.path_ids.map((id) => nodeMap.get(id)?.name).filter(Boolean) as string[];
-                  if (chain.length === 0) return <span>{soldierNode.name}</span>;
+                  const chain = s.hierarchy_path;
+                  if (chain.length === 0) return <span className="text-gray-400">—</span>;
                   return (
                     <span className="text-xs">
                       {chain.map((name, i) => (
@@ -239,8 +284,8 @@ export default function TeamHierarchyPage() {
                     </span>
                   );
                 },
-                sortValue: (s) => nodes.find((n) => n.id === s.hierarchy_node_id)?.name ?? "",
-                filterValue: (s) => nodes.find((n) => n.id === s.hierarchy_node_id)?.name ?? "",
+                sortValue: (s) => s.hierarchy_path.at(-1) ?? "",
+                filterValue: (s) => s.hierarchy_path.join(" "),
               },
               {
                 id: "actions",
@@ -249,7 +294,7 @@ export default function TeamHierarchyPage() {
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     {(isAdmin || (user?.is_commander ?? false)) && (
                       <button
-                        onClick={() => portfolioDialog.open(s.id, s.full_name)}
+                        onClick={() => void openPortfolio(s.id, s.full_name)}
                         className="text-indigo-600 dark:text-indigo-300"
                         data-testid={`dm-portfolio-${s.personal_number}`}
                       >
@@ -264,25 +309,54 @@ export default function TeamHierarchyPage() {
                       </button>
                     )}
                     {canDeleteSoldier && (
-                      <button onClick={() => onRemove(s.id)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
+                      <button onClick={() => onRemove(s)} className="text-red-600" data-testid={`remove-${s.personal_number}`}>{t("team.remove")}</button>
                     )}
                   </span>
                 ),
               },
             ];
-            const activeSoldiers = soldiers.filter((s) => !s.left_at);
             return (
-              <DataTable
+              <CursorPagedTable
                 columns={soldierCols}
-                data={activeSoldiers}
-                filterPlaceholder={t("team.search_placeholder")}
-                emptyMessage={t("team.no_soldiers")}
+                queryKey={queryKeys.soldierRoster()}
+                scopeKey={rosterScopeKey}
+                filterKey={{ active_only: true }}
+                roleOrder={[...roleOrder]}
+                fetchPage={({ cursor, search, sort, descending, roleOrder: localizedRoleOrder, pageSize, signal }) =>
+                  listSoldierRosterPage({
+                    cursor,
+                    search,
+                    sort: sort as SoldierRosterSort,
+                    descending,
+                    role_order: (localizedRoleOrder ?? []).join(","),
+                    page_size: pageSize,
+                    active_only: true,
+                    signal,
+                  })
+                }
+                getRowId={rosterRowId}
+                tableLabel={t("team.title")}
+                labels={{
+                  searchLabel: t("team.roster_search_label"),
+                  searchPlaceholder: t("team.roster_search_placeholder"),
+                  loading: t("team.roster_loading"),
+                  loadingMore: t("team.roster_loading_more"),
+                  loadMore: t("team.roster_load_more"),
+                  retry: t("team.roster_retry"),
+                  loadFailed: t("team.roster_load_failed"),
+                  emptyMessage: t("team.no_soldiers"),
+                  loaded: (count) => t("team.roster_loaded", { count }),
+                  allLoaded: (count) => t("team.roster_all_loaded", { count }),
+                  keyboardHint: t("team.roster_keyboard_hint"),
+                }}
+                isCursorStaleError={isStaleSoldierRosterCursorError}
+                pageSize={100}
+                initialSort="full_name"
                 testId="soldier-table"
                 rowTestId={(s) => `soldier-row-${s.personal_number}`}
               />
             );
           })()}
-        </div>
 
         {portfolioDialog.dialog}
         <ConfirmDialog

@@ -5,9 +5,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 from statistics import mean, median, stdev
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
-from app.services.sql_arrays import uuid_any
+from sqlalchemy import case, func, select
+from sqlalchemy.orm import Session, load_only
 
 from app.db.models import (
     DutyAssignment,
@@ -23,7 +22,8 @@ from app.db.models import (
     SwapCandidate,
     SwapRequest,
 )
-from app.services.score_projection import commander_score_totals
+from app.services.score_projection import commander_alert_warning_scores, commander_score_totals
+from app.services.sql_arrays import uuid_any
 
 
 def _soldiers_in_nodes(session: Session, subtree_ids: list[uuid.UUID]) -> list[Soldier]:
@@ -283,17 +283,25 @@ def fairness_stats(session: Session, *, subtree_ids: list[uuid.UUID]) -> dict:
 
 
 def potential_counts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
-    soldiers = _soldiers_in_nodes(session, subtree_ids)
-    total_soldiers = len(soldiers)
+    chova = keva = bahad1 = officers = total_soldiers = 0
+    if subtree_ids:
+        chova, keva, bahad1, officers, total_soldiers = session.execute(
+            select(
+                func.sum(case((Soldier.mandatory_end_date > date.today(), 1), else_=0)),
+                func.sum(case((Soldier.rank.in_(("sgan_aluf", "rav_saren", "saren")), 1), else_=0)),
+                func.sum(case((Soldier.bahad1_graduate.is_(True), 1), else_=0)),
+                func.sum(case((Soldier.is_officer.is_(True), 1), else_=0)),
+                func.count(Soldier.id),
+            ).where(Soldier.hierarchy_node_id.in_(subtree_ids), Soldier.left_at.is_(None))
+        ).one()
+        chova, keva, bahad1, officers = (
+            chova or 0, keva or 0, bahad1 or 0, officers or 0
+        )
 
     counts: list[dict] = []
-    chova = sum(1 for s in soldiers if s.mandatory_end_date and s.mandatory_end_date > date.today())
     counts.append({"label": "חובה", "count": chova, "unit_total": None})
-    keva = sum(1 for s in soldiers if s.rank and s.rank in ("sgan_aluf", "rav_saren", "saren"))
     counts.append({"label": "קבע", "count": keva, "unit_total": None})
-    bahad1 = sum(1 for s in soldiers if s.bahad1_graduate)
     counts.append({"label": 'בוגרי בה"ד 1', "count": bahad1, "unit_total": None})
-    officers = sum(1 for s in soldiers if s.is_officer)
     counts.append({"label": "קצינים", "count": officers, "unit_total": None})
     counts.append({"label": 'סה"כ חיילים', "count": total_soldiers, "unit_total": None})
     return counts
@@ -305,58 +313,57 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
     ``days`` caps the horizon when given; ``None`` returns everything
     currently scheduled (however far out the algorithm has assigned).
     """
-    soldiers = _soldiers_in_nodes(session, subtree_ids)
-    soldier_ids = {s.id for s in soldiers}
     today = date.today()
     end = today + timedelta(days=days) if days is not None else None
 
     conditions = [
         DutyAssignment.status.in_(["published", "algorithm_draft"]),
-        uuid_any("duty_assignments.soldier_id", soldier_ids),
+        Soldier.hierarchy_node_id.in_(subtree_ids),
+        Soldier.left_at.is_(None),
         DutyAssignment.end_date >= today,
     ]
     if end is not None:
         conditions.append(DutyAssignment.start_date <= end)
 
-    assignments = session.execute(select(DutyAssignment).where(*conditions)).scalars().all()
+    assignments = session.execute(
+        select(
+            DutyAssignment,
+            Soldier.full_name,
+            DutyType.name,
+            DutyLocation.name,
+            HierarchyNode.name,
+        )
+        .join(Soldier, Soldier.id == DutyAssignment.soldier_id)
+        .outerjoin(DutyType, DutyType.id == DutyAssignment.duty_type_id)
+        .outerjoin(DutyLocation, DutyLocation.id == DutyAssignment.duty_location_id)
+        .outerjoin(HierarchyNode, HierarchyNode.id == Soldier.hierarchy_node_id)
+        .where(*conditions)
+    ).all()
 
     # Only days that actually have an assignment get an entry — with no
     # horizon cap, pre-filling every empty day between today and the
     # furthest assignment would be unbounded and pointless.
     day_map: dict[date, list[dict]] = {}
 
-    # Preload lookup maps
-    soldier_map = {s.id: s for s in soldiers}
-    duty_type_rows = session.execute(select(DutyType)).scalars().all()
-    duty_type_map = {dt.id: dt for dt in duty_type_rows}
-    location_rows = session.execute(select(DutyLocation)).scalars().all()
-    location_map = {location.id: location for location in location_rows}
-    node_rows = session.execute(select(HierarchyNode)).scalars().all()
-    node_map = {n.id: n for n in node_rows}
-
-    for a in assignments:
+    for a, soldier_name, duty_type_name, location_name, node_name in assignments:
         d = max(a.start_date, today)
-        soldier = soldier_map.get(a.soldier_id)
-        dt = duty_type_map.get(a.duty_type_id)
-        location = location_map.get(a.duty_location_id)
-        node = node_map.get(soldier.hierarchy_node_id) if soldier else None
         day_limit = min(a.end_date, end + timedelta(days=1)) if end is not None else a.end_date
         while d < day_limit:
             day_map.setdefault(d, []).append(
                 {
                     "assignment_id": str(a.id),
                     "soldier_id": str(a.soldier_id),
-                    "soldier_name": soldier.full_name if soldier else "",
+                    "soldier_name": soldier_name,
                     "duty_type_id": str(a.duty_type_id),
-                    "duty_type_name": dt.name if dt else "",
+                    "duty_type_name": duty_type_name or "",
                     "duty_location_id": str(a.duty_location_id),
-                    "duty_location_name": location.name if location else "",
+                    "duty_location_name": location_name or "",
                     "start_date": str(a.start_date),
                     "end_date": str(a.end_date),
                     "start_time": a.start_time,
                     "end_time": a.end_time,
                     "shift_id": str(a.duty_shift_id) if a.duty_shift_id else None,
-                    "node_name": node.name if node else "",
+                    "node_name": node_name or "",
                     "is_reserve": a.is_reserve,
                     "status": a.status,
                 }
@@ -370,11 +377,15 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
 
 
 def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
-    soldiers = _soldiers_in_nodes(session, subtree_ids)
-    score_data = _score_data(session, soldiers)
-    threshold = Decimal("-3.0")
+    soldiers = session.execute(
+        select(Soldier)
+        .options(load_only(Soldier.id, Soldier.full_name, Soldier.enrolled_at))
+        .where(Soldier.hierarchy_node_id.in_(subtree_ids), Soldier.left_at.is_(None))
+    ).scalars().all()
     today = date.today()
     next_week = today + timedelta(days=7)
+
+    warning_scores = commander_alert_warning_scores(session, soldiers=soldiers, as_of=today)
 
     soldier_ids = {s.id for s in soldiers}
     name_by_id = {s.id: s.full_name for s in soldiers}
@@ -383,9 +394,8 @@ def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
     alerts_list: list[dict] = []
 
     for s in soldiers:
-        sd = score_data.get(s.id, {})
-        norm = sd.get("normalised_score", Decimal("0"))
-        if norm < threshold:
+        norm = warning_scores.get(s.id)
+        if norm is not None:
             alerts_list.append(
                 {
                     "severity": "warning",

@@ -8,7 +8,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.authz import is_commander, is_duty_manager
+from app.auth.authz import (
+    is_commander,
+    is_duty_manager,
+    scope_root_ids as evaluated_scope_root_ids,
+)
 from app.auth.deps import get_current_user, require_password_changed
 from app.db.models import HierarchyNode, Soldier, SoldierEnrollmentRequest, TelegramLink
 from app.db.session import get_session
@@ -41,6 +45,7 @@ class MeResponse(BaseModel):
     is_duty_manager: bool
     must_change_password: bool
     hierarchy_node_id: uuid.UUID | None
+    scope_root_ids: list[uuid.UUID]
     telegram_linked: bool
     telegram_required: bool
     phone: str | None = None
@@ -158,6 +163,7 @@ def me(
         is_duty_manager=is_duty_manager(session, user.id),
         must_change_password=user.must_change_password,
         hierarchy_node_id=user.hierarchy_node_id,
+        scope_root_ids=sorted(evaluated_scope_root_ids(session, user), key=str),
         telegram_linked=link is not None,
         telegram_required=telegram_required,
         phone=user.phone,

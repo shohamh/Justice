@@ -4,6 +4,22 @@ import { describe, expect, test, vi, beforeEach } from "vitest";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import type { SoldierDTO } from "../api/soldiers";
 
+const mockCreateTransferRequest = vi.fn().mockResolvedValue({ id: "transfer-1" });
+vi.mock("../api/hierarchyTransfers", () => ({
+  createTransferRequest: (...args: unknown[]) => mockCreateTransferRequest(...args),
+}));
+vi.mock("./HierarchyNodePickerModal", () => ({
+  default: ({ onClose, onPicked }: {
+    onClose: () => void;
+    onPicked: (nodeId: string, nodeName: string, path?: string[]) => void;
+  }) => (
+    <div role="dialog" aria-label="hierarchy picker test">
+      <button type="button" data-testid="choose-node-new-node" onClick={() => onPicked("node-2", "New Unit", ["Division", "New Unit"])}>choose new node</button>
+      <button type="button" onClick={onClose}>close picker</button>
+    </div>
+  ),
+}));
+
 const mockUpdateSoldierProfile = vi.fn();
 const mockSubmitFieldUpdate = vi.fn();
 const mockListFieldUpdates = vi.fn().mockResolvedValue([]);
@@ -94,7 +110,6 @@ function renderModal(soldierOverrides: Partial<SoldierDTO> = {}, initialEditing 
       <UnifiedSoldierModal
         soldier={{ ...soldier, ...soldierOverrides }}
         score={null}
-        nodes={[]}
         onClose={vi.fn()}
         onRefresh={vi.fn()}
         initialEditing={initialEditing}
@@ -471,7 +486,6 @@ describe("UnifiedSoldierModal initialTab", () => {
         <UnifiedSoldierModal
           soldier={soldier}
           score={null}
-          nodes={[]}
           onClose={vi.fn()}
           onRefresh={vi.fn()}
           initialTab="duty_history"
@@ -510,7 +524,6 @@ describe("UnifiedSoldierModal initialTab", () => {
         <UnifiedSoldierModal
           soldier={soldier}
           score={null}
-          nodes={[]}
           onClose={vi.fn()}
           onRefresh={vi.fn()}
           initialTab="duty_history"
@@ -551,7 +564,6 @@ describe("UnifiedSoldierModal constraint cancellation", () => {
         <UnifiedSoldierModal
           soldier={soldier}
           score={null}
-          nodes={[]}
           onClose={vi.fn()}
           onRefresh={vi.fn()}
         />
@@ -692,5 +704,31 @@ describe("UnifiedSoldierModal public mode", () => {
     expect(screen.queryByText("soldier_profile.gender")).not.toBeInTheDocument();
     expect(screen.queryByText("soldier_profile.has_driving_license")).not.toBeInTheDocument();
     expect(screen.queryByText("soldier_profile.last_mitvahim_date")).not.toBeInTheDocument();
+  });
+});
+
+describe("UnifiedSoldierModal lazy hierarchy transfer selection", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+    mockCreateTransferRequest.mockReset().mockResolvedValue({ id: "transfer-1" });
+  });
+
+  test("opens the paged picker on demand and submits the same transfer request with its approval message", async () => {
+    renderModal({ hierarchy_node_id: "node-1", hierarchy_path: ["Division", "Current Unit"] }, true);
+
+    const nodePickerButton = screen.getByTestId("edit-soldier-node");
+    expect(nodePickerButton).toHaveTextContent("Current Unit");
+    fireEvent.click(nodePickerButton);
+    expect(screen.getByRole("dialog", { name: "hierarchy picker test" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("choose-node-new-node"));
+
+    expect(screen.queryByRole("dialog", { name: "hierarchy picker test" })).not.toBeInTheDocument();
+    expect(screen.getByText("team.move_requires_approval")).toBeInTheDocument();
+    expect(screen.getByTestId("edit-soldier-node")).toHaveTextContent("New Unit");
+    fireEvent.click(screen.getByTestId("edit-soldier-submit"));
+
+    await waitFor(() => expect(mockCreateTransferRequest).toHaveBeenCalledWith("s1", "node-2"));
   });
 });

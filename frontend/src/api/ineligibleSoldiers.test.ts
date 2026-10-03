@@ -62,6 +62,16 @@ describe("ineligible soldiers api", () => {
     expect(mockGet).toHaveBeenCalledWith("/ranges/ineligible-soldiers/count");
   });
 
+  it("requests the count for an explicit audience", async () => {
+    mockGet.mockResolvedValueOnce({ data: { count: 2 } });
+    const { getIneligibleSoldierCount } = await import("./ineligibleSoldiers");
+
+    await expect(getIneligibleSoldierCount("commander")).resolves.toEqual({ count: 2 });
+    expect(mockGet).toHaveBeenCalledWith("/ranges/ineligible-soldiers/count", {
+      params: { audience: "commander" },
+    });
+  });
+
   it("registers stable query keys for both audiences and the count", () => {
     expect(queryKeys.ineligibleSoldiers("planning")).toEqual(["ranges", "ineligibleSoldiers", "planning"]);
     expect(queryKeys.ineligibleSoldiers("commander")).toEqual(["ranges", "ineligibleSoldiers", "commander"]);

@@ -24,6 +24,21 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({
+    user: {
+      id: "principal-1",
+      role: "admin",
+      hierarchy_node_id: null,
+      scope_root_ids: [],
+      active_deputy_grants: [],
+      is_commander: false,
+      is_duty_manager: false,
+    },
+    authScopeReady: true,
+  }),
+}));
+
 const mockListDeputies = vi.fn();
 const mockCreateDeputy = vi.fn();
 const mockRevokeDeputy = vi.fn();
@@ -34,11 +49,22 @@ vi.mock("../api/deputies", () => ({
 }));
 
 vi.mock("../api/soldiers", () => ({
-  listSoldiers: vi.fn(() =>
-    Promise.resolve([
-      { id: "s1", full_name: "יוסי כהן", personal_number: "1234567", role: "soldier" },
-    ])
-  ),
+  listSoldierRosterPage: vi.fn(() => Promise.resolve({
+    items: [{
+      id: "s1",
+      full_name: "יוסי כהן",
+      personal_number: "1234567",
+      role: "soldier",
+      hierarchy_node_id: null,
+      left_at: null,
+      telegram_linked: false,
+      is_commander: false,
+      commander_node_name: null,
+      hierarchy_path: [],
+    }],
+    next_cursor: null,
+    has_more: false,
+  })),
 }));
 
 const grant = {
@@ -64,7 +90,9 @@ test("creates a new deputy grant", async () => {
   await screen.findByText("יוסי כהן");
 
   fireEvent.change(screen.getByPlaceholderText("חיפוש חייל..."), { target: { value: "יוסי" } });
-  fireEvent.click(await screen.findByText(/יוסי כהן/));
+  const candidatePersonalNumber = await screen.findByText("(1234567)");
+  fireEvent.click(candidatePersonalNumber.closest("li")!);
+  await waitFor(() => expect(screen.getByText("הוסף ממלא מקום")).not.toBeDisabled());
   fireEvent.change(screen.getByLabelText("מתאריך"), { target: { value: "2026-02-01" } });
   fireEvent.change(screen.getByLabelText("עד תאריך"), { target: { value: "2026-02-28" } });
   fireEvent.click(screen.getByText("הוסף ממלא מקום"));
@@ -123,7 +151,9 @@ test("shows the specific backend error reason instead of a generic message", asy
   await screen.findByText("יוסי כהן");
 
   fireEvent.change(screen.getByPlaceholderText("חיפוש חייל..."), { target: { value: "יוסי" } });
-  fireEvent.click(await screen.findByText(/יוסי כהן/));
+  const candidatePersonalNumber = await screen.findByText("(1234567)");
+  fireEvent.click(candidatePersonalNumber.closest("li")!);
+  await waitFor(() => expect(screen.getByText("הוסף ממלא מקום")).not.toBeDisabled());
   fireEvent.click(screen.getByText("הוסף ממלא מקום"));
 
   await waitFor(() =>

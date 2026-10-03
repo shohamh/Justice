@@ -9,7 +9,15 @@ import * as scoringApi from "../api/scoring";
 import * as reservesApi from "../api/reserves";
 import type { EffectiveDuty } from "../api/assignments";
 
-const mockUseAuth = vi.fn(() => ({ user: null }));
+const mockUseAuth = vi.fn(() => ({ user: {
+  id: "viewer-1",
+  role: "soldier",
+  hierarchy_node_id: null,
+  scope_root_ids: [],
+  active_deputy_grants: [],
+  is_commander: false,
+  is_duty_manager: false,
+}, authScopeReady: true }));
 vi.mock("../auth/AuthContext", () => ({
   useAuth: () => mockUseAuth(),
 }));
@@ -65,6 +73,9 @@ const SOLDIER = {
   personal_number: "111111",
   full_name: "חייל אחד",
   role: "soldier" as const,
+  hierarchy_node_id: null,
+  scope_root_ids: [],
+  active_deputy_grants: [],
   is_commander: false,
   is_duty_manager: false,
 };
@@ -97,7 +108,7 @@ function createTestQueryClient() {
 }
 
 function renderPage() {
-  mockUseAuth.mockReturnValue({ user: SOLDIER });
+  mockUseAuth.mockReturnValue({ user: SOLDIER, authScopeReady: true });
   return render(
     <QueryClientProvider client={createTestQueryClient()}>
       <MyDutiesPage />

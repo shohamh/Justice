@@ -507,6 +507,10 @@ export interface FairnessComponentsCardProps {
    * node's subtree, matching the "סנן לפי יחידה" unit filter elsewhere on
    * the page — omit/null for the whole organization. */
   nodeId?: string | null;
+  data?: FairnessComponents | null;
+  loading?: boolean;
+  loadError?: boolean;
+  onRetry?: () => void;
 }
 
 /**
@@ -515,19 +519,41 @@ export interface FairnessComponentsCardProps {
  * everything and by mixing groups that can't substitute for each other — into a
  * per-group spread plus the count of soldiers exempt from all duties.
  */
-export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle, onClearGroups, nodeId }: FairnessComponentsCardProps) {
-  const [data, setData] = useState<FairnessComponents | null>(null);
+export default function FairnessComponentsCard({ activeGroupKeys, onGroupToggle, onClearGroups, nodeId, data: externalData, loading: externalLoading, loadError: externalLoadError, onRetry }: FairnessComponentsCardProps) {
+  const [localData, setLocalData] = useState<FairnessComponents | null>(null);
   const [failed, setFailed] = useState(false);
+  const externallyManaged = externalData !== undefined;
 
   useEffect(() => {
-    setData(null);
+    if (externallyManaged) return;
+    setLocalData(null);
     setFailed(false);
-    getFairnessComponents(nodeId).then(setData).catch(() => setFailed(true));
-  }, [nodeId]);
+    getFairnessComponents(nodeId).then(setLocalData).catch(() => setFailed(true));
+  }, [nodeId, externallyManaged]);
 
-  if (failed) return null;
+  const data = externallyManaged ? externalData : localData;
+  const isLoading = externallyManaged ? externalLoading === true : !localData && !failed;
+  const hasFailed = externallyManaged ? externalLoadError === true : failed;
 
-  if (!data) {
+  if (hasFailed) {
+    return (
+      <div dir="rtl" className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 text-sm text-red-600 dark:text-red-400">
+        <span>טעינת נתוני הפיזור נכשלה.</span>
+        <button
+          type="button"
+          className="mr-3 underline"
+          onClick={onRetry ?? (() => {
+            setFailed(false);
+            getFairnessComponents(nodeId).then(setLocalData).catch(() => setFailed(true));
+          })}
+        >
+          נסה שוב
+        </button>
+      </div>
+    );
+  }
+
+  if (isLoading || !data) {
     return (
       <div
         dir="rtl"

@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,7 +20,11 @@ from app.db.models import (
     SoldierExemption,
     SoldierRangeQualification,
 )
-from app.services.range_auto_assign import excluded_candidates, rank_candidates, rank_candidates_with_excluded
+from app.services.range_auto_assign import (
+    excluded_candidates,
+    rank_candidates,
+    rank_candidates_with_excluded,
+)
 from app.services.ranges import RangeValidationError, add_range_assignment, create_range_event
 from app.services.settings_loader import set_setting
 from tests.helpers import create_duty_location, create_node, create_range_location, create_soldier
@@ -55,6 +60,34 @@ def _event(session: Session, *, required_count: int = 2, reserve_count: int = 1)
         required_count=required_count, reserve_count=reserve_count,
     )
     return node, event, dm
+
+
+def test_candidate_pool_query_loads_only_fields_used_by_candidate_flow(app_session: Session) -> None:
+    node, event, dm = _event(app_session)
+    create_soldier(app_session, personal_number="cand-projection", hierarchy_node_id=node.id)
+    app_session.commit()
+
+    statements: list[str] = []
+
+    def capture_statement(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+        normalized = " ".join(statement.lower().split())
+        if "from soldiers" in normalized and "soldiers.hierarchy_node_id in" in normalized:
+            statements.append(normalized)
+
+    bind = app_session.get_bind()
+    sqlalchemy_event.listen(bind, "before_cursor_execute", capture_statement)
+    try:
+        rank_candidates(app_session, event=event, user=dm)
+    finally:
+        sqlalchemy_event.remove(bind, "before_cursor_execute", capture_statement)
+
+    assert len(statements) == 1
+    candidate_pool_query = statements[0]
+    assert "soldiers.id" in candidate_pool_query
+    assert "soldiers.full_name" in candidate_pool_query
+    assert "soldiers.personal_number" in candidate_pool_query
+    assert "soldiers.hierarchy_node_id" in candidate_pool_query
+    assert "soldiers.password_hash" not in candidate_pool_query
 
 
 def test_ranks_available_soldiers_and_excludes_already_assigned(app_session: Session) -> None:

@@ -18,9 +18,24 @@ vi.mock("../api/dmScope", () => ({
   removeDmScope: (...args: unknown[]) => mockRemove(...args),
 }));
 
-const mockListSoldiers = vi.fn();
+const mockListSoldierRosterPage = vi.fn();
 vi.mock("../api/soldiers", () => ({
-  listSoldiers: () => mockListSoldiers(),
+  listSoldierRosterPage: (...args: unknown[]) => mockListSoldierRosterPage(...args),
+}));
+
+vi.mock("../auth/AuthContext", () => ({
+  useAuth: () => ({
+    user: {
+      id: "admin-1",
+      role: "admin",
+      hierarchy_node_id: null,
+      scope_root_ids: [],
+      active_deputy_grants: [],
+      is_commander: false,
+      is_duty_manager: false,
+    },
+    authScopeReady: true,
+  }),
 }));
 
 function node(overrides: Partial<NodeDTO> = {}): NodeDTO {
@@ -41,10 +56,15 @@ function node(overrides: Partial<NodeDTO> = {}): NodeDTO {
 beforeEach(() => {
   mockAssign.mockReset();
   mockRemove.mockReset();
-  mockListSoldiers.mockReset();
-  mockListSoldiers.mockResolvedValue([
-    { id: "s1", personal_number: "1001", full_name: "דני כהן" },
-  ]);
+  mockListSoldierRosterPage.mockReset().mockResolvedValue({
+    items: [{
+      id: "s1", personal_number: "1001", full_name: "דני כהן", role: "soldier",
+      hierarchy_node_id: null, left_at: null, telegram_linked: false, is_commander: false,
+      commander_node_name: null, hierarchy_path: [],
+    }],
+    next_cursor: null,
+    has_more: false,
+  });
   mockAssign.mockResolvedValue({ id: "scope-1", duty_manager_id: "s1", hierarchy_node_id: "node-1" });
   mockRemove.mockResolvedValue(undefined);
 });
@@ -78,10 +98,10 @@ test("clicking remove calls removeDmScope and onChanged", async () => {
 test("typing and selecting a soldier calls assignDmScope and onChanged", async () => {
   const onChanged = vi.fn();
   render(<AssignDutyManagersDialog node={node()} onClose={vi.fn()} onChanged={onChanged} />);
-  await waitFor(() => expect(mockListSoldiers).toHaveBeenCalled());
   const input = screen.getByTestId("duty-manager-search");
   fireEvent.focus(input);
   fireEvent.change(input, { target: { value: "דני" } });
+  await waitFor(() => expect(mockListSoldierRosterPage).toHaveBeenCalled());
   await waitFor(() => expect(screen.getByTestId("duty-manager-option-s1")).toBeInTheDocument());
   fireEvent.mouseDown(screen.getByTestId("duty-manager-option-s1"));
   await waitFor(() => expect(mockAssign).toHaveBeenCalledWith("s1", "node-1"));
@@ -89,17 +109,21 @@ test("typing and selecting a soldier calls assignDmScope and onChanged", async (
 });
 
 test("does not offer an already-assigned soldier in the search dropdown", async () => {
-  mockListSoldiers.mockResolvedValue([
-    { id: "s1", personal_number: "1001", full_name: "דני כהן" },
-    { id: "s2", personal_number: "1002", full_name: "יוסי לוי" },
-  ]);
+  mockListSoldierRosterPage.mockResolvedValue({
+    items: [
+      { id: "s1", personal_number: "1001", full_name: "דני כהן", role: "soldier", hierarchy_node_id: null, left_at: null, telegram_linked: false, is_commander: false, commander_node_name: null, hierarchy_path: [] },
+      { id: "s2", personal_number: "1002", full_name: "יוסי לוי", role: "soldier", hierarchy_node_id: null, left_at: null, telegram_linked: false, is_commander: false, commander_node_name: null, hierarchy_path: [] },
+    ],
+    next_cursor: null,
+    has_more: false,
+  });
   const n = node({
     duty_managers: [{ scope_id: "scope-1", soldier_id: "s1", name: "דני כהן" }],
   });
   render(<AssignDutyManagersDialog node={n} onClose={vi.fn()} onChanged={vi.fn()} />);
-  await waitFor(() => expect(mockListSoldiers).toHaveBeenCalled());
   const input = screen.getByTestId("duty-manager-search");
   fireEvent.focus(input);
+  await waitFor(() => expect(mockListSoldierRosterPage).toHaveBeenCalled());
   await waitFor(() => expect(screen.getByTestId("duty-manager-option-s2")).toBeInTheDocument());
   expect(screen.queryByTestId("duty-manager-option-s1")).not.toBeInTheDocument();
 });
@@ -107,9 +131,8 @@ test("does not offer an already-assigned soldier in the search dropdown", async 
 test("shows the translated backend detail when assigning fails", async () => {
   mockAssign.mockRejectedValue({ response: { status: 403, data: { detail: "forbidden" } } });
   render(<AssignDutyManagersDialog node={node()} onClose={vi.fn()} onChanged={vi.fn()} />);
-  await waitFor(() => expect(mockListSoldiers).toHaveBeenCalled());
-
   fireEvent.focus(screen.getByTestId("duty-manager-search"));
+  await waitFor(() => expect(mockListSoldierRosterPage).toHaveBeenCalled());
   fireEvent.mouseDown(await screen.findByTestId("duty-manager-option-s1"));
 
   expect(await screen.findByText("אין הרשאה לבצע פעולה זו")).toBeInTheDocument();

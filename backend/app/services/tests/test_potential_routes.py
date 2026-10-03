@@ -45,6 +45,24 @@ def test_get_potential_includes_partial_exemption_fields(client, admin_session):
     assert body["soldiers"][0]["partial_exemption_names"] is None
 
 
+def test_summary_uses_the_same_aggregate_values_as_detail(client, admin_session):
+    node = create_node(admin_session, level="פלוגה", name="Summary parity")
+    dm = create_soldier(
+        admin_session, personal_number="5000904", role="duty_manager", hierarchy_node_id=node.id,
+    )
+    admin_session.commit()
+    params = {"node_id": str(node.id), "reference_date": "2026-07-03"}
+    headers = auth_headers(dm)
+
+    detail = client.get("/api/potential", params=params, headers=headers)
+    summary = client.get("/api/potential/summary", params=params, headers=headers)
+
+    assert detail.status_code == summary.status_code == 200
+    assert summary.json()["total_soldiers"] == detail.json()["total_soldiers"] == 1
+    assert summary.json()["partial_exemption_count"] == detail.json()["partial_exemption_count"] == 0
+    assert summary.json()["modifier_total"] == sum(m["delta"] for m in detail.json()["modifiers"])
+
+
 def test_create_modifier_route_requires_reason(client, admin_session):
     node = create_node(admin_session, level="פלוגה", name="Mod Route Co")
     dm = create_soldier(

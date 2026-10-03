@@ -178,6 +178,7 @@ def get_calendar_shifts(
     date_to: date | None,
     include_eligibility_facts: bool = False,
 ) -> list[dict[str, Any]]:
+    subtree_node_ids = set()
     if soldier_id is not None:
         # Personal view: only this soldier's own assignments, regardless of
         # which node they (or their duties) belong to.
@@ -199,22 +200,10 @@ def get_calendar_shifts(
             .scalars()
             .all()
         )
-
-        soldiers_in_subtree = {
-            s.id: (s.full_name, s.hierarchy_node_id, s.profile_picture_url)
-            for s in session.execute(
-                select(Soldier).where(
-                    Soldier.hierarchy_node_id.in_(subtree_node_ids),
-                    Soldier.left_at.is_(None),
-                )
-            )
-            .scalars()
-            .all()
-        }
-        if not soldiers_in_subtree and not is_framework_wide:
-            return []
-
-    soldier_id_set = set(soldiers_in_subtree.keys())
+        # Filled from the assignment/display projection below. Avoid loading
+        # every active Soldier in the subtree just to discover this window's
+        # assignees.
+        soldiers_in_subtree = {}
 
     all_nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
 
@@ -235,8 +224,11 @@ def get_calendar_shifts(
             return []
         return [str(pid) for pid in (leaf.path_ids or [])]
 
+    # Keep the loaded rows alive: reserve_count_for_shift uses Session.get() for
+    # each shift, and SQLAlchemy's identity map holds only weak references.
+    duty_types = session.execute(select(DutyType)).scalars().all()
     dt_map: dict[uuid.UUID, tuple[str, str, str | None]] = {}
-    for dt in session.execute(select(DutyType)).scalars().all():
+    for dt in duty_types:
         dt_map[dt.id] = (dt.name, _duty_color_for(dt.id), dt.required_range_type)
 
     loc_map = {dl.id: dl.name for dl in session.execute(select(DutyLocation)).scalars().all()}
@@ -254,19 +246,43 @@ def get_calendar_shifts(
 
     shift_ids = [s.id for s in shifts]
 
-    assignments = (
-        session.execute(
-            select(DutyAssignment).where(
-                DutyAssignment.duty_shift_id.in_(shift_ids),
-                DutyAssignment.soldier_id.in_(soldier_id_set),
-                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+    if soldier_id is not None:
+        assignments = (
+            session.execute(
+                select(DutyAssignment).where(
+                    DutyAssignment.duty_shift_id.in_(shift_ids),
+                    DutyAssignment.soldier_id == soldier_id,
+                    DutyAssignment.status.in_(["published", "algorithm_draft"]),
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
+    else:
+        assignment_display_rows = session.execute(
+            select(
+                DutyAssignment,
+                Soldier.full_name,
+                Soldier.hierarchy_node_id,
+                Soldier.profile_picture_url,
+            )
+            .join(Soldier, Soldier.id == DutyAssignment.soldier_id)
+            .where(
+                DutyAssignment.duty_shift_id.in_(shift_ids),
+                DutyAssignment.status.in_(["published", "algorithm_draft"]),
+                Soldier.hierarchy_node_id.in_(subtree_node_ids),
+                Soldier.left_at.is_(None),
+            )
+        ).all()
+        assignments = []
+        for assignment, name, hierarchy_node_id, picture_url in assignment_display_rows:
+            assignments.append(assignment)
+            soldiers_in_subtree[assignment.soldier_id] = (
+                name,
+                hierarchy_node_id,
+                picture_url,
+            )
 
-    assignment_ids = [a.id for a in assignments]
     primary_ids = [a.id for a in assignments if not a.is_reserve]
     reserve_ids = [a.id for a in assignments if a.is_reserve]
 

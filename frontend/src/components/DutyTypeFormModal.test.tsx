@@ -23,6 +23,10 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+vi.mock("./SubHierarchySelector", () => ({
+  default: () => <div data-testid="sub-hierarchy-selector-stub" />,
+}));
+
 vi.mock("../api/dutyConfig", () => ({
   listExemptionTypes: vi.fn(() => Promise.resolve([])),
   getAllExemptionDutyTypeMaps: vi.fn(() => Promise.resolve({})),

@@ -5,7 +5,8 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, event, select, text
+from sqlalchemy.orm import sessionmaker
 
 from app.db.models import (
     DutyAssignment,
@@ -14,6 +15,7 @@ from app.db.models import (
     DutyType,
     ExemptionType,
     ScoreProjectionQuarterTotal,
+    Soldier,
     SoldierExemption,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
@@ -123,6 +125,161 @@ def test_transparency_rows_match_legacy_from_projection_without_expanding_duty_d
     primary = next(row for row in projected["rows"] if row["soldier_id"] == scenario["primary"].id)
     assert primary["shift_count"] == 2
     assert primary["cumulative_score"] == Decimal("8.700000")
+
+
+def test_projected_transparency_reuses_projection_readiness_within_request(
+    admin_session, monkeypatch: pytest.MonkeyPatch
+):
+    _scenario, admin = _build_projected_scenario(admin_session)
+    legacy = scoring.transparency_rows(admin_session, viewer=admin)
+    _completed_backfill(admin_session)
+    admin_session.flush()
+    _forbid_normal_projection_expansion(monkeypatch)
+
+    enumerate_keys = scoring._projection_data_keys_for_soldiers
+    enumerations = []
+
+    def record_key_enumeration(session, soldier_ids):
+        keys = enumerate_keys(session, soldier_ids)
+        enumerations.append((frozenset(soldier_ids), frozenset(keys)))
+        return keys
+
+    ensure_ready = scoring._ensure_projection_ready
+    readiness_calls = []
+
+    def record_readiness(session, **kwargs):
+        readiness_calls.append(
+            (
+                frozenset(kwargs["keys"]),
+                frozenset(kwargs["quarter_starts"] or set()),
+                frozenset(kwargs.get("total_soldier_ids") or set()),
+                frozenset(kwargs.get("bucket_soldier_ids") or set()),
+            )
+        )
+        return ensure_ready(session, **kwargs)
+
+    pending_marker_check = score_projection.projection_has_pending_markers
+    marker_rechecks = []
+
+    def record_pending_marker_check(session, *, soldier_ids):
+        marker_rechecks.append(frozenset(soldier_ids))
+        return pending_marker_check(session, soldier_ids=soldier_ids)
+
+    monkeypatch.setattr(scoring, "_projection_data_keys_for_soldiers", record_key_enumeration)
+    monkeypatch.setattr(scoring, "_ensure_projection_ready", record_readiness)
+    monkeypatch.setattr(
+        score_projection,
+        "projection_has_pending_markers",
+        record_pending_marker_check,
+    )
+
+    projected = scoring.transparency_rows(admin_session, viewer=admin)
+
+    assert _canonical(projected) == _canonical(legacy)
+    assert not enumerations
+    assert len(readiness_calls) == 1
+    assert readiness_calls[0][0] == frozenset()
+    assert readiness_calls[0][2] == readiness_calls[0][3]
+    assert marker_rechecks == [readiness_calls[0][2]]
+
+
+@pytest.mark.parametrize("marker_state", ["dirty", "divergent"])
+def test_projected_transparency_falls_back_for_marker_committed_after_readiness(
+    admin_session, admin_engine, monkeypatch: pytest.MonkeyPatch, marker_state: str
+):
+    scenario, admin = _build_projected_scenario(admin_session)
+    legacy = scoring.transparency_rows(admin_session, viewer=admin)
+    _completed_backfill(admin_session)
+    admin_session.commit()
+    admin_session.expire_all()
+
+    isolation_level = admin_session.execute(text("SHOW transaction_isolation")).scalar_one()
+    assert isolation_level.lower() == "read committed"
+    active_soldier_ids = set(
+        admin_session.execute(select(Soldier.id).where(Soldier.left_at.is_(None))).scalars()
+    )
+    assert scenario["primary"].id in active_soldier_ids
+
+    pending_marker_check = score_projection.projection_has_pending_markers
+    marker_rechecks = []
+    marker_queries = []
+    marker_commits = []
+    readiness_results = []
+    ensure_ready = scoring._ensure_projection_ready
+
+    def ensure_then_commit_marker(session, **kwargs):
+        result = ensure_ready(session, **kwargs)
+        readiness_results.append(result)
+        if len(readiness_results) != 1:
+            return result
+
+        SessionLocal = sessionmaker(bind=admin_engine, expire_on_commit=False)
+        with SessionLocal() as writer:
+            marker = writer.execute(
+                select(ScoreProjectionDirtyBucket).where(
+                    ScoreProjectionDirtyBucket.soldier_id == scenario["primary"].id,
+                    ScoreProjectionDirtyBucket.quarter_start == scenario["q3"],
+                )
+            ).scalar_one_or_none()
+            if marker is None:
+                marker = ScoreProjectionDirtyBucket(
+                    soldier_id=scenario["primary"].id,
+                    quarter_start=scenario["q3"],
+                    status="dirty" if marker_state == "dirty" else "current",
+                )
+                if marker_state == "divergent":
+                    marker.status = "current"
+                    marker.divergence = {"pending": True}
+                writer.add(marker)
+            else:
+                marker.status = "dirty" if marker_state == "dirty" else "current"
+                marker.divergence = None if marker_state == "dirty" else {"pending": True}
+                marker.reconciled_at = None
+            writer.commit()
+        marker_commits.append(marker_state)
+        return result
+
+    def record_pending_marker_check(session, *, soldier_ids):
+        marker_rechecks.append(frozenset(soldier_ids))
+
+        def capture_marker_query(_conn, _cursor, statement, _parameters, _context, _executemany):
+            if "from score_projection_dirty_buckets" in statement.lower():
+                marker_queries.append(statement)
+
+        event.listen(admin_engine, "before_cursor_execute", capture_marker_query)
+        try:
+            return pending_marker_check(session, soldier_ids=soldier_ids)
+        finally:
+            event.remove(admin_engine, "before_cursor_execute", capture_marker_query)
+
+    legacy_calls = []
+    legacy_builder = scoring._legacy_transparency_rows
+
+    def record_legacy_fallback(*args, **kwargs):
+        legacy_calls.append(True)
+        return legacy_builder(*args, **kwargs)
+
+    monkeypatch.setattr(
+        score_projection,
+        "projection_has_pending_markers",
+        record_pending_marker_check,
+    )
+    monkeypatch.setattr(scoring, "_ensure_projection_ready", ensure_then_commit_marker)
+    monkeypatch.setattr(scoring, "_legacy_transparency_rows", record_legacy_fallback)
+
+    result = scoring.transparency_rows(admin_session, viewer=admin)
+
+    assert readiness_results[0] is True
+    assert marker_commits == [marker_state]
+    assert len(readiness_results) == 1
+    assert marker_rechecks == [frozenset(active_soldier_ids)]
+    assert len(marker_queries) == 1
+    marker_query = marker_queries[0].upper()
+    assert "SELECT SCORE_PROJECTION_DIRTY_BUCKETS.ID" in marker_query
+    assert "SCORE_PROJECTION_DIRTY_BUCKETS.SOLDIER_ID" in marker_query
+    assert "LIMIT" in marker_query
+    assert legacy_calls == [True]
+    assert _canonical(result) == _canonical(legacy)
 
 
 def test_fairness_components_use_projected_burden_share_without_calling_transparency_rows(

@@ -1,0 +1,6857 @@
+{
+  "schemaVersion": 2,
+  "runId": "20261001T195809161Z-58112-83cef81f",
+  "generatedAtUtc": "2026-10-01T19:58:09.160Z",
+  "startedAtUtc": "2026-10-01T19:58:09.160Z",
+  "updatedAtUtc": "2026-10-01T20:00:16.315Z",
+  "browser": {
+    "engine": "chromium",
+    "version": "148.0.7778.96"
+  },
+  "runsPerScenario": 5,
+  "batchesPerScenario": 5,
+  "concurrency": 1,
+  "clientsPerBatch": 1,
+  "startBarrier": "all clients begin each cold/warm measurement together",
+  "authenticationSetup": "one login per invocation; independent client contexts restore from copied refresh-cookie storageState",
+  "summaryCoverage": "per-run response-byte and database totals require values for every tracked API request",
+  "timeoutMs": 90000,
+  "scenarios": [
+    {
+      "id": "home-dashboard",
+      "route": "/",
+      "workload": "navigation"
+    }
+  ],
+  "hrProviderSync": "not-invoked",
+  "measurements": [
+    {
+      "scenario": "home-dashboard",
+      "attempt": 1,
+      "run": 1,
+      "batch": "home-dashboard-c1-b01",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 11823.23,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 13.89,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 18.55,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.69
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 18.93,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.23
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 12.5,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 13.19,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.9
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 40.53,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 26.67
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 55.82,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 15.08
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 57.18,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 9.6
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 59.99,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 11.69
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 73.76,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 8.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 74.34,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 9.45
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 91.95,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 11.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 100.59,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 3.31
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 100.83,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 5.24
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 101.06,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 7.33
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 108.46,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.27
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 52.67,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 13.67
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 80.33,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 36.29
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 84.55,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 9.77
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 94.88,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 49.01
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 106.92,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 6.9
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 350.67,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 245.26
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 354.41,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 138.76
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 387.92,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 23.65
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 407.11,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 187.75
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 1560.09,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 1456.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 972.69,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 323.23
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 475.14,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 10.92
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 718.36,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 228.59
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 952.4,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 17.72
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 2566.27,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 1384.11
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 1781.98,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 595.23
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 2804.88,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 451.59
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 3320.56,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 1231.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 4037.18,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 713.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 4620.21,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 2453.83
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 4875.02,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 3526.5
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 4978.9,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 2991.29
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 5022.38,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 23.01
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 5023.09,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 9.08
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 5023.48,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 32.79
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 4335.32,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 144.86
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 5365.18,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 507.59
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 2956.64,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 9.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 4471.9,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 5.13
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 7141.25,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 5347.09
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 7526.4,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 2056.76
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 7603.35,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 3400.31
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 7800.34,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 63.89
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 7803.2,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 1956.25
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 63.79,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 6.24
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 64.29,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 22.73
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 5,
+        "totalMs": 586,
+        "maxMs": 226
+      }
+    },
+    {
+      "scenario": "home-dashboard",
+      "attempt": 1,
+      "run": 1,
+      "batch": "home-dashboard-c1-b01",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 11572.59,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 16.86,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 23.31,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.3
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 24.15,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.97
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 16.59,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.36
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 18.5,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 3.02
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 43.2,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 25.53
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 32.62,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 14.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 42.47,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 9.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 47.89,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 12.83
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 48.98,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 18.11
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 59.62,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 10.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 65.84,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 5.46
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 74.6,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 7.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 87.54,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 4.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 88.22,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 4.26
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 88.6,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 6.77
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 40.11,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 10.53
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 78.91,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 42.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 78.99,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 8.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 106.82,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 48.71
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 962.07,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 913.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 569.85,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 59.71
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 582.69,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 93.26
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 583.24,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 8.69
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 623.58,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 29.25
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 629.12,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 243.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 47.55,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 11.84
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 127.96,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 64.44
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 262.34,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 19.6
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 1935.62,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 1507.17
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 3192.32,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 1971.43
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 4045.49,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 2720.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 3453.43,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 23.05
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 3627.39,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 571.98
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 4258.38,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 3371.77
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 4283.91,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 9.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 4399.25,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 60.72
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 4583.38,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 351.63
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 4576.99,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 81.88
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 4617.62,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 5.81
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 4745.22,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 3639.32
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 4810.73,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 274.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5352.37,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 187.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 6158.53,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 1203.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 6267.04,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 200.85
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1299.97,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 495
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 9064.55,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 7419.16
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 8851.07,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 3209.57
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 9091.79,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 2622.83
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 9160.79,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 4407.98
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 21.57,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 4.92
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 41.53,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 17.25
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 3,
+        "totalMs": 264,
+        "maxMs": 130
+      }
+    },
+    {
+      "scenario": "home-dashboard",
+      "attempt": 2,
+      "run": 2,
+      "batch": "home-dashboard-c1-b02",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 11863.92,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 11.66,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 15.67,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.13
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 16.67,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.48
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 11.59,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.21
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 13.72,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 32.8,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 18.71
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 31.56,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 6.45
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 42.82,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 5.22
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 51.06,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 13.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 51.95,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 14.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 60.93,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 13.77
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 69.36,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 16.61
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 80.09,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 6.56
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 80.41,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 5.26
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 80.93,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 4.79
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 89.16,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 7.95
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 28.73,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 7.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 61.89,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 36.72
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 77.77,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 24.93
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 87.63,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 8.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 96.91,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 64.36
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 106.22,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 12.92
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 131.18,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 4.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 702.06,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 671.98
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 304.46,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 90.25
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 340.86,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 222.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 39.23,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 7.52
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 1209.93,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 1084.04
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 1535.32,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 13.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 2086.84,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 521.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 3662.39,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 2773.69
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 4536.71,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 1907.48
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 4524.13,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 3757.1
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 4579.16,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 1787.8
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 4579.72,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 205.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 4584.74,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 22.98
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 4585.23,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 10.63
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 4603.36,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 19.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 4643.54,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 9.97
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 4325.4,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 8.82
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 3665.02,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 297.36
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 5945.81,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 562.65
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5147.7,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 775.57
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 6616.65,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 4554.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5484.8,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 80.05
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 206.26,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 5.71
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 8081.44,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 6161.27
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 7900.59,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 3653.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 8281.2,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 1629.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 8320.51,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 4971.46
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 23.66,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 8.87
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 46.78,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 22.31
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 4,
+        "totalMs": 429,
+        "maxMs": 149
+      }
+    },
+    {
+      "scenario": "home-dashboard",
+      "attempt": 2,
+      "run": 2,
+      "batch": "home-dashboard-c1-b02",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 11578.22,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 12.27,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 16.67,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.18
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 17.77,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.9
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 13.43,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 16.03,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 3.41
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 37.21,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 20.76
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 39.84,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 11.04
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 40.59,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 11.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 45.53,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 6.67
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 54.89,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 7.87
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 64.59,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 17.16
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 78.33,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 5.7
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 87.94,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 7.6
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 88.35,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 7.51
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 88.44,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 10.36
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 95.15,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 4.22
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 30.26,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.8
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 54.1,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 24.89
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 59,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 6.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 73.41,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 42.11
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 86.67,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 7.94
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 355.55,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 52.98
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 428.17,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 292.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 937.94,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 893.05
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 575.09,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 23.6
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 54.03,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 13.1
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 614.56,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 237.24
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 145.29,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 69.72
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 596.85,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 144.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 2231.39,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 894.96
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 4393.29,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 2779.11
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 5209.82,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 3471.84
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 4772.82,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 3249.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 4826.95,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 170.85
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 4827.59,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 1619
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 4902.41,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 12.85
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 4932.46,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 3712.02
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 4932.61,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 110.06
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 4932.63,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 23.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 4932.8,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 9.09
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 4878.04,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 8.1
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 4727.75,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 4.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 4756.81,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 6.93
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 6081.29,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 205.92
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 6778.51,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 1379.41
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1912.87,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 1039.58
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 8988.04,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 6992.45
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 8792.37,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 3201.65
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 9067.88,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 2902.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 9136.3,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 4352.02
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 28.18,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 8.57
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 53.93,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 22.08
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 2,
+        "totalMs": 185,
+        "maxMs": 97
+      }
+    },
+    {
+      "scenario": "home-dashboard",
+      "attempt": 3,
+      "run": 3,
+      "batch": "home-dashboard-c1-b03",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 12416.39,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 18.52,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 26.98,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.13
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 27.74,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 3.37
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 20.42,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 4.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 21.19,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 4.13
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 50.41,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 28.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 34.75,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 13.18
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 50.74,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 7.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 63.27,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 8.93
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 63.56,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 10.22
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 64.2,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 10.05
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 71.11,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 4.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 81.64,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 6.63
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 90.44,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 4.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 97.81,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 6.96
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 98.48,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 7.59
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 38.82,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 9.43
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 56.36,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 24.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 69.7,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 9.61
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 84.16,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 10.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 85.1,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 42.05
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 501.08,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 410.83
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 916.22,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 868
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 521.7,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 285.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 534.37,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 59.89
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 571.69,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 440.65
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 44.49,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 7.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 120.13,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 56.31
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 696.71,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 463.23
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 1698.3,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 394
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 3486.33,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 2747.91
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 3641.16,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 2330.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 4589.59,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 2539.25
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 4214.35,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 1355.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 4236.92,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 95.09
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 4278.96,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 78.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 4309.21,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 107.94
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 4309.26,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 4.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 4311.97,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 10.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 4272.53,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 14.71
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 4691.52,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 3.32
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 5161.88,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 719.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5115.71,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 64.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5752.42,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 218.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 6060.58,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 4598.79
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 492.91,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 134.58
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 9445.91,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 7689.04
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 9264.47,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 3903.36
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 9584.43,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 3490.82
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 9612.99,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 4889.23
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 39.15,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 10.86
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 58.08,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 19.46
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 6,
+        "totalMs": 517,
+        "maxMs": 126
+      }
+    },
+    {
+      "scenario": "home-dashboard",
+      "attempt": 3,
+      "run": 3,
+      "batch": "home-dashboard-c1-b03",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 12677.97,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 18.01,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 30.07,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 4.6
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 32.49,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 5.76
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 22.84,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 4.51
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 20.94,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 5.17
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 46.6,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 24.73
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 33.43,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 7.24
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 46.26,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 12.48
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 47.05,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 11.3
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 56.99,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 10.45
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 57.68,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 10.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 70.91,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 8.08
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 85.09,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 4.54
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 92.16,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 5.75
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 92.5,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 5.75
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 93.07,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 5.57
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 42.94,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 16.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 70.12,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 38.5
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 74.17,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 5.85
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 87.63,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 51.77
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 106.45,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 7.02
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 530.32,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 399.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 530.68,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 80.14
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 930.74,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 895.75
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 585.96,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 43.15
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 593.03,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 438.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 39.51,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 14.94
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 296.98,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 172.25
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 1366.95,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 194.62
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 1433.48,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 35.93
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 3262.85,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 2043.17
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 3263.72,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 1353
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 3960.12,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 2497.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 3405.65,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 2402.21
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 3739.05,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 79.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 3853.19,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 40.67
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 3880.25,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 228.94
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 3880.34,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 63.3
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 3880.26,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 7.94
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 3805.67,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 6.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 4096.29,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 51
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 5156.11,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 734.7
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5634.59,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 121.68
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1477,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 248.87
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 7162.99,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 18.69
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 7644.06,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 6003.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 8800.58,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 6695.01
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 9784.55,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 5098.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 10139.09,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 3075.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 10181.28,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 6539.41
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 30.66,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 6.71
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 64.04,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 24.33
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 3,
+        "totalMs": 215,
+        "maxMs": 92
+      }
+    },
+    {
+      "scenario": "home-dashboard",
+      "attempt": 4,
+      "run": 4,
+      "batch": "home-dashboard-c1-b04",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 12000.14,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 10.59,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 19.37,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 4.29
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 19.76,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 3.17
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 15.39,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 3.31
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 11.93,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.16
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 40.66,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 25.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 48.36,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 19.58
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 49.52,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 4.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 57.99,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 8.51
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 63.24,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 13.62
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 64.43,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 14.87
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 89,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 10.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 101.5,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 10.83
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 102.25,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 5.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 103.19,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 5.85
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 103.52,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.47
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 37.25,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 9.48
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 56.52,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 27.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 66.26,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 33.21
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 386.81,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 41.82
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 865.66,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 827.37
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 463.24,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 316.58
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 490.28,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 496.25,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 51.09
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 523.35,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 30.97
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 33.02,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 7.97
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 575.44,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 433.29
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 117.01,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 69.18
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 1218.62,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 98.73
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 2736.94,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 1184.85
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 3506.63,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 2658.72
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 4710.1,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 2724.41
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 4211.18,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 157.06
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 4499.14,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 1102.92
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 4549.31,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 142.5
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 4550.96,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 3758.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 4593.99,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 322.29
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 4684.16,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 17.37
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 4715.39,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 3216.1
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 4715.22,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 121.57
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 4527.59,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 7.76
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5579.73,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 950.11
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 6242.87,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 80.9
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 7102.51,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 2061.45
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 6908.75,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 25.06
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 9218.17,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 7208.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 776.83,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 541.48
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 9086.7,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 3788.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 9339.13,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 2827.67
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 9396.91,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 4842.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 18.57,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 4.34
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 36.56,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 13.19
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 6,
+        "totalMs": 458,
+        "maxMs": 117
+      }
+    },
+    {
+      "scenario": "home-dashboard",
+      "attempt": 4,
+      "run": 4,
+      "batch": "home-dashboard-c1-b04",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 11362.82,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 11.31,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 15.02,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 1.9
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 16.23,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 12.21,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.61
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 15.38,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 4.96
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 46.19,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 30.68
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 33.66,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 12.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 43.8,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 7.91
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 45.33,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 7.11
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 51.85,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 9.98
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 64.04,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 25.1
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 71.49,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 8.4
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 82.58,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 6.55
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 83.85,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 6.46
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 84.21,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 8.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 93.92,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 6.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 42.58,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 5.57
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 58.51,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 24.14
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 247.1,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 43.43
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 296.1,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 248.89
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 715.2,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 666.3
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 314.56,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 182.22
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 338.65,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 12.01
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 339.01,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 24.61
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 370.83,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 207.79
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 387.55,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 46.33
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 39.88,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 6.81
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 121.87,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 65.69
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 269.91,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 24.87
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 1892.1,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 1222.57
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 2233.87,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 1214.45
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 3492.37,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 363.97
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 3743.03,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 1491.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 4463.54,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 715.56
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 4477.69,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 114.1
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 4915.15,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 2719.9
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 4622.47,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 3808.37
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 4676.69,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 65.17
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 4676.87,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 12.77
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 5054.54,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 475.69
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5762.4,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 159.27
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 6682.44,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 2015.44
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 6697.2,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 118.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 6792.44,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 12.63
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 7164.96,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 5703.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 7188.91,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 5658.3
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 8762.6,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 3467.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 56.94,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 8.22
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 9155.81,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 1715.55
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 9202.32,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 4711
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 26.68,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 6.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 50.72,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 17.73
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 3,
+        "totalMs": 336,
+        "maxMs": 140
+      }
+    },
+    {
+      "scenario": "home-dashboard",
+      "attempt": 5,
+      "run": 5,
+      "batch": "home-dashboard-c1-b05",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "cold",
+      "pageReadyMs": 12553.24,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 15.03,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 26.28,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 3.82
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 26.65,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 3.53
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 15.8,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.37
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 15.08,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 2.93
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 41.95,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 23.43
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 36.22,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.62
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 48.04,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 4.35
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 49.18,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 5.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 50.16,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 4.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 59.3,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 9.74
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 68.98,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 10.35
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 82.16,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 4.1
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 82.99,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 6.68
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 83.48,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 6.56
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 84,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 6.41
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 26.91,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 6.27
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 75.32,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 19.63
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 76.02,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 44.73
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 501.71,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 387.01
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 528.76,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 123.11
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 960.52,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 863.82
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 571.6,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 398.65
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 580.18,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 4.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 597.29,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 17.84
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 622.76,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 259.47
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 46.81,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 10.27
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 1258.47,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 1194.71
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 1419.22,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 11.62
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 2520.35,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 863.8
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 4429.55,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 1792.7
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 3956.26,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 1910.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 3975.12,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 3020.02
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 4245.77,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 68.09
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 4286,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 12.18
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 4316.25,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 51.97
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 4316.44,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 1022.92
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 4355.38,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 17.42
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 4295.73,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 9.31
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 4356.28,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 10.32
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 4252.9,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 277.8
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 6330.48,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 987.93
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5147.86,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 193.62
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 1088.96,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 290.99
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 7524.82,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 6145.19
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 6167.78,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 13.44
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 8255.51,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 5887.82
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 8584.61,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 1873.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 8626.19,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 4408.83
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 8674.37,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 5500.87
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 31.19,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 6.75
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 60.97,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 22.86
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 5,
+        "totalMs": 507,
+        "maxMs": 158
+      }
+    },
+    {
+      "scenario": "home-dashboard",
+      "attempt": 5,
+      "run": 5,
+      "batch": "home-dashboard-c1-b05",
+      "client": 1,
+      "concurrency": 1,
+      "mode": "warm",
+      "pageReadyMs": 11749.9,
+      "readiness": "ready",
+      "phaseTimings": {},
+      "apiRequestCount": 52,
+      "apiResponses": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 401,
+          "durationMs": 11.62,
+          "responseBytes": 26,
+          "dbQueryCount": 0,
+          "dbMs": 0
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 16.93,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.4
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 17.28,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.07
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "status": 200,
+          "durationMs": 14.13,
+          "responseBytes": 277,
+          "dbQueryCount": 1,
+          "dbMs": 2.27
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "status": 200,
+          "durationMs": 17.88,
+          "responseBytes": 39,
+          "dbQueryCount": 2,
+          "dbMs": 3.21
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "status": 200,
+          "durationMs": 38.44,
+          "responseBytes": 1055,
+          "dbQueryCount": 18,
+          "dbMs": 21.27
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 36.88,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 5.46
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "status": 200,
+          "durationMs": 44.15,
+          "responseBytes": 11,
+          "dbQueryCount": 3,
+          "dbMs": 7.69
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 44.31,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 5.25
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 45.05,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 6.55
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "status": 200,
+          "durationMs": 45.89,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 7.65
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 71.76,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 13.71
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 79.99,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 3.84
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "status": 200,
+          "durationMs": 86.13,
+          "responseBytes": 527,
+          "dbQueryCount": 2,
+          "dbMs": 7.59
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "status": 200,
+          "durationMs": 87.28,
+          "responseBytes": 470,
+          "dbQueryCount": 2,
+          "dbMs": 6.24
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "status": 200,
+          "durationMs": 87.62,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 7.18
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 50.73,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 15.5
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "status": 403,
+          "durationMs": 89.44,
+          "responseBytes": 29,
+          "dbQueryCount": 2,
+          "dbMs": 7.07
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 90.42,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 43.39
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 490.52,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 94.08
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "status": 200,
+          "durationMs": 957.01,
+          "responseBytes": 13713,
+          "dbQueryCount": 5,
+          "dbMs": 921.61
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 545.31,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 31.53
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "status": 200,
+          "durationMs": 560.49,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 5.22
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 560.6,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 41.03
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 594.12,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 423.43
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "status": 200,
+          "durationMs": 608.23,
+          "responseBytes": 22,
+          "dbQueryCount": 11,
+          "dbMs": 36.12
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 53.79,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 11.96
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "status": 200,
+          "durationMs": 133.97,
+          "responseBytes": 158278,
+          "dbQueryCount": 15,
+          "dbMs": 79.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "status": 200,
+          "durationMs": 1078.18,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 492.24
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "status": 200,
+          "durationMs": 2779.75,
+          "responseBytes": 48,
+          "dbQueryCount": 17,
+          "dbMs": 1518.02
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 4318.98,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 2881.88
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "status": 200,
+          "durationMs": 3799.23,
+          "responseBytes": 32026,
+          "dbQueryCount": 18,
+          "dbMs": 2864.28
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "status": 200,
+          "durationMs": 3799.86,
+          "responseBytes": 1770,
+          "dbQueryCount": 15,
+          "dbMs": 374.72
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "status": 200,
+          "durationMs": 4086.44,
+          "responseBytes": 2,
+          "dbQueryCount": 2,
+          "dbMs": 115.84
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "status": 200,
+          "durationMs": 4637.19,
+          "responseBytes": 175,
+          "dbQueryCount": 17,
+          "dbMs": 2663.22
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "status": 200,
+          "durationMs": 4730.47,
+          "responseBytes": 11,
+          "dbQueryCount": 2,
+          "dbMs": 198.06
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "status": 200,
+          "durationMs": 4730.8,
+          "responseBytes": 281,
+          "dbQueryCount": 14,
+          "dbMs": 3993.23
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "status": 200,
+          "durationMs": 4757.45,
+          "responseBytes": 11,
+          "dbQueryCount": 8,
+          "dbMs": 324.38
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "status": 200,
+          "durationMs": 4760.4,
+          "responseBytes": 2,
+          "dbQueryCount": 6,
+          "dbMs": 68.04
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "status": 200,
+          "durationMs": 4785,
+          "responseBytes": 712,
+          "dbQueryCount": 2,
+          "dbMs": 4.79
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 4724.96,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 7.7
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "status": 200,
+          "durationMs": 4996.33,
+          "responseBytes": 836,
+          "dbQueryCount": 1,
+          "dbMs": 29.08
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 5408.16,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 178.84
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "status": 200,
+          "durationMs": 6082.23,
+          "responseBytes": 11,
+          "dbQueryCount": 13,
+          "dbMs": 1001.27
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "status": 200,
+          "durationMs": 6071.32,
+          "responseBytes": 8911,
+          "dbQueryCount": 2,
+          "dbMs": 96.7
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "status": 503,
+          "durationMs": 208.87,
+          "responseBytes": 78,
+          "dbQueryCount": 2,
+          "dbMs": 5.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "status": 200,
+          "durationMs": 8235.79,
+          "responseBytes": 11,
+          "dbQueryCount": 17,
+          "dbMs": 6706.2
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 8725.33,
+          "responseBytes": 94570,
+          "dbQueryCount": 34,
+          "dbMs": 3388.82
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "status": 200,
+          "durationMs": 9046.87,
+          "responseBytes": 137,
+          "dbQueryCount": 51,
+          "dbMs": 2313.78
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 9081.09,
+          "responseBytes": 8023,
+          "dbQueryCount": 158,
+          "dbMs": 4439.61
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "status": 200,
+          "durationMs": 30.52,
+          "responseBytes": 2,
+          "dbQueryCount": 4,
+          "dbMs": 7.49
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "status": 200,
+          "durationMs": 280.92,
+          "responseBytes": 13,
+          "dbQueryCount": 12,
+          "dbMs": 23.2
+        }
+      ],
+      "consoleErrors": {
+        "count": 5,
+        "types": [
+          "error"
+        ]
+      },
+      "pageErrors": {
+        "count": 0,
+        "names": []
+      },
+      "longTasksOver50Ms": {
+        "count": 3,
+        "totalMs": 243,
+        "maxMs": 110
+      }
+    }
+  ],
+  "summaries": [
+    {
+      "scenario": "home-dashboard",
+      "mode": "cold",
+      "concurrency": 1,
+      "sampleCount": 5,
+      "readyCount": 5,
+      "failedCount": 0,
+      "metrics": {
+        "pageReadyMs": {
+          "sampleCount": 5,
+          "p50": 12000.14,
+          "p95": 12553.24
+        },
+        "apiRequestCount": {
+          "sampleCount": 5,
+          "p50": 52,
+          "p95": 52
+        },
+        "totalApiDurationMs": {
+          "sampleCount": 5,
+          "p50": 113750.42,
+          "p95": 121937.75
+        },
+        "totalResponseBytes": {
+          "sampleCount": 5,
+          "p50": 344609,
+          "p95": 344609
+        },
+        "totalDbQueryCount": {
+          "sampleCount": 5,
+          "p50": 545,
+          "p95": 545
+        },
+        "totalDbMs": {
+          "sampleCount": 5,
+          "p50": 37831.14,
+          "p95": 39848.49
+        },
+        "longTaskCount": {
+          "sampleCount": 5,
+          "p50": 5,
+          "p95": 6
+        },
+        "longTaskTotalMs": {
+          "sampleCount": 5,
+          "p50": 507,
+          "p95": 586
+        },
+        "longTaskMaxMs": {
+          "sampleCount": 5,
+          "p50": 149,
+          "p95": 226
+        },
+        "phaseTimingsMs": {}
+      },
+      "apiEndpoints": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 63.56,
+            "p95": 74.34
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 3,
+            "p95": 3
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 10.22,
+            "p95": 14.87
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "statusCounts": {
+            "503": 15
+          },
+          "durationMs": {
+            "sampleCount": 15,
+            "p50": 776.83,
+            "p95": 6242.87
+          },
+          "responseBytes": {
+            "sampleCount": 15,
+            "p50": 78,
+            "p95": 78
+          },
+          "dbQueryCount": {
+            "sampleCount": 15,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 15,
+            "p50": 9.31,
+            "p95": 541.48
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 97.81,
+            "p95": 102.25
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 527,
+            "p95": 527
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 5.26,
+            "p95": 6.96
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 523.35,
+            "p95": 597.29
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 22,
+            "p95": 22
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 30.97,
+            "p95": 90.25
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 916.22,
+            "p95": 1560.09
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 13713,
+            "p95": 13713
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 5,
+            "p95": 5
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 863.82,
+            "p95": 1456.34
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 4527.59,
+            "p95": 7800.34
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 836,
+            "p95": 836
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 1,
+            "p95": 1
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 63.89,
+            "p95": 297.36
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 64.29,
+            "p95": 9264.47
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 13,
+            "p95": 94570
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 12,
+            "p95": 34
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 22.86,
+            "p95": 4408.83
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 6616.65,
+            "p95": 7524.82
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 175,
+            "p95": 175
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 17,
+            "p95": 17
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 4598.79,
+            "p95": 6145.19
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 3956.26,
+            "p95": 4875.02
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 281,
+            "p95": 281
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 14,
+            "p95": 14
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 2747.91,
+            "p95": 3757.1
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 3975.12,
+            "p95": 4620.21
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 32026,
+            "p95": 32026
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 18,
+            "p95": 18
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 2773.69,
+            "p95": 3758.03
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 80.33,
+            "p95": 4593.99
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 8,
+            "p95": 8
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 36.72,
+            "p95": 713.03
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "statusCounts": {
+            "200": 15
+          },
+          "durationMs": {
+            "sampleCount": 15,
+            "p50": 5115.71,
+            "p95": 6908.75
+          },
+          "responseBytes": {
+            "sampleCount": 15,
+            "p50": 8911,
+            "p95": 8911
+          },
+          "dbQueryCount": {
+            "sampleCount": 15,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 15,
+            "p50": 25.06,
+            "p95": 950.11
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 82.99,
+            "p95": 100.83
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 470,
+            "p95": 470
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 6.63,
+            "p95": 10.19
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 501.71,
+            "p95": 4579.16
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 1770,
+            "p95": 1770
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 15,
+            "p95": 15
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 387.01,
+            "p95": 1787.8
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 622.76,
+            "p95": 7102.51
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 13,
+            "p95": 13
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 440.65,
+            "p95": 2061.45
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "statusCounts": {
+            "403": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 77.77,
+            "p95": 386.81
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 29,
+            "p95": 29
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 19.63,
+            "p95": 41.82
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 571.6,
+            "p95": 5023.48
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 6,
+            "p95": 6
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 19.12,
+            "p95": 410.83
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "statusCounts": {
+            "200": 20
+          },
+          "durationMs": {
+            "sampleCount": 20,
+            "p50": 83.48,
+            "p95": 4715.22
+          },
+          "responseBytes": {
+            "sampleCount": 20,
+            "p50": 712,
+            "p95": 712
+          },
+          "dbQueryCount": {
+            "sampleCount": 20,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 20,
+            "p50": 7.52,
+            "p95": 13.62
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 718.36,
+            "p95": 1258.47
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 158278,
+            "p95": 158278
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 15,
+            "p95": 15
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 228.59,
+            "p95": 1194.71
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 40.66,
+            "p95": 50.41
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 1055,
+            "p95": 1055
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 18,
+            "p95": 18
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 25.12,
+            "p95": 28.4
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1218.62,
+            "p95": 1535.32
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 17.72,
+            "p95": 463.23
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 48.36,
+            "p95": 55.82
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 14.38,
+            "p95": 19.58
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 63.27,
+            "p95": 108.46
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 6.27,
+            "p95": 13.28
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 8584.61,
+            "p95": 9584.43
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 137,
+            "p95": 137
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 51,
+            "p95": 51
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 2056.76,
+            "p95": 3490.82
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 63.79,
+            "p95": 9612.99
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 8023
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 4,
+            "p95": 158
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 10.86,
+            "p95": 5500.87
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 4710.1,
+            "p95": 9445.91
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 17,
+            "p95": 17
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 2724.41,
+            "p95": 7689.04
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 2086.84,
+            "p95": 2736.94
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 48,
+            "p95": 48
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 17,
+            "p95": 17
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 595.23,
+            "p95": 1184.85
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "statusCounts": {
+            "200": 5,
+            "401": 5
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 13.72,
+            "p95": 21.19
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 26,
+            "p95": 39
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 0,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 0,
+            "p95": 4.13
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 52.67,
+            "p95": 5022.38
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 10.63,
+            "p95": 142.5
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 490.28,
+            "p95": 580.18
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 6,
+            "p95": 285.07
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 528.76,
+            "p95": 4579.72
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 95.09,
+            "p95": 451.59
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "statusCounts": {
+            "200": 15
+          },
+          "durationMs": {
+            "sampleCount": 15,
+            "p50": 18.93,
+            "p95": 27.74
+          },
+          "responseBytes": {
+            "sampleCount": 15,
+            "p50": 277,
+            "p95": 277
+          },
+          "dbQueryCount": {
+            "sampleCount": 15,
+            "p50": 1,
+            "p95": 1
+          },
+          "dbMs": {
+            "sampleCount": 15,
+            "p50": 2.69,
+            "p95": 4.34
+          }
+        }
+      ]
+    },
+    {
+      "scenario": "home-dashboard",
+      "mode": "warm",
+      "concurrency": 1,
+      "sampleCount": 5,
+      "readyCount": 5,
+      "failedCount": 0,
+      "metrics": {
+        "pageReadyMs": {
+          "sampleCount": 5,
+          "p50": 11578.22,
+          "p95": 12677.97
+        },
+        "apiRequestCount": {
+          "sampleCount": 5,
+          "p50": 52,
+          "p95": 52
+        },
+        "totalApiDurationMs": {
+          "sampleCount": 5,
+          "p50": 116104.56,
+          "p95": 120904.69
+        },
+        "totalResponseBytes": {
+          "sampleCount": 5,
+          "p50": 344609,
+          "p95": 344609
+        },
+        "totalDbQueryCount": {
+          "sampleCount": 5,
+          "p50": 545,
+          "p95": 545
+        },
+        "totalDbMs": {
+          "sampleCount": 5,
+          "p50": 37495.38,
+          "p95": 39860.81
+        },
+        "longTaskCount": {
+          "sampleCount": 5,
+          "p50": 3,
+          "p95": 3
+        },
+        "longTaskTotalMs": {
+          "sampleCount": 5,
+          "p50": 243,
+          "p95": 336
+        },
+        "longTaskMaxMs": {
+          "sampleCount": 5,
+          "p50": 110,
+          "p95": 140
+        },
+        "phaseTimingsMs": {}
+      },
+      "apiEndpoints": [
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/bug-reports/unread-count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 48.98,
+            "p95": 64.59
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 3,
+            "p95": 3
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 17.16,
+            "p95": 25.1
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/errors/unread-count",
+          "statusCounts": {
+            "503": 15
+          },
+          "durationMs": {
+            "sampleCount": 15,
+            "p50": 1299.97,
+            "p95": 6697.2
+          },
+          "responseBytes": {
+            "sampleCount": 15,
+            "p50": 78,
+            "p95": 78
+          },
+          "dbQueryCount": {
+            "sampleCount": 15,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 15,
+            "p50": 9.03,
+            "p95": 1039.58
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/admin/system-settings",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 88.22,
+            "p95": 92.5
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 527,
+            "p95": 527
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 6.55,
+            "p95": 7.59
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/algorithm/jobs",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 585.96,
+            "p95": 623.58
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 22,
+            "p95": 22
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 36.12,
+            "p95": 46.33
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/assignments/effective",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 937.94,
+            "p95": 962.07
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 13713,
+            "p95": 13713
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 5,
+            "p95": 5
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 895.75,
+            "p95": 921.61
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/holidays",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 4810.73,
+            "p95": 5054.54
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 836,
+            "p95": 836
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 1,
+            "p95": 1
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 51,
+            "p95": 475.69
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/calendar/shifts",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 280.92,
+            "p95": 9784.55
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 13,
+            "p95": 94570
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 12,
+            "p95": 34
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 24.33,
+            "p95": 5098.78
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/alerts",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 4932.46,
+            "p95": 7644.06
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 175,
+            "p95": 175
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 17,
+            "p95": 17
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 3712.02,
+            "p95": 6003.34
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/potential",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 4258.38,
+            "p95": 4730.8
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 281,
+            "p95": 281
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 14,
+            "p95": 14
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 2779.11,
+            "p95": 3993.23
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/command-dashboard/upcoming",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 3799.23,
+            "p95": 4772.82
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 32026,
+            "p95": 32026
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 18,
+            "p95": 18
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 2864.28,
+            "p95": 3808.37
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/constraints/pending/count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 90.42,
+            "p95": 4932.61
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 8,
+            "p95": 8
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 43.39,
+            "p95": 715.56
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/duty-types",
+          "statusCounts": {
+            "200": 15
+          },
+          "durationMs": {
+            "sampleCount": 15,
+            "p50": 5408.16,
+            "p95": 7162.99
+          },
+          "responseBytes": {
+            "sampleCount": 15,
+            "p50": 8911,
+            "p95": 8911
+          },
+          "dbQueryCount": {
+            "sampleCount": 15,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 15,
+            "p50": 18.69,
+            "p95": 205.92
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/duty-config/locations",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 87.28,
+            "p95": 92.16
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 470,
+            "p95": 470
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 6.46,
+            "p95": 7.6
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/enrollment-requests/pending",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 490.52,
+            "p95": 4827.59
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 1770,
+            "p95": 1770
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 15,
+            "p95": 15
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 248.89,
+            "p95": 1619
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/exemption-requests/pending/count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 629.12,
+            "p95": 6778.51
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 13,
+            "p95": 13
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 438.4,
+            "p95": 2015.44
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hakpaza/pending-count",
+          "statusCounts": {
+            "403": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 78.99,
+            "p95": 247.1
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 29,
+            "p95": 29
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 7.07,
+            "p95": 43.43
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy-transfers/pending",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 582.69,
+            "p95": 4932.63
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 6,
+            "p95": 6
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 60.72,
+            "p95": 399.74
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/level-types",
+          "statusCounts": {
+            "200": 20
+          },
+          "durationMs": {
+            "sampleCount": 20,
+            "p50": 56.99,
+            "p95": 4785
+          },
+          "responseBytes": {
+            "sampleCount": 20,
+            "p50": 712,
+            "p95": 712
+          },
+          "dbQueryCount": {
+            "sampleCount": 20,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 20,
+            "p50": 6.81,
+            "p95": 13.1
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/hierarchy/tree",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 133.97,
+            "p95": 296.98
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 158278,
+            "p95": 158278
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 15,
+            "p95": 15
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 69.72,
+            "p95": 172.25
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 43.2,
+            "p95": 46.6
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 1055,
+            "p95": 1055
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 18,
+            "p95": 18
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 24.73,
+            "p95": 30.68
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/me/swaps",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 596.85,
+            "p95": 1366.95
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 144.49,
+            "p95": 492.24
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/my/bug-reports/unseen-count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 33.66,
+            "p95": 45.89
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 11.04,
+            "p95": 14.39
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/notifications/unread-count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 59.62,
+            "p95": 93.07
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 7.91,
+            "p95": 11.99
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/potential/summary",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 9091.79,
+            "p95": 10139.09
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 137,
+            "p95": 137
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 51,
+            "p95": 51
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 2622.83,
+            "p95": 3075.03
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 30.66,
+            "p95": 10181.28
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 8023
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 4,
+            "p95": 158
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 8.57,
+            "p95": 6539.41
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/ineligible-soldiers/count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 5209.82,
+            "p95": 9064.55
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 17,
+            "p95": 17
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 3471.84,
+            "p95": 7419.16
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/ranges/page",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 1935.62,
+            "p95": 2779.75
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 48,
+            "p95": 48
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 17,
+            "p95": 17
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 1222.57,
+            "p95": 1518.02
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/settings/public",
+          "statusCounts": {
+            "200": 5,
+            "401": 5
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 16.03,
+            "p95": 20.94
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 26,
+            "p95": 39
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 0,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 0,
+            "p95": 5.17
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/soldiers/field-updates/pending/count",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 50.73,
+            "p95": 4902.41
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 12.85,
+            "p95": 198.06
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/incoming/count",
+          "statusCounts": {
+            "200": 5
+          },
+          "durationMs": {
+            "sampleCount": 5,
+            "p50": 530.68,
+            "p95": 583.24
+          },
+          "responseBytes": {
+            "sampleCount": 5,
+            "p50": 11,
+            "p95": 11
+          },
+          "dbQueryCount": {
+            "sampleCount": 5,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 5,
+            "p50": 12.01,
+            "p95": 292.07
+          }
+        },
+        {
+          "method": "GET",
+          "endpoint": "GET /api/swaps/pending",
+          "statusCounts": {
+            "200": 10
+          },
+          "durationMs": {
+            "sampleCount": 10,
+            "p50": 569.85,
+            "p95": 4826.95
+          },
+          "responseBytes": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbQueryCount": {
+            "sampleCount": 10,
+            "p50": 2,
+            "p95": 2
+          },
+          "dbMs": {
+            "sampleCount": 10,
+            "p50": 59.71,
+            "p95": 363.97
+          }
+        },
+        {
+          "method": "POST",
+          "endpoint": "POST /api/auth/refresh",
+          "statusCounts": {
+            "200": 15
+          },
+          "durationMs": {
+            "sampleCount": 15,
+            "p50": 16.93,
+            "p95": 32.49
+          },
+          "responseBytes": {
+            "sampleCount": 15,
+            "p50": 277,
+            "p95": 277
+          },
+          "dbQueryCount": {
+            "sampleCount": 15,
+            "p50": 1,
+            "p95": 1
+          },
+          "dbMs": {
+            "sampleCount": 15,
+            "p50": 2.36,
+            "p95": 5.76
+          }
+        }
+      ]
+    }
+  ]
+}
