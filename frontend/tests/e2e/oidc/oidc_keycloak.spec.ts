@@ -82,11 +82,19 @@ async function fillRegistration(page: Page, personalNumber: string, name: string
   }
   const rank = page.locator("label", { hasText: "דרגה" }).first().getByRole("combobox");
   await rank.scrollIntoViewIfNeeded();
-  await rank.fill("סמל"); // the dropdown is fixed-position and can fall outside the viewport: pick by keyboard
-  await rank.press("ArrowDown");
-  await rank.press("Enter");
-  await page.locator("label", { hasText: "סיסמה" }).first().locator("input").fill("Reg-Passw0rd!x");
-  await page.locator("label", { hasText: "אימות סיסמה" }).locator("input").fill("Reg-Passw0rd!x");
+  // The rank ladder loads asynchronously and the dropdown is fixed-position (it can fall outside
+  // the viewport), so retry until the option exists and pick it by keyboard.
+  await expect(async () => {
+    await rank.fill("סמל");
+    await expect(page.getByRole("option", { name: "סמל", exact: true }).first()).toBeAttached({ timeout: 3000 });
+    await rank.press("ArrowDown");
+    await rank.press("Enter");
+    await expect(rank).toHaveValue("סמל", { timeout: 2000 });
+  }).toPass({ timeout: 60_000 });
+  const password = page.locator("label", { hasText: "סיסמה" }).first().locator("input").first();
+  await password.fill("Reg-Passw0rd!x");
+  await expect(password).toHaveValue("Reg-Passw0rd!x");
+  await page.locator("label", { hasText: "אימות סיסמה" }).locator("input").first().fill("Reg-Passw0rd!x");
   const next = () => page.getByRole("button", { name: "הבא" });
   await next().click(); // -> exemptions
   await next().click(); // -> constraints
