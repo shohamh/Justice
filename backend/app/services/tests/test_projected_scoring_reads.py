@@ -158,13 +158,11 @@ def test_projected_transparency_reuses_projection_readiness_within_request(
         )
         return ensure_ready(session, **kwargs)
 
-    pending_marker_check = getattr(score_projection, "projection_has_pending_markers", None)
+    pending_marker_check = score_projection.projection_has_pending_markers
     marker_rechecks = []
 
     def record_pending_marker_check(session, *, soldier_ids):
         marker_rechecks.append(frozenset(soldier_ids))
-        if pending_marker_check is None:
-            return False
         return pending_marker_check(session, soldier_ids=soldier_ids)
 
     monkeypatch.setattr(scoring, "_projection_data_keys_for_soldiers", record_key_enumeration)
@@ -173,7 +171,6 @@ def test_projected_transparency_reuses_projection_readiness_within_request(
         score_projection,
         "projection_has_pending_markers",
         record_pending_marker_check,
-        raising=False,
     )
 
     projected = scoring.transparency_rows(admin_session, viewer=admin)
@@ -203,7 +200,7 @@ def test_projected_transparency_falls_back_for_marker_committed_after_readiness(
     )
     assert scenario["primary"].id in active_soldier_ids
 
-    pending_marker_check = getattr(score_projection, "projection_has_pending_markers", None)
+    pending_marker_check = score_projection.projection_has_pending_markers
     marker_rechecks = []
     marker_queries = []
     marker_commits = []
@@ -244,8 +241,6 @@ def test_projected_transparency_falls_back_for_marker_committed_after_readiness(
 
     def record_pending_marker_check(session, *, soldier_ids):
         marker_rechecks.append(frozenset(soldier_ids))
-        if pending_marker_check is None:
-            return False
 
         def capture_marker_query(_conn, _cursor, statement, _parameters, _context, _executemany):
             if "from score_projection_dirty_buckets" in statement.lower():
@@ -268,7 +263,6 @@ def test_projected_transparency_falls_back_for_marker_committed_after_readiness(
         score_projection,
         "projection_has_pending_markers",
         record_pending_marker_check,
-        raising=False,
     )
     monkeypatch.setattr(scoring, "_ensure_projection_ready", ensure_then_commit_marker)
     monkeypatch.setattr(scoring, "_legacy_transparency_rows", record_legacy_fallback)
