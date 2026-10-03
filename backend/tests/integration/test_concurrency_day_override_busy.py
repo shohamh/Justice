@@ -26,7 +26,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -126,7 +125,6 @@ def test_swap_eligibility_treats_a_covered_day_as_busy(admin_session):
     assert reason == "שיבוץ קיים בתאריכים אלו"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C14: concurrent overrides double-book the cover")
 def test_concurrent_overrides_cannot_double_book_one_covering_soldier(race, admin_session):
     a1, a2, cover, admin, _n1, _n2 = _two_duties(admin_session, "c14-race")
     admin_session.commit()
@@ -157,7 +155,6 @@ def test_concurrent_overrides_cannot_double_book_one_covering_soldier(race, admi
     assert str(loser.error) == "overlap"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="C14: concurrent swap finalizations double-book the cover")
 def test_concurrent_swap_finalizations_cannot_double_book_one_candidate(race, admin_session):
     from app.services.settings_loader import set_setting
 

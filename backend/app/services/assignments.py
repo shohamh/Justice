@@ -494,7 +494,16 @@ def set_day_override(
     if reason not in _OVERRIDE_REASONS:
         raise AssignmentError("bad_reason")
     if effective_soldier_id is not None:
-        if session.get(Soldier, effective_soldier_id) is None:
+        # Lock the covering soldier before the busy check (C14): two
+        # overrides or swap finalizations that name the same soldier for the
+        # same day, on different duties, otherwise both pass _day_busy before
+        # either commits. NO KEY UPDATE conflicts with create_assignment's
+        # FOR UPDATE on the soldier but not with child-row KEY SHARE locks.
+        # Lock order: (swap request ->) covering soldier -> assignment.
+        locked = session.execute(
+            select(Soldier.id).where(Soldier.id == effective_soldier_id).with_for_update(key_share=True)
+        ).first()
+        if locked is None:
             raise AssignmentError("soldier_not_found")
         if _day_busy(
             session,
