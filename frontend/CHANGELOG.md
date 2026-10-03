@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-10-04
+
+### Features
+- Added single sign-on (SSO) to the login page, alongside the existing personal-number-and-password login.
+  Why: soldiers can use their organizational account, and password login stays available during the rollout.
+- People who sign in with SSO but have no account yet can register without an invite code; their verified email is prefilled and read-only, and they must be approved by a commander at mador level or above before getting access.
+  Why: the organization has already verified who they are, but access still needs a commander's sign-off.
+- Each soldier now has a unique email and a username derived from it, and email addresses can no longer be shared between accounts.
+  Why: SSO needs a reliable way to match a login to exactly one soldier.
+- HR sync now warns about identity conflicts instead of silently overwriting data. Admins get an "identity conflicts" tab to review them, choose the correct record, or dismiss them, and HR review remembers those choices.
+- Bulk-accepting algorithm drafts now lists any drafts that were skipped because they would double-book a soldier, with an explanation.
+- Accepting an algorithm draft now re-checks it against the live schedule, so a stale draft can no longer overwrite a manual assignment.
+- Pages are much faster with very large rosters (tested with 20,000 soldiers): soldier lists, the calendar, dashboards, the transparency page, swaps and approvals boards, ranges, and the hierarchy picker now load only what's on screen, and the navigation badge counts load after the page.
+  Why: several pages were too slow at the roster size the system is expected to reach.
+- Uploaded files (exemption attachments, Gimelim attachments, bug-report screenshots, original import workbooks) move to private, access-controlled storage, and downloads go through a permission check. Soldier-exemption files and Gimelim attachments now have download buttons, and import sessions let you download the original workbook.
+  Why: files now survive restarts and work across several servers, and nobody can open a file by guessing or sharing a link.
+- Official duty events can be published to the organization's Exchange calendar (an optional setup). Admins see sync status, and dismissed duties are removed from the calendar too.
+
+### Fixes
+- Fixed several cases where two people acting at the same moment could produce wrong results: double-booked soldiers, shifts or range events filled past capacity, a request approved or rejected twice, duplicate reminders or emails, lost updates to scores, and two admins' decisions overwriting each other. A shift deleted while being assigned now shows "not found" instead of an error.
+- A soldier covering for a reserve is now treated as busy on days they have a day override, so they can't be double-booked.
+- The app now retries when restoring your session after a temporary network error, instead of signing you out.
+- Fixed Exchange calendar updates not saving correctly.
+- Fixed burden-gap figures not refreshing across dates.
+- Fixed Export pages accepting malformed data.
+- Fixed the sign-in registration form rejecting the empty email that SSO sign-ups send.
+
 ## 2026-09-27
 
 ### Features
