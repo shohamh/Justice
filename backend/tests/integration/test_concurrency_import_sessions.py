@@ -20,13 +20,18 @@ Fixed (Task 3): confirm_session and cancel_session load the import session
 with ``SELECT ... FOR UPDATE``. The second request blocks on the row lock, so
 the first request's wait times out and it commits alone; the second then reads
 the committed status and fails with ``only_draft_sessions_can_be_*``.
+
+Task 6 (M2): confirm_session now reads and parses the workbook *before* the
+lock, after an unlocked draft check, and re-checks the status once it holds
+the lock. In the confirm-vs-cancel schedule the parked confirm therefore holds
+no lock yet: the cancel commits first and the confirm's locked re-check fails
+with ``only_draft_sessions_can_be_confirmed``. Exactly one of them still wins.
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import DutyLocation, DutyShift, DutyType, ImportSession, Soldier
@@ -124,13 +129,13 @@ def test_cancel_committed_during_confirm_stops_the_import(race, admin_session):
     shifts = _shift_count(admin_session)
     assert sum(o.ok for o in outcomes) == 1, f"both confirm and cancel succeeded; final status={status!r}, shifts={shifts}"
     assert (status, shifts) in {("cancelled", 0), ("confirmed", 1)}, (status, shifts)
-    # The confirm holds the row lock from its draft check, so the cancel waits
-    # for it and then loses.
-    assert (status, shifts) == ("confirmed", 1)
-    assert str(outcomes[1].error) == "only_draft_sessions_can_be_cancelled"
+    # The confirm's first read is the unlocked pre-check (M2), so the cancel
+    # commits while the confirm is parked, and the confirm's locked re-check
+    # then loses.
+    assert (status, shifts) == ("cancelled", 0)
+    assert str(outcomes[0].error) == "only_draft_sessions_can_be_confirmed"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="M2: confirm holds the import lock across the workbook read")
 def test_confirm_does_not_hold_the_session_lock_while_reading_the_workbook(race, admin_session, monkeypatch):
     """M2 — ``confirm_session`` took the import-session ``FOR UPDATE`` and only
     then read the workbook from object storage and parsed it (for soldier
