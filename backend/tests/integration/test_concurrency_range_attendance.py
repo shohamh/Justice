@@ -23,7 +23,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -132,7 +131,6 @@ def test_auto_mark_does_not_overwrite_a_manual_no_show(race, admin_session):
     assert worker_outcome.value == 0
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="I1: mark_attendance vs dismiss_primary deadlock")
 def test_attendance_correction_and_duty_dismissal_of_one_soldier_do_not_deadlock(race, admin_session):
     """I1 — ``mark_attendance`` locks the soldier and the range assignment,
     refreshes the score projection (``create_adjustment`` for a no-show) and
@@ -147,7 +145,12 @@ def test_attendance_correction_and_duty_dismissal_of_one_soldier_do_not_deadlock
     (id order, ``FOR NO KEY UPDATE``) right after the range assignment, before
     any projection lock (soldier -> range assignment -> duty assignments ->
     projection)."""
-    from app.db.models import DutyAssignment, DutyDismissal, DutyLocation, ScoreProjectionQuarterTotal
+    from app.db.models import (
+        DutyAssignment,
+        DutyDismissal,
+        DutyLocation,
+        ScoreProjectionQuarterTotal,
+    )
     from app.services import reserves as reserves_service
 
     assignment_id, soldier_id, manager_id = _seed(admin_session, "i1")

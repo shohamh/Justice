@@ -873,6 +873,20 @@ def mark_attendance(
     assignment = lock_assignment_for_attendance(session, assignment.id)
     if assignment is None:
         raise RangeValidationError("assignment_not_found")
+    # I1: recheck_assignments (below) UPDATEs the soldier's published duty
+    # assignments after the projection refresh. Duty-side writers
+    # (dismiss_primary, dismiss_reserve, mark_no_show, set_day_override) lock a
+    # duty row and then the projection, so lock those rows here, in id order,
+    # before any projection lock: soldier -> range assignment -> duty
+    # assignments -> projection.
+    from app.db.models import DutyAssignment as _DutyAssignment
+
+    session.execute(
+        select(_DutyAssignment.id)
+        .where(_DutyAssignment.soldier_id == assignment.soldier_id, _DutyAssignment.status == "published")
+        .order_by(_DutyAssignment.id)
+        .with_for_update(key_share=True)
+    ).all()
     if assignment.is_draft:
         raise RangeValidationError("assignment_not_confirmed")
     event = session.get(RangeEvent, assignment.range_event_id)
@@ -976,7 +990,6 @@ def mark_attendance(
     assignment.marked_at = datetime.now(UTC)
     assignment.note = note
 
-    from app.db.models import DutyAssignment as _DutyAssignment
     from app.services.duty_eligibility_watch import recheck_assignments
 
     affected_ids = session.execute(
