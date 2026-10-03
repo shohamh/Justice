@@ -86,7 +86,7 @@ async function fillRegistration(page: Page, personalNumber: string, name: string
   // the viewport), so retry until the option exists and pick it by keyboard.
   await expect(async () => {
     await rank.fill("סמל");
-    await expect(page.getByRole("option", { name: "סמל", exact: true }).first()).toBeAttached({ timeout: 3000 });
+    await expect(page.getByRole("option").first()).toBeAttached({ timeout: 3000 });
     await rank.press("ArrowDown");
     await rank.press("Enter");
     await expect(rank).toHaveValue("סמל", { timeout: 2000 });
