@@ -112,3 +112,12 @@ def create_range_assignment(
 def auth_headers(soldier: Soldier) -> dict[str, str]:
     token = issue_access_token(user_id=soldier.id, role=soldier.role)
     return {"Authorization": f"Bearer {token}"}
+
+
+def set_soldier_email(soldier: Soldier, email: str | None) -> None:
+    """Test shortcut: set the canonical email and its derived ad_username together
+    (the database requires the pair). No collision checks; use
+    app.services.identity_write.assign_soldier_email to exercise those."""
+    from app.services.identity import canonical_identity
+
+    soldier.email, soldier.ad_username = canonical_identity(email)

@@ -6,12 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.db.models import EmailOutbox, NotificationPreference, NotificationType, Soldier
 from app.services.notifications import create_notification
-from tests.helpers import auth_headers, create_soldier
+from tests.helpers import auth_headers, create_soldier, set_soldier_email
 
 
 def _soldier_with_email(session: Session, personal_number: str, verified: bool = True) -> Soldier:
     s = create_soldier(session, personal_number=personal_number)
-    s.email = f"{personal_number}@test.com"
+    set_soldier_email(s, f"{personal_number}@test.com")
     s.email_verified = verified
     session.flush()
     return s

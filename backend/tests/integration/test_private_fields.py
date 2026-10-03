@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.db.models import ExemptionType
-from tests.helpers import auth_headers, create_node, create_soldier
+from tests.helpers import auth_headers, create_node, create_soldier, set_soldier_email
 
 
 def _et(session: Session, name: str) -> ExemptionType:
@@ -32,7 +32,7 @@ def test_admin_cannot_see_gender_but_sees_phone_email_by_default(client: TestCli
     dm = create_soldier(admin_session, personal_number="pf-dm001", role="duty_manager", hierarchy_node_id=d.id)
     target = create_soldier(admin_session, personal_number="pf-s001", hierarchy_node_id=d.id)
     target.phone = "0501234567"
-    target.email = "pf-target@example.com"
+    set_soldier_email(target, "pf-target@example.com")
     admin_session.commit()
     # DM sets profile with private fields
     client.patch(
@@ -60,7 +60,7 @@ def test_admin_cannot_see_phone_email_when_public_settings_disabled(client: Test
     d = create_node(admin_session, level="department", name="pf-d5")
     target = create_soldier(admin_session, personal_number="pf-s005", hierarchy_node_id=d.id)
     target.phone = "0501234567"
-    target.email = "pf-target5@example.com"
+    set_soldier_email(target, "pf-target5@example.com")
     admin_session.commit()
 
     r = client.get(f"/api/soldiers/{target.id}", headers=auth_headers(admin))
@@ -135,7 +135,7 @@ def test_out_of_scope_profile_uses_public_mode_and_exposes_approved_public_field
         full_name="Public Target",
         hierarchy_node_id=child.id,
     )
-    target.email = "public@example.com"
+    set_soldier_email(target, "public@example.com")
     target.gender = "female"
     target.is_officer = True
     target.bahad1_graduate = True

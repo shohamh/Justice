@@ -1,6 +1,6 @@
 ---
 name: release-dev-to-master
-description: Use when promoting accumulated work on `dev` to `master` in this repo (justice) — a "release". Merges `dev` into `master` and updates frontend/CHANGELOG.md in the same step. Use whenever the human asks to release, ship, or merge dev to master.
+description: Use when promoting accumulated work on `dev` to `master` in this repo (justice) — a "release". Merges `dev` into `master` and writes the user-facing frontend/CHANGELOG.md from docs/CHANGELOG-dev.md in the same step. Use whenever the human asks to release, ship, or merge dev to master.
 ---
 
 # Release: dev → master
@@ -10,7 +10,8 @@ description: Use when promoting accumulated work on `dev` to `master` in this re
 `dev` is this repo's integration branch (see CLAUDE.md's Branch workflow).
 Feature branches/worktrees merge into `dev` via the `merge-worktree-to-dev`
 skill. This skill is the *other* half: promoting `dev` to `master`, which is
-the one point where the changelog gets updated.
+the one point where the user-facing changelog gets written (from the
+developer changelog that `merge-worktree-to-dev` maintains).
 
 **Announce at start:** "I'm using the release-dev-to-master skill to promote dev to master."
 
@@ -101,34 +102,57 @@ A failure here is a real defect the scoped per-feature checks missed, not
 routine noise — do not loosen Step 3 into a "quick partial check" as a
 shortcut past a repeat failure; find and fix the actual cause.
 
-### Step 4: Update the Changelog
+### Step 4: Update the Changelogs
 
-Find the previous changelog entry's date/commit in `frontend/CHANGELOG.md`
-(the most recent `## YYYY-MM-DD` heading). Reconstruct what shipped since
-then:
+Two files change in the release commit: the user-facing
+`frontend/CHANGELOG.md` (written here) and the developer log
+`docs/CHANGELOG-dev.md` (just marked as released).
 
-```bash
-git log --oneline <last-changelog-sha-or-tag>..master
+**4a. Gather sources.** Read the `## Unreleased` section of
+`docs/CHANGELOG-dev.md` — the source of truth for what shipped. Cross-check
+it against `git log --oneline <last-changelog-sha-or-tag>..master` (the
+previous `## YYYY-MM-DD` heading in `frontend/CHANGELOG.md` marks the start)
+and note any commits with no dev-changelog entry. Then read the plan/spec/
+design docs listed on each entry's `Docs:` line (under `docs/superpowers/`)
+to learn *why* each change was made.
+
+**4b. Write the user-facing entry.** Add a new `## YYYY-MM-DD` section (today's
+date) at the top of `frontend/CHANGELOG.md`, for the people who *use* the
+app (soldiers, commanders, duty managers), not developers:
+
+- Group under **Features** (new or changed behavior) and **Fixes**. Omit
+  Chores — mention internal work only when users notice it (e.g. faster
+  pages, under "Features" or "Fixes" as fits).
+- One bullet per user-visible change, merging several commits/dev entries
+  that form one change. Describe what users can now do or what now works,
+  in plain language — no module names, endpoints, migrations, or test notes.
+- For features and behavior changes whose reason isn't obvious, add the
+  rationale as a short indented sub-line starting with "Why:", drawn from
+  the plan/design docs. A simple bug fix gets no rationale.
+- Entries with no user-visible effect are left out.
+
+```markdown
+- Duty managers can now replace a soldier directly from algorithm results.
+  Why: rejecting a result forced a full re-run; replacing keeps the rest of
+  the schedule stable.
 ```
 
-Add a new `## YYYY-MM-DD` section (today's date) to the top of the log,
-grouped into **Features**, **Fixes**, and **Chores** as appropriate — same
-format as existing entries. Don't just dump commit subjects verbatim if
-several commits form one user-visible change; summarize at the level a
-reader of the changelog would want.
+**4c. Mark the dev changelog.** In `docs/CHANGELOG-dev.md`, rename
+`## Unreleased` to `## YYYY-MM-DD (released)` and add a fresh empty
+`## Unreleased` heading above it.
 
-Commit this on `master` directly:
+Commit both files on `master` directly:
 
 ```bash
-git add frontend/CHANGELOG.md
+git add frontend/CHANGELOG.md docs/CHANGELOG-dev.md
 git commit -m "docs: update changelog YYYY-MM-DD"
 ```
 
 This is the one sanctioned direct-to-`master` commit in this workflow (see
 CLAUDE.md) — it's part of the release step itself, not a bypass of it.
 
-Immediately cherry-pick this same commit onto `dev`, so `dev`'s changelog
-never drifts from `master`'s (this merge is usually non-fast-forward —
+Immediately cherry-pick this same commit onto `dev`, so `dev`'s changelogs
+never drift from `master`'s (this merge is usually non-fast-forward —
 `dev` keeps moving while a release is in flight — so the changelog commit
 needs its own cherry-pick, not just a merge):
 
@@ -138,9 +162,10 @@ git cherry-pick <changelog-commit-sha>
 git checkout master   # or wherever you were before, for Step 5
 ```
 
-If the cherry-pick conflicts (only plausible if `dev` picked up an unrelated
-CHANGELOG.md edit in the meantime), resolve by keeping both sides' entries —
-never drop content to force a clean apply.
+If the cherry-pick conflicts (most likely in `docs/CHANGELOG-dev.md`, since
+feature merges keep adding entries under `## Unreleased` on `dev`), resolve by
+keeping both sides' content: entries added on `dev` after the release cut
+stay under the new `## Unreleased`. Never drop content to force a clean apply.
 
 ### Step 5: Confirm Before Pushing
 
@@ -175,9 +200,10 @@ results, and whether/what was pushed.
 - Push without confirmation (unless explicitly pre-authorized in the same request)
 - Disturb another worktree's checked-out branch or uncommitted work to free up `master`/`dev`
 - Backdate or fabricate the changelog date — use the actual day of the release
+- Write developer-speak (modules, endpoints, migrations) in the user-facing changelog, or add "Why:" to a plain bug fix
 - Bundle unrelated manual edits into the changelog commit
 - Leave the changelog commit only on `master` — always cherry-pick it onto
-  `dev` too (Step 4) so the two branches' CHANGELOG.md never diverge
+  `dev` too (Step 4) so the two branches' changelogs never diverge
 
 ## Integration
 

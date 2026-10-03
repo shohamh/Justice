@@ -21,6 +21,30 @@ export interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const RESTORE_MAX_ATTEMPTS = 4;
+const RESTORE_RETRY_DELAY_MS = 400;
+
+/**
+ * Restores the session from the refresh cookie on mount. Only a definite client-side
+ * answer (401/403 etc.) means "no session"; a transient failure (network error, proxy
+ * 5xx/429 while the backend is slow or restarting) is retried briefly instead of
+ * silently logging the user out and bouncing them to /login on a full page reload.
+ */
+async function restoreSession(): Promise<Me | null> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const r = await api.post<{ access_token: string }>("/auth/refresh");
+      setAccessToken(r.data.access_token);
+      return await fetchMe();
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const transient = status === undefined || status >= 500 || status === 429;
+      if (!transient || attempt >= RESTORE_MAX_ATTEMPTS) return null;
+      await new Promise((resolve) => setTimeout(resolve, RESTORE_RETRY_DELAY_MS * attempt));
+    }
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -31,20 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const generation = ++authGeneration.current;
-    api.post<{ access_token: string }>("/auth/refresh")
-      .then(async (r) => {
-        if (generation !== authGeneration.current) return;
-        setAccessToken(r.data.access_token);
-        const nextUser = await fetchMe();
+    restoreSession()
+      .then((nextUser) => {
         if (generation !== authGeneration.current) return;
         setUser(nextUser);
-        setAuthScopeReady(true);
-        scopeTransitioning.current = false;
-      })
-      .catch(() => {
-        if (generation !== authGeneration.current) return;
-        setUser(null);
-        setAuthScopeReady(false);
+        setAuthScopeReady(nextUser !== null);
         scopeTransitioning.current = false;
       })
       .finally(() => {

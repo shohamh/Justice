@@ -8,9 +8,10 @@ description: Use when implementation work in a feature branch/worktree in this r
 ## Overview
 
 This repo (`justice`) uses `dev` as the integration branch. Feature branches
-and worktrees never merge directly into `master` — only into `dev`. `master`
-only moves forward via the separate `release-dev-to-master` skill, which also
-updates the changelog.
+and worktrees never merge directly into `master` — only into `dev`. Every merge
+into `dev` adds an entry to the developer changelog (`docs/CHANGELOG-dev.md`).
+`master` only moves forward via the separate `release-dev-to-master` skill,
+which writes the user-facing changelog from that dev changelog.
 
 Same shape as superpowers:finishing-a-development-branch, with the base
 branch fixed to `dev` instead of detected/guessed.
@@ -73,7 +74,7 @@ GIT_COMMON=$(cd "$(git rev-parse --git-common-dir)" 2>/dev/null && pwd -P)
 | State | Menu | Cleanup |
 |-------|------|---------|
 | `GIT_DIR == GIT_COMMON` (normal repo) | Standard 4 options | No worktree to clean up |
-| `GIT_DIR != GIT_COMMON`, named branch | Standard 4 options | Provenance-based (see Step 6) |
+| `GIT_DIR != GIT_COMMON`, named branch | Standard 4 options | Provenance-based (see Step 7) |
 | `GIT_DIR != GIT_COMMON`, detached HEAD | Reduced 3 options (no merge) | No cleanup (externally managed) |
 
 ### Step 3: Base Branch
@@ -114,7 +115,33 @@ Which option?
 Don't add explanation — keep options concise. Never offer "merge to master"
 here; that's out of scope for this skill.
 
-### Step 5: Execute Choice
+### Step 5: Update the Dev Changelog (Options 1 and 2 only)
+
+Before merging or pushing a PR, add an entry to `docs/CHANGELOG-dev.md` on
+the feature branch and commit it (`docs: dev changelog for <feature>`), so it
+lands in `dev` as part of the merge. Skip for Options 3 and 4.
+
+Insert the entry at the top of the `## Unreleased` section, in developer
+speak — what changed in the code, not how it looks to users:
+
+```markdown
+### <short title> (`<feature-branch>`, YYYY-MM-DD)
+Docs: <paths to the plan/spec/design docs for this change, or "none">
+- <module/file-level change: new service, route, component, hook, algorithm tweak>
+- Migration: <alembic revision + what it does>   (only if any)
+- API: <endpoint/schema changes, breaking or not>   (only if any)
+- Config/ops: <new env vars, scripts, CI changes>   (only if any)
+- Gotchas: <non-obvious behavior, trade-offs, follow-ups>   (only if any)
+- Tests: <what coverage was added>
+- Type: feature | fix | chore | perf | refactor
+```
+
+Build it from `git log dev..HEAD` and `git diff dev...HEAD --stat`, not from
+memory. The `Docs:` line is required — the release skill uses it to find the
+rationale for the user-facing changelog. If merge conflicts hit this file
+(other branches also add entries at the top), keep both sides' entries.
+
+### Step 6: Execute Choice
 
 #### Option 1: Merge Locally (to dev)
 
@@ -140,7 +167,7 @@ git merge <feature-branch>
 <scoped test command from Step 1>
 ```
 
-Then: Cleanup worktree (Step 6), then delete the feature branch:
+Then: Cleanup worktree (Step 7), then delete the feature branch:
 
 ```bash
 git branch -d <feature-branch>
@@ -175,12 +202,12 @@ This will permanently delete:
 Type 'discard' to confirm.
 ```
 
-If confirmed, cleanup worktree (Step 6), then:
+If confirmed, cleanup worktree (Step 7), then:
 ```bash
 git branch -D <feature-branch>
 ```
 
-### Step 6: Cleanup Workspace
+### Step 7: Cleanup Workspace
 
 Only for Options 1 and 4. Same provenance rules as
 superpowers:finishing-a-development-branch: only remove worktrees under
@@ -204,6 +231,7 @@ git worktree prune
   for that side instead
 - Delete work without typed `discard` confirmation
 - Force-push without explicit request
+- Merge or open a PR without a dev changelog entry (Step 5)
 - Remove a worktree before confirming the merge to `dev` succeeded
 - Clean up worktrees you didn't create
 - Check out `dev` (or any branch) in a way that disturbs another active
@@ -211,7 +239,7 @@ git worktree prune
 
 ## Integration
 
-- Updates the changelog: never — that only happens in `release-dev-to-master`.
+- Updates `docs/CHANGELOG-dev.md` (Step 5). The user-facing `frontend/CHANGELOG.md` is only touched by `release-dev-to-master`.
 - See also: `release-dev-to-master` (the `dev` → `master` promotion step),
   superpowers:using-git-worktrees, superpowers:finishing-a-development-branch
   (the generic version this project-specific skill replaces).

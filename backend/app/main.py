@@ -17,6 +17,7 @@ from app.error_logging import (
     REQUEST_ID_HEADER,
     log_backend_exception,
     redact,
+    redact_query,
     request_data,
     request_id,
 )
@@ -34,6 +35,7 @@ from app.routes import approvals_export as approvals_export_routes
 from app.routes import assignments as assignment_routes
 from app.routes import audit_logs as audit_log_routes
 from app.routes import auth as auth_routes
+from app.routes import oidc as oidc_routes
 from app.routes import bug_reports as bug_report_routes
 from app.routes import calendar as calendar_routes
 from app.routes import calendar_holidays as calendar_holidays_routes
@@ -56,6 +58,7 @@ from app.routes import hierarchy_transfers as hierarchy_transfer_routes
 from app.routes import hr_activation as hr_activation_routes
 from app.routes import hr_onboarding as hr_onboarding_routes
 from app.routes import hr_review as hr_review_routes
+from app.routes import identity_conflicts as identity_conflict_routes
 from app.routes import import_excel as import_excel_routes
 from app.routes import import_lookup as import_lookup_routes
 from app.routes import import_sessions as import_sessions_routes
@@ -134,7 +137,7 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
                 data = {
                     "method": request.method,
                     "path": request.url.path,
-                    "query": redact(dict(request.query_params)),
+                    "query": redact_query(request.query_params),
                     "headers": redact(headers),
                     "body": None,
                 }
@@ -245,6 +248,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_error_routes.router, prefix="/api")
     app.include_router(exchange_calendar_sync_routes.router, prefix="/api")
     app.include_router(auth_routes.router, prefix="/api")
+    app.include_router(oidc_routes.router, prefix="/api")
     app.include_router(me_routes.router, prefix="/api")
     app.include_router(my_request_routes.router, prefix="/api")
     app.include_router(nav_count_routes.router, prefix="/api")
@@ -253,6 +257,7 @@ def create_app() -> FastAPI:
     app.include_router(hr_activation_routes.router, prefix="/api")
     app.include_router(hr_onboarding_routes.router, prefix="/api")
     app.include_router(hr_review_routes.router, prefix="/api")
+    app.include_router(identity_conflict_routes.router, prefix="/api")
     # Registered before soldier_routes: soldier_routes has GET /soldiers/{soldier_id}
     # (a uuid-typed path param) which would otherwise shadow our literal
     # /soldiers/rank-ladder path and fail pydantic UUID validation (422) instead

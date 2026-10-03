@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import PasswordResetToken, TelegramLink
 from app.services import password_reset as svc
-from tests.helpers import create_soldier
+from tests.helpers import create_soldier, set_soldier_email
 
 
 def _link_telegram(session: Session, soldier_id: uuid.UUID, chat_id: int) -> None:
@@ -33,7 +33,7 @@ def test_available_channels_telegram_only(admin_session: Session):
 
 def test_available_channels_email_only(admin_session: Session):
     s = create_soldier(admin_session, personal_number="PR002")
-    s.email = "test@example.com"
+    set_soldier_email(s, "test@example.com")
     s.email_verified = True
     admin_session.flush()
 
@@ -75,7 +75,7 @@ def test_create_token_invalidates_previous(admin_session: Session):
 def test_redeem_token_updates_password(admin_session: Session):
     from app.auth.password import verify_password
     s = create_soldier(admin_session, personal_number="PR005")
-    s.email = "pr005@example.com"
+    set_soldier_email(s, "pr005@example.com")
     admin_session.flush()
 
     token = svc._create_reset_token(admin_session, soldier=s, channel="email")

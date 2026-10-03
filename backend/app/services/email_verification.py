@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import EmailVerificationToken, Soldier
 from app.services.email import send_email
+from app.services.identity import normalize_email
 
 _TOKEN_EXPIRY = timedelta(hours=24)
 # Serializes verify_token calls for one email address (see verify_token).
@@ -80,23 +81,25 @@ def verify_token(session: Session, *, token: str) -> str:
     if row.expires_at <= now:
         return "token_expired"
 
-    # One verified account per email: verify_token is the only writer that
-    # sets email_verified=True, so a per-email advisory lock serializes the
-    # "already verified by someone else?" check below with the write.
-    session.execute(select(func.pg_advisory_xact_lock(_VERIFIED_EMAIL_LOCK_NAMESPACE, func.hashtext(row.email))))
-
-    if soldier is None or soldier.email != row.email:
+    try:
+        # Tokens issued before the identity migration snapshot the raw address.
+        token_email = normalize_email(row.email)
+    except ValueError:
+        token_email = None
+    if soldier is None or token_email is None or soldier.email != token_email:
         # Soldier changed their email since token was issued
         return "token_invalid"
 
-    # Check no other soldier has already verified this email
+    # One verified account per email: verify_token is the only writer that
+    # sets email_verified=True, so a per-email advisory lock serializes the
+    # "already verified by someone else?" check below with the write.
+    session.execute(select(func.pg_advisory_xact_lock(_VERIFIED_EMAIL_LOCK_NAMESPACE, func.hashtext(token_email))))
+
+    # Email is unique across verified and unverified rows (database-enforced);
+    # this guards legacy data and keeps the redeem result explicit.
     conflict = session.execute(
-        select(Soldier).where(
-            Soldier.email == row.email,
-            Soldier.email_verified == True,  # noqa: E712
-            Soldier.id != soldier.id,
-        )
-    ).scalar_one_or_none()
+        select(Soldier.id).where(Soldier.email == token_email, Soldier.id != soldier.id).limit(1)
+    ).first()
     if conflict is not None:
         return "email_taken"
 

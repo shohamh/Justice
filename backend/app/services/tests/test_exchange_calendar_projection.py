@@ -20,6 +20,7 @@ from app.db.models import (
     RangeLocation,
     Soldier,
 )
+from app.services.identity import canonical_identity
 from app.services.exchange_calendar.projection import (
     ProjectionError,
     israel_local_datetime,
@@ -75,7 +76,10 @@ class FakeSession:
 
 
 def soldier(db, name, email, node=None):
-    return db.add(Soldier, full_name=name, email=email, hierarchy_node_id=node)
+    return db.add(
+        Soldier, full_name=name, email=canonical_identity(email)[0],
+        ad_username=canonical_identity(email)[1], hierarchy_node_id=node,
+    )
 
 
 def shift_setup():

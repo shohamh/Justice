@@ -78,6 +78,21 @@ def redact(value: Any, *, depth: int = 0) -> Any:
     return value
 
 
+# Query parameters that carry one-time OIDC callback material (authorization
+# code, state) or tokens; they must never reach the error log or admin inbox.
+_SENSITIVE_QUERY_KEYS = frozenset(
+    {"code", "state", "id_token", "nonce", "code_verifier", "session_state", "error_description"}
+)
+
+
+def redact_query(params: Any) -> Any:
+    cleaned = {
+        str(key): "[redacted]" if str(key).lower() in _SENSITIVE_QUERY_KEYS else value
+        for key, value in dict(params).items()
+    }
+    return redact(cleaned)
+
+
 async def request_data(request: Request) -> dict[str, Any]:
     headers = {
         key: request.headers[key]
@@ -94,7 +109,7 @@ async def request_data(request: Request) -> dict[str, Any]:
     return {
         "method": request.method,
         "path": request.url.path,
-        "query": redact(dict(request.query_params)),
+        "query": redact_query(request.query_params),
         "headers": redact(headers),
         "body": redact(body),
     }

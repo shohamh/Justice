@@ -8,6 +8,7 @@ import {
   listVanished, listRankConflicts, listSyncRuns, runSyncNow,
 } from "../../api/hrReview";
 import { DataTable, ColDef } from "../../components/DataTable";
+import HrIdentityConflictsSection from "./HrIdentityConflictsSection";
 import type {
   HeldForReviewItemDTO, DivergenceItemDTO, VanishedItemDTO,
   RankConflictItemDTO, PersonSyncRunDTO, HierarchySyncRunDTO,
@@ -119,6 +120,7 @@ export default function HrSyncReviewContent() {
       void queryClient.invalidateQueries({ queryKey: ["hr-sync-divergences"] });
       void queryClient.invalidateQueries({ queryKey: ["hr-sync-vanished"] });
       void queryClient.invalidateQueries({ queryKey: ["hr-sync-conflicts"] });
+      void queryClient.invalidateQueries({ queryKey: ["hr-sync-identity-conflicts"] });
     },
   });
 
@@ -209,6 +211,7 @@ export default function HrSyncReviewContent() {
     { id: "created_count", header: t("admin.hr_sync.created_count"), cell: (r) => r.created_count },
     { id: "updated_count", header: t("admin.hr_sync.updated_count"), cell: (r) => r.updated_count },
     { id: "held_count", header: t("admin.hr_sync.held_count"), cell: (r) => r.held_count },
+    { id: "conflict_count", header: t("admin.hr_sync.identity_conflicts"), cell: (r) => r.conflict_count ?? 0 },
     {
       id: "errors", header: t("admin.hr_sync.errors"),
       cell: (r) => (
@@ -312,6 +315,11 @@ export default function HrSyncReviewContent() {
       <section>
         <h3 className="text-sm font-semibold mb-2">{t("admin.hr_sync.rank_conflicts")}</h3>
         {renderSection("hr-sync-conflicts-table", conflictsQuery, conflictColumns, conflictsQuery.data?.items ?? [])}
+      </section>
+
+      <section data-testid="hr-sync-identity-conflicts">
+        <h3 className="text-sm font-semibold mb-2">{t("admin.hr_sync.identity_conflicts")}</h3>
+        <HrIdentityConflictsSection />
       </section>
 
       <section>

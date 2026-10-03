@@ -67,6 +67,7 @@ from app.services.exchange_calendar.triggers import (
     enqueue_source_change,
 )
 from app.services.hierarchy import change_node_level, create_node, move_node, set_commander
+from app.services.identity_write import BulkIdentityCheck, assign_soldier_email, resolve_identity_fields
 from app.services.import_approvals import (
     resolve_bug_reports,
     resolve_exemption_requests,
@@ -229,6 +230,16 @@ def read_import_workbook(session: Session, import_session: ImportSession, storag
     return import_session.raw_excel
 
 
+_IMPORT_EMAIL_ERRORS = {
+    "email_invalid": "כתובת אימייל לא תקינה",
+    "ad_username_too_long": "שם המשתמש באימייל ארוך מדי (עד 20 תווים)",
+    "ad_username_invalid": "שם המשתמש באימייל מכיל תווים לא נתמכים",
+    "email_taken": "כתובת האימייל כבר בשימוש",
+    "ad_username_taken": "שם המשתמש באימייל כבר בשימוש",
+    "email_duplicate_in_file": "כתובת האימייל מופיעה יותר מפעם אחת בקובץ",
+}
+
+
 def _resolve_soldiers(
     session: Session,
     data: ParsedImportData,
@@ -247,6 +258,7 @@ def _resolve_soldiers(
     for s in existing_by_pn.values():
         existing_by_full_name.setdefault(s.full_name, []).append(s)
     nodes_by_name = {n.name: n for n in session.execute(select(HierarchyNode)).scalars()}
+    identity_check = BulkIdentityCheck(existing_by_pn.values())
 
     out = []
     for row in data.soldiers:
@@ -325,6 +337,12 @@ def _resolve_soldiers(
                 errors.append(
                     f"שם '{full_name}' אינו חד משמעי (מספר אישי '{personal_number}' לא נמצא)"
                 )
+
+        email_error = identity_check.check(
+            email, own_soldier_id=existing.id if existing is not None else None
+        )
+        if email_error:
+            errors.append(_IMPORT_EMAIL_ERRORS.get(email_error, email_error))
 
         active_unit_join_date_changed = (
             existing is not None
@@ -1746,6 +1764,7 @@ def confirm_session(
             continue
         try:
             if effective == "new":
+                new_email, new_ad_username = resolve_identity_fields(session, row.get("email"))
                 row_password_hash = password_hash_by_row.get(row["row"])
                 new_soldier = Soldier(
                     personal_number=row["personal_number"],
@@ -1762,7 +1781,8 @@ def confirm_session(
                         else None
                     ),
                     phone=row.get("phone"),
-                    email=row.get("email"),
+                    email=new_email,
+                    ad_username=new_ad_username,
                     food_type=row.get("food_type"),
                     food_constraints=row.get("food_constraints"),
                     profile_picture_url=row.get("profile_picture_url"),
@@ -1804,6 +1824,10 @@ def confirm_session(
                 s = session.get(Soldier, uuid.UUID(row["existing_id"]))
                 if s is not None:
                     old_node_id = s.hierarchy_node_id
+                    if row.get("email") is not None:
+                        # First, so a rejected address leaves the soldier untouched
+                        # (the row is reported in `errors` by the handler below).
+                        assign_soldier_email(session, s, row["email"])
                     s.personal_number = row["personal_number"]
                     s.full_name = row["full_name"]
                     row_password_hash = password_hash_by_row.get(row["row"])
@@ -1825,8 +1849,6 @@ def confirm_session(
                         s.hierarchy_node_id = uuid.UUID(row["hierarchy_node_id"])
                     if row.get("phone") is not None:
                         s.phone = row["phone"]
-                    if row.get("email") is not None:
-                        s.email = row["email"]
                     if row.get("food_type") is not None:
                         s.food_type = row["food_type"]
                     if row.get("food_constraints") is not None:

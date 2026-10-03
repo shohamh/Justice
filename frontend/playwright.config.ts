@@ -14,7 +14,8 @@ export default defineConfig({
   retries: 1,
   use: {
     browserName: "chromium",
-    channel: "chrome",
+    // E2E_BROWSER_CHANNEL="" selects Playwright's bundled Chromium (default stays system Chrome).
+    channel: (process.env.E2E_BROWSER_CHANNEL ?? "chrome") || undefined,
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:5173",
     trace: "on-first-retry",
     video: "off",

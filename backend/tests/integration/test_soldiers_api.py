@@ -16,7 +16,7 @@ from app.db.models import (
     TelegramLink,
 )
 from app.routes.soldiers import _PUBLIC_EVENT_TYPES
-from tests.helpers import auth_headers, create_node, create_soldier
+from tests.helpers import auth_headers, create_node, create_soldier, set_soldier_email
 
 
 def test_bounded_display_lookup_deduplicates_and_respects_list_visibility(client: TestClient, admin_session: Session):
@@ -368,7 +368,7 @@ def test_plain_soldier_can_view_another_soldiers_basic_profile(client: TestClien
         admin_session, personal_number="view_target_001", hierarchy_node_id=other_node.id,
     )
     target.phone = "0501234567"
-    target.email = "target@example.com"
+    set_soldier_email(target, "target@example.com")
     target.gender = "male"
     admin_session.commit()
 
@@ -422,7 +422,7 @@ def test_phone_and_email_hidden_when_public_settings_disabled(client: TestClient
         admin_session, personal_number="view_target_002", hierarchy_node_id=other_node.id,
     )
     target.phone = "0501234567"
-    target.email = "target2@example.com"
+    set_soldier_email(target, "target2@example.com")
     admin_session.commit()
 
     r = client.get(f"/api/soldiers/{target.id}", headers=auth_headers(viewer))

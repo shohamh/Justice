@@ -7,19 +7,20 @@ import { AdminInviteCodesContent } from "../AdminInviteCodesPage";
 import { BugReportsContent } from "./BugReportsContent";
 import AuditLogContent from "./AuditLogContent";
 import HrSyncReviewContent from "./HrSyncReviewContent";
+import IdentityConflictsContent from "./IdentityConflictsContent";
 import ExchangeCalendarSyncContent from "./ExchangeCalendarSyncContent";
 import { ErrorsContent } from "./ErrorsContent";
 import { getAdminBugReportUnreadCount, getAdminErrorUnreadCount } from "../../api/bugReports";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-export const ADMIN_SETTINGS_TAB_ORDER = ["settings", "invite-codes", "changelog", "bug-reports", "errors", "audit-log", "hr-sync", "exchange-calendar-sync"] as const;
+export const ADMIN_SETTINGS_TAB_ORDER = ["settings", "invite-codes", "changelog", "bug-reports", "errors", "audit-log", "hr-sync", "identity-conflicts", "exchange-calendar-sync"] as const;
 
 export default function AdminSettingsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = Number(searchParams.get("tab") ?? "0");
-  const activeTab = raw >= 0 && raw <= 7 ? raw : 0;
+  const activeTab = raw >= 0 && raw < ADMIN_SETTINGS_TAB_ORDER.length ? raw : 0;
   const setTab = (i: number) => setSearchParams({ tab: String(i) }, { replace: true });
   const queryClient = useQueryClient();
   const errorUnread = useQuery({ queryKey: ["admin-errors-unread"], queryFn: getAdminErrorUnreadCount, enabled: activeTab >= 0 });
@@ -38,12 +39,13 @@ export default function AdminSettingsPage() {
     t("nav.admin_errors", { defaultValue: "\u05e9\u05d2\u05d9\u05d0\u05d5\u05ea" }),
     t("nav.admin_audit_log"),
     t("nav.admin_hr_sync"),
+    t("nav.admin_identity_conflicts"),
     "סנכרון Exchange",
   ];
 
   return (
     <Layout>
-      <TabBar tabs={tabs} active={activeTab} onChange={setTab} badges={[null, null, null, bugUnread.data ?? null, errorUnread.data ?? null, null, null, null]} />
+      <TabBar tabs={tabs} active={activeTab} onChange={setTab} badges={[null, null, null, bugUnread.data ?? null, errorUnread.data ?? null, null, null, null, null]} />
       {activeTab === 0 && <SystemSettingsContent />}
       {activeTab === 1 && <AdminInviteCodesContent />}
       {activeTab === 2 && <ChangelogContent />}
@@ -51,7 +53,8 @@ export default function AdminSettingsPage() {
       {activeTab === 4 && <ErrorsContent />}
       {activeTab === 5 && <AuditLogContent />}
       {activeTab === 6 && <HrSyncReviewContent />}
-      {activeTab === 7 && <ExchangeCalendarSyncContent />}
+      {activeTab === 7 && <IdentityConflictsContent />}
+      {activeTab === 8 && <ExchangeCalendarSyncContent />}
     </Layout>
   );
 }

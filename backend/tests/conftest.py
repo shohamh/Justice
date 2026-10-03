@@ -422,6 +422,13 @@ _AREA_MARKERS: dict[str, str] = {
     "test_hr_rank_conflict_model": "soldiers",
     "test_update_soldier_profile_rank_provenance": "soldiers",
     "test_rank_advancement_worker": "soldiers",
+    "test_identity": "soldiers",
+    "test_identity_write": "soldiers",
+    "test_identity_email_write_paths": "soldiers",
+    "test_identity_hr_import_paths": "soldiers",
+    "test_identity_resolution": "auth",
+    "test_identity_conflicts_routes": "auth",
+    "test_migration_soldier_identity": "soldiers",
     "test_concurrency_field_update_lock_order": "soldiers",
     # misc: health check, audit log, settings loader, HR integration client
     "test_health": "misc",

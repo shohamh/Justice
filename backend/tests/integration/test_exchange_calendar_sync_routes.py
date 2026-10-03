@@ -17,6 +17,7 @@ from app.db.models import (
     ExchangeCalendarWorkerState,
 )
 from tests.helpers import (
+    set_soldier_email,
     auth_headers,
     create_node,
     create_range_assignment,
@@ -215,7 +216,7 @@ def test_events_derive_current_missing_optional_attendee_without_sharing_event_n
     )
     event.notes = "private operational note"
     invited = create_soldier(admin_session, personal_number="exchange-invited")
-    invited.email = "invited@example.test"
+    set_soldier_email(invited, "invited@example.test")
     optional = create_soldier(
         admin_session, personal_number="exchange-optional", full_name="Optional attendee",
     )

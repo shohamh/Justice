@@ -111,6 +111,20 @@ class Settings(StorageSettings):
     hr_api_ca_bundle_path: str = Field(default="", alias="HR_API_CA_BUNDLE_PATH")
     hr_api_page_size: int = Field(default=200, alias="HR_API_PAGE_SIZE")
 
+    # Optional single sign-on (OIDC). All empty = disabled. Invalid values also
+    # disable it (see app.services.oidc.load_oidc_config); no provider is
+    # selected by default and no secret has a default.
+    oidc_issuer: str = Field(default="", alias="OIDC_ISSUER")
+    oidc_client_id: str = Field(default="", alias="OIDC_CLIENT_ID")
+    oidc_client_secret: SecretStr = Field(default=SecretStr(""), alias="OIDC_CLIENT_SECRET")
+    oidc_redirect_uri: str = Field(default="", alias="OIDC_REDIRECT_URI")
+    oidc_transaction_ttl_seconds: int = Field(default=300, alias="OIDC_TRANSACTION_TTL_SECONDS")
+    oidc_registration_ttl_seconds: int = Field(default=900, alias="OIDC_REGISTRATION_TTL_SECONDS")
+    # Permit http:// for loopback issuer/redirect URIs (local development and
+    # the mock provider only; never needed in a deployment).
+    oidc_allow_insecure_local: bool = Field(default=False, alias="OIDC_ALLOW_INSECURE_LOCAL")
+    oidc_rate_limit: str = Field(default="20/minute", alias="OIDC_RATE_LIMIT")
+
     exchange_calendar_enabled: bool = Field(default=False, alias="EXCHANGE_CALENDAR_ENABLED")
     exchange_ews_url: str = Field(default="", alias="EXCHANGE_EWS_URL")
     exchange_mailbox: str = Field(default="", alias="EXCHANGE_MAILBOX")

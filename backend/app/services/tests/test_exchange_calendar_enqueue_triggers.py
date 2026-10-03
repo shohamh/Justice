@@ -29,6 +29,7 @@ from app.services.exchange_calendar.triggers import (
     enqueue_source_change,
     israel_today,
 )
+from app.services.identity import canonical_identity
 from app.services.shifts import create_shift, delete_shift, update_shift
 
 TODAY = israel_today()
@@ -61,7 +62,8 @@ def _soldier(session: Session, *, email="soldier@example.com", node=None):
         personal_number=str(uuid4()),
         full_name=f"Soldier {uuid4()}",
         password_hash="unused",
-        email=email,
+        email=canonical_identity(email)[0],
+        ad_username=canonical_identity(email)[1],
         hierarchy_node_id=node,
     )
     session.add(person)

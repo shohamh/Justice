@@ -10,9 +10,22 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import ExemptionRequest, HierarchyNode, NotificationType, Soldier, SoldierEnrollmentRequest
+from app.db.models import (
+    ExemptionRequest,
+    HierarchyNode,
+    NotificationType,
+    OidcIdentity,
+    Soldier,
+    SoldierEnrollmentRequest,
+)
 from app.db.session import get_session
 from app.services import enrollment as svc
+from app.routes.identity_errors import identity_http_exception
+from app.services.identity_write import (
+    assign_soldier_email,
+    check_personal_number_available,
+    flush_with_identity_guard,
+)
 from app.services.eligibility import derive_is_career, validate_rank_track_compatibility
 from app.services.notifications import create_notification
 from app.services.rank_advancement import compute_initial_next_rank_date, resolve_track
@@ -338,11 +351,23 @@ def patch_enrollment(
     if body.full_name is not None:
         _apply("full_name", body.full_name)
     if body.personal_number is not None:
-        _apply("personal_number", body.personal_number)
+        new_personal_number = body.personal_number.strip()
+        if not new_personal_number:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="personal_number_invalid")
+        if new_personal_number != s.personal_number:
+            try:
+                check_personal_number_available(session, new_personal_number, exclude_soldier_id=s.id)
+            except ValueError as exc:
+                raise identity_http_exception(exc) from exc
+        _apply("personal_number", new_personal_number)
     if body.phone is not None:
         _apply("phone", body.phone or None)
     if body.email is not None:
-        _apply("email", body.email or None)
+        try:
+            if assign_soldier_email(session, s, body.email or None):
+                changed_fields.append("email")
+        except ValueError as exc:  # unsupported address or IdentityCollisionError
+            raise identity_http_exception(exc) from exc
     if body.rank is not None:
         _apply("rank", body.rank or None)
     if body.rank_track is not None:
@@ -410,6 +435,11 @@ def patch_enrollment(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="node_not_found")
         authorize(session, user, Action.ENROLLMENT_APPROVE, target_node=new_node)
         req.requested_node_id = body.requested_node_id
+    try:
+        flush_with_identity_guard(session)
+    except ValueError as exc:  # a concurrent writer took the email / personal number
+        session.rollback()
+        raise identity_http_exception(exc) from exc
     session.commit()
     exemptions = session.execute(
         select(ExemptionRequest).where(ExemptionRequest.enrollment_request_id == req.id)
@@ -422,6 +452,20 @@ def patch_enrollment(
         nearest_commander=nearest_commander, nearest_duty_manager=nearest_duty_manager,
         rank_scope=rank_scope,
     )
+
+
+def _require_mador_for_sso_signup(
+    session: Session, *, user: Soldier, req: SoldierEnrollmentRequest, target_node: HierarchyNode | None,
+) -> None:
+    """Soldiers who self-registered through SSO skip the invite code, so their
+    approval needs a commander at "מדור" level or above (or an admin)."""
+    linked = session.execute(
+        select(OidcIdentity.id).where(OidcIdentity.soldier_id == req.soldier_id)
+    ).first()
+    if linked is not None and not rank_advancement_edit_authorized(
+        session, user=user, target_node=target_node,
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="sso_approval_requires_mador")
 
 
 @router.post("/{request_id}/approve")
@@ -438,6 +482,7 @@ def approve(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     target_node = session.get(HierarchyNode, req.requested_node_id)
     authorize(session, user, Action.ENROLLMENT_APPROVE, target_node=target_node)
+    _require_mador_for_sso_signup(session, user=user, req=req, target_node=target_node)
     try:
         svc.approve_enrollment(
             session, request_id=request_id, decider_id=user.id, decision_note=body.decision_note

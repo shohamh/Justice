@@ -126,6 +126,24 @@ class _LokiHandler(logging.Handler):
                 pass
 
 
+class OidcQueryRedactionFilter(logging.Filter):
+    """Drop the query string of OIDC endpoints from uvicorn access-log lines.
+
+    The callback URL carries the one-time authorization code and the state;
+    neither may be written to stdout or Loki.
+    """
+
+    _PATH_PREFIX = "/api/auth/oidc/"
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            path, sep, _query = args[2].partition("?")
+            if sep and path.startswith(self._PATH_PREFIX):
+                record.args = (*args[:2], f"{path}?[redacted]", *args[3:])
+        return True
+
+
 def _log_uncaught_exception(exc_type, exc_value, exc_tb) -> None:
     logging.getLogger("uncaught").critical(
         "UNCAUGHT EXCEPTION", exc_info=(exc_type, exc_value, exc_tb)
@@ -189,6 +207,7 @@ def setup_logging() -> None:
         uv_logger = logging.getLogger(name)
         uv_logger.handlers = []
         uv_logger.propagate = True
+    logging.getLogger("uvicorn.access").addFilter(OidcQueryRedactionFilter())
 
     sys.excepthook = _log_uncaught_exception
 
