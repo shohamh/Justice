@@ -101,14 +101,16 @@ async function fillRegistration(page: Page, personalNumber: string, name: string
   }
   const rank = page.locator("label", { hasText: "דרגה" }).first().getByRole("combobox");
   await rank.scrollIntoViewIfNeeded();
-  // The rank ladder loads asynchronously and the dropdown is fixed-position (it can fall outside
-  // the viewport), so retry until the option exists and pick it by keyboard.
+  // The rank ladder loads asynchronously and the dropdown is fixed-position: centre the field
+  // so the list is on screen, then pick the option and require that the "required" hint went away
+  // (the typed text alone is not a selection).
+  await rank.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await expect(async () => {
-    await rank.fill("סמל");
-    await expect(page.getByRole("option").first()).toBeAttached({ timeout: 3000 });
-    await rank.press("ArrowDown");
-    await rank.press("Enter");
-    await expect(rank).toHaveValue("סמל", { timeout: 2000 });
+    await rank.fill("");
+    await rank.click();
+    await page.getByRole("listbox").getByRole("button", { name: "סמל", exact: true }).first().click({ timeout: 3000 });
+    await expect(rank).toHaveValue("סמל", { timeout: 1000 });
+    await expect(page.locator("label", { hasText: "דרגה" }).first().getByText("שדה חובה")).toHaveCount(0, { timeout: 1000 });
   }).toPass({ timeout: 60_000 });
   const password = page.locator("label", { hasText: "סיסמה" }).first().locator("input").first();
   await password.fill(REGISTERED_PASSWORD);

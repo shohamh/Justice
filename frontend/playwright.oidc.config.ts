@@ -9,7 +9,7 @@ export default defineConfig({
   timeout: 120_000, // the first Keycloak login after a cold start can take a minute on a small machine
   fullyParallel: false,
   workers: 1,
-  retries: 1, // a cold or memory-starved Keycloak occasionally stalls one sign-in; a retry is reported by Playwright as "flaky"
+  retries: 0,
   expect: { timeout: 20_000 }, // admin pages load slowly on a memory-starved machine
   reporter: [["list"]],
   use: {
