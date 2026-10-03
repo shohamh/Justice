@@ -580,8 +580,8 @@ sleeps were used and no migration was added. Base: `d0e0d97b`.
 | M4 | `test_concurrency_shift_assign_batch.py::test_batch_for_a_shift_deleted_mid_request_returns_404` | A shift deleted between `_load` and the locked re-select raised `NoResultFound` (500). | `scalar_one_or_none()`, then 404 `not_found` (`5917f33e`; test `84005650`). | — |
 | Auto-mark rollback | `test_concurrency_range_attendance.py::test_auto_mark_releases_locks_after_a_validation_error` | After a `RangeValidationError`, the skipped row's soldier lock was still held while the sweep handled the next row (`NOWAIT` probe: `held`). | `session.rollback()` before `continue` (`cab27990`; test `7e0442b1`). | — |
 | `dismiss_reserve` newly linked primary | `test_concurrency_dismissals.py::test_reserve_dismissal_with_a_primary_linked_mid_request_does_not_deadlock` (3 sessions) | B relinked P2 to R and committed after A's primary-lock statement. C locked P2 (`dismiss_primary`). A took the projection rows and then locked P2 inside `relink_reserve`. C wanted the projection: `DeadlockDetected`. | `dismiss_reserve` locks R's linked primaries on both paths (cover and no-cover), relinks or reallocates (`reallocate_orphaned_primaries` processes primaries in id order), and refreshes the projection last (`95389a87`; test `c0fa79b6`). | reserve → linked primaries ascending → newly linked primaries (inside `relink_reserve`) → link rows → projection. Every primary lock now comes before the projection. |
-| `refresh_projection_for_change` interleave | `test_concurrency_score_projection.py::test_overlapping_multi_soldier_refreshes_do_not_deadlock` | A refresh of {S1,S2} held the quarter total and wanted bucket(S2). A refresh of {S2} held bucket(S2) and wanted the quarter total: `DeadlockDetected`. | All dirty buckets (soldier id as text, then quarter), then all soldier totals, then all quarter totals are locked before the first rebuild (`23a5b2b7`; test `a33ccd57`). | buckets → soldier totals → quarter totals, each in a global order. |
-| J2 | `test_concurrency_algorithm_proposals.py::test_accepting_a_stale_draft_cannot_double_book_the_soldier`, `…::test_bulk_accept_skips_a_stale_draft_that_would_double_book` | Schedule: a manual `create_assignment` committed after the solver's snapshot, then the runner persisted its draft for the same soldier and days (`persist_results` does not re-check). Accept, both single and bulk, published the draft, leaving **2** overlapping published duties. | The single-item accept routes (job-scoped and direct) lock the soldier, re-check against published duties and override cover (`assignments.publish_would_double_book`), and return 409 `overlap`. Bulk accept locks the drafts' soldiers in id order and leaves conflicting drafts as `algorithm_draft`; the `accepted` count excludes them (`a5a30a08`; test `2560195d`). | soldiers ascending (NO KEY UPDATE) → draft rows → projection. Authorization still runs first. |
+| `refresh_projection_for_change` interleave | `test_concurrency_score_projection.py::test_overlapping_multi_soldier_refreshes_do_not_deadlock` | A refresh of {S1,S2} held the quarter total and wanted bucket(S2). A refresh of {S2} held bucket(S2) and wanted the quarter total: `DeadlockDetected`. | All dirty buckets (soldier id as text, then quarter) are locked before the first rebuild (`23a5b2b7`; test `a33ccd57`). The partition/totals order was then corrected in review round 1 (`2155d428`, see the next table). | buckets → partition rows → soldier totals → quarter totals (after round 1). |
+| J2 | `test_concurrency_algorithm_proposals.py::test_accepting_a_stale_draft_cannot_double_book_the_soldier`, `…::test_bulk_accept_skips_a_stale_draft_that_would_double_book` | Schedule: a manual `create_assignment` committed after the solver's snapshot, then the runner persisted its draft for the same soldier and days (`persist_results` does not re-check). Accept, both single and bulk, published the draft, leaving **2** overlapping published duties. | The single-item accept routes (job-scoped and direct) lock the soldier, re-check against published duties and override cover (`assignments.publish_would_double_book`), and return 409 `overlap`. Bulk accept locks the drafts' soldiers in id order and leaves conflicting drafts as `algorithm_draft` (`a5a30a08`; test `2560195d`). Since review round 1 it also returns their ids in an additive `skipped` list (`157dd127`). | soldiers ascending (NO KEY UPDATE) → draft rows → projection. Authorization still runs first. |
 
 **Residuals after Task 6.** Found by code reading. None of these was
 reproduced.
@@ -592,25 +592,34 @@ reproduced.
   duty that includes d. The nominal soldier of an overridden day is still
   counted busy, which is unchanged behaviour. Both are product questions.
 - **J2 scope.** `persist_results` still inserts drafts without an overlap
-  check. The re-check happens only at accept. Bulk accept skips conflicting
-  drafts silently: the response only lowers `accepted`, and the drafts stay
-  as drafts.
-- **Dismiss-and-cover route** (`routes/reserves.py`, the endpoint that runs
-  `dismiss_primary`, `call_up_reserve`, `relink_reserve` and
-  `reallocate_orphaned_primaries`). It takes primary → projection → reserve
-  (`call_up_reserve`'s UPDATE). That is the reverse of `dismiss_reserve`'s
-  reserve → primaries, so it is a deadlock candidate.
-- **Other projection writers were not reordered.** These still take their
-  own orders: `refresh_projections_for_assignments_bulk` (per quarter:
-  buckets, soldier totals, then the quarter total), the repair and
-  reconciliation paths, and the `scoring.py` repair loops. Only
-  `refresh_projection_for_change` uses the global order.
+  check. The re-check happens only at accept. Bulk accept returns the
+  skipped draft ids in `skipped`. **Frontend follow-up:** the UI
+  (`frontend/src/api/algorithm.ts` `bulkAcceptProposals`,
+  `AlgorithmProposalTable.tsx`) reads only `accepted`. It should tell the
+  manager which drafts were left unpublished.
+- **Projection writers outside the shared order.** `refresh_projection_for_change`
+  and `refresh_projections_for_assignments_bulk` now share one order (see the
+  round-1 table). The repair and reconciliation paths were not reordered:
+  `_repair_projection_keys`, `score_projection_reconciliation`, and the
+  `scoring.py` repair loops. They call `rebuild_projection_bucket` per key,
+  so they take partition rows(S1) → soldier total(S1) → partition rows(S2)
+  interleaved. They can still cycle with a multi-soldier refresh. Not
+  reproduced.
 - **M2.** If a reparse changes the workbook identity between the unlocked
   read and the lock, the fallback reads again *under* the lock. That is rare,
   and it is the old behaviour.
 - **I1.** The pre-lock covers the duty-side writers that lock an assignment
   row and then the projection. Other inversions with `cancel_assignment` /
   `replace_assignment` were not re-examined.
+
+**Review round 1 (Task 6).** Each item was reproduced first, the same way
+as above.
+
+| Item | Test | Observed before the fix | Fix (commit; test commit) | Lock order after the fix |
+|---|---|---|---|---|
+| Projection refresh vs bulk writer (introduced by `23a5b2b7`) | `test_concurrency_score_projection.py::test_refresh_and_bulk_refresh_of_one_soldier_do_not_deadlock` | The refresh took soldier and quarter totals before deleting a bucket's partition rows. `refresh_projections_for_assignments_bulk` (bulk accept, job publish) deletes partition rows first and then takes the totals. A one-soldier refresh racing a bulk refresh of that soldier hit `DeadlockDetected`. | Shared `lock_partition_rows` (existing partition rows `FOR UPDATE`, ordered by quarter, soldier, row id). The refresh now does: buckets, partition rows, rebuild every bucket (quarter-major, no totals), soldier totals ascending, quarter totals ascending. The bulk writer locks partition rows, rebuilds every quarter (inserts in soldier order), then soldier totals ascending (locked, then upserted once), then quarter totals ascending. Before, it upserted soldier totals inside the per-quarter loop, after the previous quarter's total (`2155d428`; test `65a279fa`). | (refresh only: dirty buckets) → partition rows → soldier totals → quarter totals. The {S1,S2} vs {S2} test still passes. |
+| Dismiss-and-cover route vs `dismiss_reserve` | `test_concurrency_dismissals.py::test_dismiss_and_cover_route_and_reserve_dismissal_do_not_deadlock` | The route locked P (`dismiss_primary`), refreshed the projection, and then UPDATEd the covering reserve R2 (`call_up_reserve`). `dismiss_reserve(R2)` held R2 and wanted P, R2's linked primary: `DeadlockDetected`. Task 6 widened this: `dismiss_reserve` now locks linked primaries on the no-cover path too. | `reserves.lock_reserve_and_linked_primaries`: reserve, then its linked primaries plus `extra_primary_ids` ascending. The route calls it with the covering reserve and the dismissed primary before any write. `dismiss_reserve` uses the same helper (`2262aeca`; test `79331dd1`). | covering reserve → linked primaries + dismissed primary (ascending) → projection → reserve UPDATE (already held) |
+| Bulk accept skipped drafts | `test_concurrency_algorithm_proposals.py::test_bulk_accept_publishes_clean_drafts_and_reports_the_skipped_one`, J2 bulk test, `test_algorithm_routes.py` bulk-accept route test | Skipped drafts were invisible to the caller. | The response is now `{"accepted": n, "skipped": [draft ids]}` (additive) (`157dd127`). | — |
 
 **Verification (Task 6).** See §8.4.
 
@@ -748,14 +757,15 @@ critical/high defect.
 | I1: `mark_attendance` vs the assignment-row lockers | **Resolved in Task 6**: reproduced (`DeadlockDetected`), fixed (`ce29640b`; §4.4). | | | | |
 | C13 advisory unlock failure | **Resolved in Task 6** (`5fe10518`; §4.4). | | | | |
 | `dismiss_reserve` snapshot window | **Resolved in Task 6**: reproduced with 3 sessions (`DeadlockDetected`), fixed (`95389a87`; §4.4). | | | | |
-| `refresh_projection_for_change` interleave | **Resolved in Task 6**: reproduced (`DeadlockDetected`), fixed (`23a5b2b7`; §4.4). Other projection writers keep their own order (residual). | | | | |
+| `refresh_projection_for_change` interleave | **Resolved in Task 6**: reproduced (`DeadlockDetected`), fixed (`23a5b2b7`). Its order then conflicted with the bulk writer: reproduced and fixed in round 1 (`2155d428`; §4.4). | | | | |
+| Projection repair/reconciliation writers | `_repair_projection_keys`, `score_projection_reconciliation` and the `scoring.py` repair loops rebuild per key: partition rows(S1) → soldier total(S1) → partition rows(S2). That interleaving can cycle with a multi-soldier refresh. | Code reading, NOT reproduced | One 500 or one failed worker pass; retried | Backend | Worker/read-repair paths; not demonstrated |
 | C14 | **Resolved in Task 6** after the product decision (`9276dde8`, `eb0feed7`; §4.4). Residual: nominal `create_assignment` ignores overrides. | | | | |
 | Uncovered writer: single shift-assignment create | Takes only the soldier lock and does not check capacity, so the C3 shift lock does not constrain it. | Code reading | Manager sees over-capacity and removes one | Backend | `assign_batch` was the reproduced path; single create has no capacity rule today. |
 | Uncovered writer: algorithm publish | Accept now re-checks against published duties and override cover (J2, `a5a30a08`). `persist_results` and capacity are still unchecked. | Code reading | Manager rejects or replaces the assignment | Backend | Re-validation at accept closes the double booking; capacity is a product choice. |
 | Uncovered writers: range roster writers without the date lock | Reserve excusal and removal paths outside the per-date advisory lock. | Code reading | Manager corrects the roster | Backend | Not demonstrated; the main capacity paths (R1, R3, R5) are serialized. |
 | Uncovered writers: import `reparse_session` / `mark_done` / `set_selections` | A reparse can race a confirm or cancel. | Code reading; the lock was added only to confirm and cancel | Re-run or cancel the import | Backend | Not reproduced; the destructive path (confirm) is serialized. |
 | `take_free` rollback on conflict; one pool connection per running job | See the §4.3 table. | | | Backend | Matches project convention; pool headroom is sufficient. |
-| Dismiss-and-cover route lock order (Task 6 finding) | `routes/reserves.py` dismiss-and-cover takes primary → projection → reserve (`call_up_reserve` UPDATE), the reverse of `dismiss_reserve`'s reserve → primaries | Code reading, NOT reproduced | One 500; the retry succeeds | Backend | Not demonstrated; needs a reserve dismissal and a cover of one of its primaries at once |
+| Dismiss-and-cover route lock order (Task 6 finding; widened by Task 6 locking primaries on the no-cover path) | **Resolved in Task 6 round 1**: reproduced (`DeadlockDetected`), fixed (`2262aeca`; §4.4). | | | | |
 | Test hygiene minors | C11 test final-state assertions relaxed; the D2 follow-up test relies on 10 s timeouts; `pause_after_select` is a fragile park point; earlier-task commit trailers say "Claude Opus 5.5". | Ledger | n/a | Test owner | No production behavior impact. |
 
 ### 7.1 Final cross-workflow lock-order table
@@ -766,8 +776,8 @@ each row.
 | Workflow | Order |
 |---|---|
 | Duty side | swap request, then covering soldier (`set_day_override`, NO KEY UPDATE; C14), then assignment, then projection |
-| Projection (`refresh_projection_for_change`) | every dirty bucket (soldier id as text, then quarter), then every soldier total (soldier id as text), then every quarter total (ascending), before any rebuild (Task 6). Other projection writers (bulk publish, repair, reconciliation) keep their own per-quarter order. |
-| `dismiss_reserve` | reserve, then linked primaries ascending id, then any newly linked primary (inside `relink_reserve`), then link rows (primary id order), then projection (refreshed last; Task 6) |
+| Projection (`refresh_projection_for_change` and `refresh_projections_for_assignments_bulk`) | (refresh only: every dirty bucket, soldier id then quarter), then partition rows (quarter, soldier, row id; `lock_partition_rows`), then soldier totals ascending, then quarter totals ascending. Repair/reconciliation paths still rebuild per key (see §7). |
+| `dismiss_reserve` | reserve, then linked primaries ascending id (`lock_reserve_and_linked_primaries`, both paths), then any newly linked primary (inside `relink_reserve`), then link rows (primary id order), then projection (refreshed last; Task 6) |
 | Shift batch | shift row (`NO KEY UPDATE`), then soldiers ascending id (`FOR UPDATE`) |
 | Algorithm accept (J2) | soldiers ascending id (`NO KEY UPDATE`), then draft rows, then projection |
 | Soldier field update | soldier, then field update |
@@ -777,7 +787,7 @@ each row.
 | Range attendance | soldier, then range assignment, then the soldier's published duty assignments ascending id, then projection (I1 fixed) |
 | Email verification | soldier, then token, then email advisory lock (M1 fixed); `PATCH /me/email`: soldier, then tokens |
 | Import confirm | no lock during the object-storage read and parse; then the import-session row, then the applied rows (M2) |
-| Dismiss-and-cover route | primary, then projection, then reserve (open candidate, see §7) |
+| Dismiss-and-cover route | covering reserve, then its linked primaries plus the dismissed primary ascending id, then projection (round 1) |
 | No-wait | job-runner lock (session advisory), qualification-expiry try-lock, email outbox `SKIP LOCKED` |
 
 ## 8. Final verification and remaining untested boundaries
@@ -828,8 +838,8 @@ Run on branch `feature/database-transaction-concurrency-audit` with
 
 | Check | Result |
 |---|---|
-| Reproductions | Each of the 16 new tests failed on the unmodified code with `--runxfail`, before its fix. Deadlocks surfaced as `DeadlockDetected`; the other failures were assertion failures (§4.4). |
-| Concurrency suite `pytest tests/integration/test_concurrency_*.py` (25 files) | **61 passed**, 0 xfailed |
+| Reproductions | Each of the 16 new tests, plus the 2 round-1 deadlock tests, failed on the code before its fix with `--runxfail`. Deadlocks surfaced as `DeadlockDetected`; the other failures were assertion failures (§4.4). |
+| Concurrency suite `pytest tests/integration/test_concurrency_*.py` (25 files) | **61 passed** (Task 6); **64 passed** after round 1, 0 xfailed |
 | Focused suites | After each fix: assignments/swaps/eligibility (223), ranges/attendance/excusal/partial commits (118), email verification, import sessions/export (60), algorithm jobs/notifications/proposals/routes, shifts routes, reserves/no-show/dismissals (59), `-m scoring` (57); all passed. The relevant `app/services/tests` files (algorithm bridge, assignments, eligibility watch, eligibility, import sessions/approvals, range auto-mark, rank eligibility projection, score projection ×5) ran against a temporary Redis container (`REDIS_URL=redis://localhost:6391/0`, since removed): **281 passed**. |
 | Fast suite `pytest -p no:cacheprovider` | **2195 passed, 3 skipped, 2 failed** (404 s). The failures are the two baseline failures (`test_breakdown_contributions_reconstruct_scores`, `test_block_ids_are_unique`); there are no new failures. |
 | Alembic | No migration file touched; `alembic heads` = `4858092e72e7` (single head) |
