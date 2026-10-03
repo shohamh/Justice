@@ -646,6 +646,7 @@ def test_bulk_accept_proposals_sets_published(client, admin_session):
     )
     assert resp.status_code == 200
     assert resp.json()["accepted"] == 2
+    assert resp.json()["skipped"] == []
 
     admin_session.expire(draft1)
     admin_session.refresh(draft1)

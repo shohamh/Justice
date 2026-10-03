@@ -111,10 +111,38 @@ def _notify_destination_approvers(session: Session, req: HierarchyTransferReques
         )
 
 
+def lock_request_for_decision(session: Session, request_id: uuid.UUID) -> HierarchyTransferRequest | None:
+    """Lock a transfer request for an approve/reject decision.
+
+    Lock order is soldier row first, then the request row (both FOR UPDATE),
+    the same order create_request uses when it re-targets a pending request.
+    The request is re-read once the lock is held (populate_existing), so a
+    decision always sees a concurrently committed approve/reject/re-target
+    and the status check below cannot pass on a stale read. Routes call this
+    before authorizing, so the destination node they authorize against is
+    the one that will be applied.
+    """
+    req = session.get(HierarchyTransferRequest, request_id)
+    if req is None:
+        return None
+    session.execute(
+        select(Soldier)
+        .where(Soldier.id == req.soldier_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return session.execute(
+        select(HierarchyTransferRequest)
+        .where(HierarchyTransferRequest.id == request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def approve_request(
     session: Session, *, request_id: uuid.UUID, actor_id: uuid.UUID,
 ) -> HierarchyTransferRequest:
-    req = session.get(HierarchyTransferRequest, request_id)
+    req = lock_request_for_decision(session, request_id)
     if req is None:
         raise HierarchyTransferError("request_not_found")
     if req.status != "pending":
@@ -149,7 +177,7 @@ def approve_request(
 def reject_request(
     session: Session, *, request_id: uuid.UUID, actor_id: uuid.UUID, decision_note: str | None = None,
 ) -> HierarchyTransferRequest:
-    req = session.get(HierarchyTransferRequest, request_id)
+    req = lock_request_for_decision(session, request_id)
     if req is None:
         raise HierarchyTransferError("request_not_found")
     if req.status != "pending":

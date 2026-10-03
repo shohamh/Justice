@@ -166,17 +166,22 @@ def _fail_orphaned_algorithm_jobs() -> None:
     algorithm_bridge._watch_job_timeout) live only in the process that started
     the job. If that process dies mid-solve (crash, reload, restart), the DB
     row is orphaned at status="running" forever — nothing in the new process
-    knows about it. Since we just started, any "running" row predates us and
-    cannot be ours, so it's safe to fail it unconditionally on boot.
+    knows about it. Every web worker process runs this hook at startup, so a
+    "running" row may still belong to a live sibling process: the runner holds
+    a per-job advisory lock for its whole run (see
+    algorithm_bridge.job_has_live_runner), and only rows whose lock is free
+    are orphans.
     """
     import json
     from datetime import UTC, datetime
 
     from app.db.models import AlgorithmJob
     from app.db.session import session_scope
+    from app.services.algorithm_bridge import job_has_live_runner
 
     with session_scope() as session:
-        orphaned = session.query(AlgorithmJob).filter(AlgorithmJob.status == "running").all()
+        running = session.query(AlgorithmJob).filter(AlgorithmJob.status == "running").all()
+        orphaned = [job for job in running if not job_has_live_runner(session, job.id)]
         for job in orphaned:
             job.status = "failed"
             job.error_message = json.dumps({"status": "INTERRUPTED", "reason": "server_restarted"})

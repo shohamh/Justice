@@ -15,6 +15,32 @@ class EnrollmentError(Exception):
     pass
 
 
+def lock_request(session: Session, request_id: uuid.UUID) -> SoldierEnrollmentRequest | None:
+    """Fetch an enrollment request with SELECT ... FOR UPDATE (fresh read).
+
+    approve_enrollment and reject_enrollment take this lock before their
+    ``status == 'pending'`` check, so two decisions on one request serialize
+    and the later one sees the committed outcome (already_decided) instead of
+    overwriting it. Routes call it before authorizing, so the requested node
+    they authorize is the one the decision applies.
+
+    Lock order on approve: this explicit enrollment-request lock first; the
+    soldier row is only locked implicitly afterwards, by try_activate's UPDATE
+    of ``soldiers.hierarchy_node_id`` at flush (try_activate takes no explicit
+    lock). The exemption-request decisions also call try_activate, but without
+    this lock: they read the enrollment request unlocked and only write it
+    when it is still ``commander_approved``, a state approve_enrollment no
+    longer leaves behind (it activates in the same transaction), so on current
+    data that call is a no-op.
+    """
+    return session.execute(
+        select(SoldierEnrollmentRequest)
+        .where(SoldierEnrollmentRequest.id == request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def try_activate(
     session: Session,
     enrollment_request_id: uuid.UUID,
@@ -55,7 +81,7 @@ def approve_enrollment(
     decider_id: uuid.UUID,
     decision_note: str | None,
 ) -> SoldierEnrollmentRequest:
-    req = session.get(SoldierEnrollmentRequest, request_id)
+    req = lock_request(session, request_id)
     if req is None:
         raise EnrollmentError("enrollment_request_not_found")
     if req.status != "pending":
@@ -79,7 +105,7 @@ def reject_enrollment(
     decider_id: uuid.UUID,
     decision_note: str,
 ) -> SoldierEnrollmentRequest:
-    req = session.get(SoldierEnrollmentRequest, request_id)
+    req = lock_request(session, request_id)
     if req is None:
         raise EnrollmentError("enrollment_request_not_found")
     if req.status != "pending":

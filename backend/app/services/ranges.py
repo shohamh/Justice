@@ -635,8 +635,14 @@ def assign_batch(
     from app.services.notifications import notify_personal_constraint_overridden
 
     # Deferred: range_reconciliation imports this module at module scope.
-    from app.services.range_reconciliation import reconcile_future_range_assignments
+    from app.services.range_reconciliation import (
+        lock_reconciliation_target_dates,
+        reconcile_future_range_assignments,
+    )
 
+    # Lock order: this event's date, then every later date the batch's
+    # reconciliation may touch, ascending across all soldiers (C11).
+    lock_reconciliation_target_dates(session, soldier_ids=batch_soldier_ids, source_event=event)
     for row, _constraint in rows_with_constraints:
         reconciliation = reconcile_future_range_assignments(
             session, soldier_id=row.soldier_id, source_event=event,
@@ -852,10 +858,50 @@ def _resync_profile_date_on_reversal(
         setattr(soldier, field, latest)
 
 
+def lock_assignment_for_attendance(session: Session, assignment_id: uuid.UUID) -> RangeAssignment | None:
+    """Lock the soldier, then the range assignment, and return a fresh row.
+
+    mark_attendance decides from the assignment's current attendance_status,
+    and its writes (qualification rows, no-show penalty, soldier profile date)
+    depend on that decision, so it must not act on a row another request or
+    worker process changed after it was loaded. Lock order: soldier, then
+    assignment — the order the flush already takes them (soldier profile
+    UPDATE before the assignment UPDATE)."""
+    soldier_id = session.execute(
+        select(RangeAssignment.soldier_id).where(RangeAssignment.id == assignment_id)
+    ).scalar_one_or_none()
+    if soldier_id is None:
+        return None
+    session.execute(select(Soldier.id).where(Soldier.id == soldier_id).with_for_update(key_share=True))
+    return session.execute(
+        select(RangeAssignment)
+        .where(RangeAssignment.id == assignment_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def mark_attendance(
     session: Session, *, assignment: RangeAssignment, status: RangeAttendanceStatus,
     marked_by: uuid.UUID | None = None, note: str | None = None,
 ) -> RangeAssignment:
+    assignment = lock_assignment_for_attendance(session, assignment.id)
+    if assignment is None:
+        raise RangeValidationError("assignment_not_found")
+    # I1: recheck_assignments (below) UPDATEs the soldier's published duty
+    # assignments after the projection refresh. Duty-side writers
+    # (dismiss_primary, dismiss_reserve, mark_no_show, set_day_override) lock a
+    # duty row and then the projection, so lock those rows here, in id order,
+    # before any projection lock: soldier -> range assignment -> duty
+    # assignments -> projection.
+    from app.db.models import DutyAssignment as _DutyAssignment
+
+    session.execute(
+        select(_DutyAssignment.id)
+        .where(_DutyAssignment.soldier_id == assignment.soldier_id, _DutyAssignment.status == "published")
+        .order_by(_DutyAssignment.id)
+        .with_for_update(key_share=True)
+    ).all()
     if assignment.is_draft:
         raise RangeValidationError("assignment_not_confirmed")
     event = session.get(RangeEvent, assignment.range_event_id)
@@ -959,7 +1005,6 @@ def mark_attendance(
     assignment.marked_at = datetime.now(UTC)
     assignment.note = note
 
-    from app.db.models import DutyAssignment as _DutyAssignment
     from app.services.duty_eligibility_watch import recheck_assignments
 
     affected_ids = session.execute(
@@ -969,7 +1014,7 @@ def mark_attendance(
         )
     ).scalars().all()
     if affected_ids:
-        recheck_assignments(session, affected_ids)
+        recheck_assignments(session, affected_ids, commit=False)  # committed with the mark below
 
     write_audit(
         session, actor_id=marked_by, action="range_attendance_marked", entity_type="range_assignment",

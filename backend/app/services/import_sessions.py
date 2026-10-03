@@ -1666,29 +1666,63 @@ def _init_rank_advancement_from_row(session: Session, soldier: Soldier, row: dic
         soldier.next_rank_date_overridden = False
 
 
+def _lock_import_session(session: Session, session_id: uuid.UUID) -> ImportSession | None:
+    """Load an import session with SELECT ... FOR UPDATE (fresh from the DB).
+
+    confirm_session and cancel_session both check ``status == 'draft'`` and
+    then move the session out of draft. Holding the row lock from that check
+    until commit means a second confirm, or a cancel, waits for the first
+    decision and then sees its committed status instead of applying the
+    import a second time (or after a successful cancel).
+    """
+    return session.get(
+        ImportSession, session_id, with_for_update=True, populate_existing=True,
+    )
+
+
 def confirm_session(
     session: Session, *, session_id: uuid.UUID, actor: Soldier, storage: ObjectStorage | None = None
 ) -> dict:
-    import_session = session.get(ImportSession, session_id)
-    if import_session is None:
-        raise ImportSessionError("session_not_found")
-    if import_session.status != "draft":
-        raise ImportSessionError("only_draft_sessions_can_be_confirmed")
-
-    selections = import_session.user_selections or {}
-    state = import_session.parsed_state
-
     # `password_hash` is deliberately never stored on `parsed_state` (it is
     # persisted verbatim and also handed back to the browser as-is by
     # GET /import/sessions/{id} and the upload response) — it's re-extracted
     # here straight from the original workbook bytes, by source row, and used
     # only in-memory below. Never log or otherwise surface this mapping's
     # values.
-    password_hash_by_row: dict[int, str | None] = {}
-    if state.get("soldiers"):
-        content = read_import_workbook(session, import_session, storage)
-        _, parsed = _parse_workbook(content, state["parser_id"], bounded=storage is not None)
-        password_hash_by_row = {r.source_row: r.password_hash for r in parsed.soldiers}
+    #
+    # M2: the object-storage read and the parse happen *before* the row lock
+    # (spec: no row locks across object storage). The lock is then taken and
+    # the draft status re-checked; if the workbook or parser changed in
+    # between (reparse), the read is repeated under the lock.
+    def _workbook_identity(s: ImportSession) -> tuple:
+        state = s.parsed_state or {}
+        return (s.storage_key, s.storage_sha256, state.get("parser_id"), bool(state.get("soldiers")))
+
+    def _read_password_hashes(s: ImportSession) -> dict[int, str | None]:
+        if not (s.parsed_state or {}).get("soldiers"):
+            return {}
+        content = read_import_workbook(session, s, storage)
+        _, parsed = _parse_workbook(content, s.parsed_state["parser_id"], bounded=storage is not None)
+        return {r.source_row: r.password_hash for r in parsed.soldiers}
+
+    unlocked = session.get(ImportSession, session_id)
+    if unlocked is None:
+        raise ImportSessionError("session_not_found")
+    if unlocked.status != "draft":
+        raise ImportSessionError("only_draft_sessions_can_be_confirmed")
+    read_identity = _workbook_identity(unlocked)
+    password_hash_by_row = _read_password_hashes(unlocked)
+
+    import_session = _lock_import_session(session, session_id)
+    if import_session is None:
+        raise ImportSessionError("session_not_found")
+    if import_session.status != "draft":
+        raise ImportSessionError("only_draft_sessions_can_be_confirmed")
+    if _workbook_identity(import_session) != read_identity:
+        password_hash_by_row = _read_password_hashes(import_session)
+
+    selections = import_session.user_selections or {}
+    state = import_session.parsed_state
 
     created = 0
     updated = 0
@@ -2974,7 +3008,7 @@ def confirm_session(
 def cancel_session(
     session: Session, *, session_id: uuid.UUID, actor: Soldier
 ) -> ImportSession:
-    import_session = session.get(ImportSession, session_id)
+    import_session = _lock_import_session(session, session_id)
     if import_session is None:
         raise ImportSessionError("session_not_found")
     if import_session.status != "draft":

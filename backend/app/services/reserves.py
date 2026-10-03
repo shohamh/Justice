@@ -20,6 +20,42 @@ class ReserveError(Exception):
     """Raised on invalid reserve operations."""
 
 
+def _lock_assignment(session: Session, assignment: DutyAssignment) -> None:
+    """Serialize check-then-insert writers of one assignment's child rows
+    (dismissals, reserve links) so the check and the insert cannot interleave.
+    FOR NO KEY UPDATE does not conflict with the KEY SHARE lock that child-row
+    inserts take."""
+    session.execute(
+        select(DutyAssignment.id).where(DutyAssignment.id == assignment.id).with_for_update(key_share=True)
+    )
+
+
+def lock_reserve_and_linked_primaries(
+    session: Session,
+    reserve: DutyAssignment,
+    *,
+    extra_primary_ids: tuple[uuid.UUID, ...] | list[uuid.UUID] = (),
+) -> None:
+    """Lock a reserve, then its linked primaries (plus ``extra_primary_ids``)
+    in ascending id order, all ``FOR NO KEY UPDATE``.
+
+    Lock order for every reserve-side workflow: reserve -> primaries
+    (ascending id) -> projection. dismiss_reserve and the dismiss-and-cover
+    route both start with this; primary-side writers (dismiss_primary,
+    mark_no_show, set_day_override, relink_reserve) lock a primary and then
+    the projection, which is consistent with it."""
+    _lock_assignment(session, reserve)
+    linked = select(DutyReserveLink.primary_assignment_id).where(
+        DutyReserveLink.reserve_assignment_id == reserve.id
+    )
+    condition = DutyAssignment.id.in_(linked)
+    if extra_primary_ids:
+        condition = condition | DutyAssignment.id.in_(list(extra_primary_ids))
+    session.execute(
+        select(DutyAssignment.id).where(condition).order_by(DutyAssignment.id).with_for_update(key_share=True)
+    ).all()
+
+
 def call_up_reserve(
     session: Session,
     *,
@@ -85,6 +121,7 @@ def dismiss_primary(
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
+    _lock_assignment(session, assignment)
     existing = (
         session.execute(
             select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)
@@ -222,6 +259,14 @@ def dismiss_reserve(
         raise ReserveError("date_out_of_range")
     if to_date < from_date:
         raise ReserveError("bad_date_range")
+    # Lock order: reserve -> linked primaries (ascending id) -> projection.
+    # dismiss_primary / mark_no_show / set_day_override lock a primary first
+    # and the projection after, so every primary lock here must come before
+    # the projection refresh. A primary linked to this reserve by a
+    # transaction that commits after this statement is not in this set;
+    # relink_reserve locks it below, which is why the projection refresh runs
+    # only after the relinks/reallocation.
+    lock_reserve_and_linked_primaries(session, assignment)
     existing = (
         session.execute(
             select(DutyDismissal).where(DutyDismissal.duty_assignment_id == assignment.id)
@@ -262,16 +307,12 @@ def dismiss_reserve(
         reference_type="duty_assignment", reference_id=assignment.id,
         actor_id=actor_id,
     )
-    if assignment.status == "published":
-        from app.services.score_projection import refresh_projection_for_assignment_change
-
-        refresh_projection_for_assignment_change(session, assignment=assignment)
     if covering_reserve_id is not None:
         link_rows = (
             session.execute(
                 select(DutyReserveLink).where(
                     DutyReserveLink.reserve_assignment_id == assignment.id
-                )
+                ).order_by(DutyReserveLink.primary_assignment_id)
             )
             .scalars()
             .all()
@@ -304,6 +345,10 @@ def dismiss_reserve(
             called_up_to=to_date,
             actor_id=actor_id,
         )
+    if assignment.status == "published":
+        from app.services.score_projection import refresh_projection_for_assignment_change
+
+        refresh_projection_for_assignment_change(session, assignment=assignment)
     enqueue_assignment_change(session, assignment, reason="dismissal")
     return dismissal, reallocations
 
@@ -437,10 +482,13 @@ def relink_reserve(
     if not reserve_a.is_reserve:
         raise ReserveError("not_a_reserve")
 
+    # One link per primary: lock the primary so a concurrent relink replaces
+    # the committed link instead of both inserting (uq_reserve_links_primary).
+    _lock_assignment(session, primary_assignment)
     existing = session.execute(
         select(DutyReserveLink).where(
             DutyReserveLink.primary_assignment_id == primary_assignment.id
-        )
+        ).execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if existing:
         session.delete(existing)
@@ -514,9 +562,12 @@ def reallocate_orphaned_primaries(
     )
 
     # Filter to primaries overlapping the call-up range
-    affected = [
-        p for p in primaries if p.start_date <= called_up_to and p.end_date > called_up_from
-    ]
+    # Id order, so concurrent reallocations replace overlapping links in one
+    # global order.
+    affected = sorted(
+        (p for p in primaries if p.start_date <= called_up_to and p.end_date > called_up_from),
+        key=lambda p: p.id,
+    )
     if not affected:
         return []
 

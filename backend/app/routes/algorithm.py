@@ -833,8 +833,17 @@ def cancel_job(
     user: Soldier = Depends(require_password_changed),
 ) -> None:
     from datetime import datetime, timezone
-    job = _load_job(session, job_id)
+    _load_job(session, job_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+    # Re-read under a row lock: the runner may commit 'done' (drafts and the
+    # done notification included) after the read above, and an unlocked check
+    # would then overwrite the finished job with a cancel.
+    job = session.execute(
+        select(AlgorithmJob)
+        .where(AlgorithmJob.id == job_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
     if job.status not in ("pending", "running"):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_cancellable")
     job.status = "failed"
@@ -990,6 +999,41 @@ def get_explanation_direct(
     return _explanation_response(session, a, user)
 
 
+def _transition_draft(session: Session, a: DutyAssignment, new_status: str) -> None:
+    """Move one draft proposal to ``new_status`` with a conditional UPDATE.
+
+    Same guard the bulk routes use: ``WHERE status = 'algorithm_draft'`` is
+    re-evaluated under the row lock, so of two concurrent decisions on one
+    draft (accept vs reject, or a single-item route vs a bulk route) only the
+    first wins and the other gets 409 ``not_draft`` instead of overwriting it.
+    """
+    claimed = session.execute(
+        update(DutyAssignment)
+        .where(DutyAssignment.id == a.id, DutyAssignment.status == "algorithm_draft")
+        .values(status=new_status)
+        .returning(DutyAssignment.id)
+        .execution_options(synchronize_session=False)
+    ).first()
+    if claimed is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
+    session.refresh(a)
+
+
+def _publish_draft(session: Session, a: DutyAssignment) -> None:
+    """Publish one draft after re-checking it against the live schedule (J2).
+
+    The solver works from a snapshot taken when the job started; a manual
+    assignment or day override committed since can make the draft a double
+    booking. Lock the soldier (the lock create_assignment and
+    set_day_override serialize on), re-check, then claim the draft."""
+    from app.services.assignments import lock_soldiers_for_publish, publish_would_double_book
+
+    lock_soldiers_for_publish(session, [a.soldier_id])
+    if a.status == "algorithm_draft" and publish_would_double_book(session, a):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="overlap")
+    _transition_draft(session, a, "published")
+
+
 @router.post("/jobs/{job_id}/proposals/{assignment_id}/accept", status_code=status.HTTP_200_OK)
 def accept_proposal(
     job_id: uuid.UUID,
@@ -1000,9 +1044,7 @@ def accept_proposal(
     _load_job(session, job_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    if a.status != "algorithm_draft":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
-    a.status = "published"
+    _publish_draft(session, a)
     enqueue_assignment_change(session, a, reason="assignment_accepted")
     write_audit(
         session,
@@ -1015,7 +1057,7 @@ def accept_proposal(
         context={"job_id": str(job_id)},
     )
     session.flush()
-    recheck_assignments(session, [a.id])
+    recheck_assignments(session, [a.id], commit=False)  # the route commits once, below
     refresh_projection_for_assignment_change(session, assignment=a)
     _maybe_publish_job(session, job_id)
     session.commit()
@@ -1032,15 +1074,35 @@ def bulk_accept_proposals(
     body: BulkAcceptRequest,
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
-) -> dict[str, int]:
+) -> dict[str, Any]:
+    """Publish the given drafts. ``accepted`` counts the published drafts;
+    ``skipped`` lists the ids of drafts left unpublished because they would
+    double-book their soldier against the live schedule (J2)."""
     _load_job(session, job_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
+
+    # J2: re-check each draft against the live schedule (the solver's
+    # snapshot can be older than a manual edit). Lock the drafts' soldiers in
+    # id order, then leave any draft that would double-book its soldier as a
+    # draft instead of publishing it.
+    from app.services.assignments import lock_soldiers_for_publish, publish_would_double_book
+
+    drafts = session.execute(
+        select(DutyAssignment).where(
+            DutyAssignment.id.in_(body.assignment_ids),
+            DutyAssignment.status == "algorithm_draft",
+        )
+    ).scalars().all()
+    lock_soldiers_for_publish(session, [d.soldier_id for d in drafts])
+    skipped_ids = [d.id for d in drafts if publish_would_double_book(session, d)]
+    skipped = set(skipped_ids)
+    publishable_ids = [d.id for d in drafts if d.id not in skipped]
 
     # Bulk UPDATE — one statement regardless of count
     result = session.execute(
         update(DutyAssignment)
         .where(
-            DutyAssignment.id.in_(body.assignment_ids),
+            DutyAssignment.id.in_(publishable_ids),
             DutyAssignment.status == "algorithm_draft",
         )
         .values(status="published")
@@ -1064,7 +1126,7 @@ def bulk_accept_proposals(
                 for aid in accepted_ids
             ])
         )
-        recheck_assignments(session, accepted_ids)
+        recheck_assignments(session, accepted_ids, commit=False)  # the route commits once, below
         accepted_assignments = session.execute(
             select(DutyAssignment).where(DutyAssignment.id.in_(accepted_ids))
         ).scalars().all()
@@ -1078,7 +1140,7 @@ def bulk_accept_proposals(
 
     _maybe_publish_job(session, job_id)
     session.commit()
-    return {"accepted": len(accepted_ids)}
+    return {"accepted": len(accepted_ids), "skipped": [str(i) for i in skipped_ids]}
 
 
 @router.post("/jobs/{job_id}/proposals/bulk-reject", status_code=status.HTTP_200_OK)
@@ -1133,9 +1195,7 @@ def reject_proposal(
     _load_job(session, job_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    if a.status != "algorithm_draft":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
-    a.status = "algorithm_rejected"
+    _transition_draft(session, a, "algorithm_rejected")
     write_audit(
         session,
         actor_id=user.id,
@@ -1160,9 +1220,7 @@ def accept_proposal_direct(
     job_id = _job_id_for_assignment(session, assignment_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    if a.status != "algorithm_draft":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
-    a.status = "published"
+    _publish_draft(session, a)
     enqueue_assignment_change(session, a, reason="assignment_accepted")
     write_audit(
         session,
@@ -1190,9 +1248,7 @@ def reject_proposal_direct(
     job_id = _job_id_for_assignment(session, assignment_id)
     a = _load_assignment(session, assignment_id)
     authorize(session, user, Action.ALGORITHM_RUN, target_node=None)
-    if a.status != "algorithm_draft":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_draft")
-    a.status = "algorithm_rejected"
+    _transition_draft(session, a, "algorithm_rejected")
     write_audit(
         session,
         actor_id=user.id,

@@ -34,6 +34,10 @@ def mark_no_show(
         raise NoShowError("assignment_not_found")
     if assignment.end_date >= date.today():
         raise NoShowError("duty_not_yet_finished")
+    # Serialize markings of one assignment so a concurrent second mark sees
+    # the first and gets already_marked instead of a unique violation (500).
+    from app.services.assignments import lock_assignment_row
+    lock_assignment_row(session, duty_assignment_id)
     existing = session.execute(
         select(DutyNoShow).where(DutyNoShow.duty_assignment_id == duty_assignment_id)
     ).scalar_one_or_none()
