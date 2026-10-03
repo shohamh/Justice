@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -288,3 +289,81 @@ def test_admin_constraint_badge_counts_pending_rows_except_own_with_sql_count(
         "soldier_id" in sql and ("!=" in sql or "<>" in sql)
         for sql in constraint_queries
     )
+
+
+def test_admin_exemption_badge_counts_scoped_target_union_with_one_sql_aggregate(
+    client: TestClient,
+    admin_session: Session,
+):
+    suffix = _id()
+    admin = create_soldier(admin_session, personal_number=f"nav_ex_admin_{suffix}", role="admin")
+    root = create_node(admin_session, level="group", name=f"nav-ex-root-{suffix}")
+    child = create_node(admin_session, level="branch", name=f"nav-ex-child-{suffix}", parent=root)
+    outside = create_node(admin_session, level="branch", name=f"nav-ex-outside-{suffix}")
+    admin_session.add(DutyManagerScope(duty_manager_id=admin.id, hierarchy_node_id=root.id))
+    admin.hierarchy_node_id = child.id
+    enrolled = create_soldier(
+        admin_session, personal_number=f"nav_ex_enrolled_{suffix}", hierarchy_node_id=child.id
+    )
+    pending_target = create_soldier(
+        admin_session, personal_number=f"nav_ex_pending_{suffix}", hierarchy_node_id=outside.id
+    )
+    excluded = create_soldier(
+        admin_session, personal_number=f"nav_ex_excluded_{suffix}", hierarchy_node_id=outside.id
+    )
+    admin_session.add_all([
+        SoldierEnrollmentRequest(soldier_id=pending_target.id, requested_node_id=child.id, status="pending"),
+        SoldierEnrollmentRequest(soldier_id=pending_target.id, requested_node_id=root.id, status="pending"),
+        SoldierEnrollmentRequest(soldier_id=excluded.id, requested_node_id=child.id, status="approved"),
+    ])
+    exemption_type = ExemptionType(name=f"nav-ex-count-{suffix}", is_commander_exemption=False)
+    admin_session.add(exemption_type)
+    admin_session.flush()
+    for soldier, status in (
+        (enrolled, "pending_commander"),
+        (enrolled, "pending_duty_manager"),
+        (pending_target, "pending_commander"),
+        (admin, "pending_duty_manager"),
+        (excluded, "pending_commander"),
+        (enrolled, "pending"),
+        (pending_target, "approved"),
+    ):
+        admin_session.add(ExemptionRequest(
+            soldier_id=soldier.id,
+            exemption_type_id=exemption_type.id,
+            reason="admin count scope",
+            status=status,
+        ))
+    admin_session.commit()
+    legacy = client.get("/api/exemption-requests/pending/count", headers=auth_headers(admin))
+    assert legacy.status_code == 200, legacy.text
+
+    statements: list[str] = []
+    admin_session.refresh(admin)
+    bind = admin_session.get_bind()
+
+    def capture(_conn, _cursor, statement, *_):
+        statements.append(statement.lower())
+
+    event.listen(bind, "before_cursor_execute", capture)
+    try:
+        actual = nav_counts_service._count_exemptions(admin_session, admin)
+    finally:
+        event.remove(bind, "before_cursor_execute", capture)
+
+    assert actual == legacy.json()["count"] == 4
+    count_queries = [sql for sql in statements if "exemption_requests" in sql]
+    assert len(count_queries) == 1
+    assert "count(" in count_queries[0]
+    assert not any("select exemption_requests." in sql for sql in statements)
+    assert not any(sql.lstrip().startswith("select soldiers.") for sql in statements)
+    assert all(
+        sql.split("from", 1)[0].strip() == "select hierarchy_nodes.id"
+        for sql in statements if sql.lstrip().startswith("select hierarchy_nodes.")
+    )
+
+
+def test_admin_exemption_badge_without_scope_roots_is_zero(admin_session: Session):
+    admin = create_soldier(admin_session, personal_number=f"nav_ex_no_roots_{_id()}", role="admin")
+
+    assert nav_counts_service._count_exemptions(admin_session, admin) == 0

@@ -10,11 +10,12 @@ import logging
 import uuid
 from collections.abc import Callable
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, union
 from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, can, is_commander, is_duty_manager, scope_root_ids
 from app.db.models import (
+    ExemptionRequest,
     ForcedCallup,
     HierarchyLevelType,
     HierarchyNode,
@@ -146,6 +147,23 @@ def _count_exemptions(session: Session, user: Soldier) -> int:
     roots = scope_root_ids(session, user)
     if not roots:
         return 0
+    if user.role == "admin":
+        scoped_node_ids = select(HierarchyNode.id).where(
+            HierarchyNode.path_ids.overlap(list(roots))
+        )
+        target_ids = union(
+            select(Soldier.id).where(Soldier.hierarchy_node_id.in_(scoped_node_ids)),
+            select(SoldierEnrollmentRequest.soldier_id).where(
+                SoldierEnrollmentRequest.status == "pending",
+                SoldierEnrollmentRequest.requested_node_id.in_(scoped_node_ids),
+            ),
+        ).subquery()
+        return int(session.execute(
+            select(func.count()).select_from(ExemptionRequest).where(
+                ExemptionRequest.soldier_id.in_(select(target_ids.c.id)),
+                ExemptionRequest.status.in_(("pending_commander", "pending_duty_manager")),
+            )
+        ).scalar_one())
     can_see_enrollment_exemptions = _can_see_enrollment_exemptions(session, user)
     scoped_nodes = select(HierarchyNode.id).where(HierarchyNode.path_ids.overlap(list(roots))).subquery()
     enrolled_soldier_ids = set(session.execute(
