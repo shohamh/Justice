@@ -753,6 +753,36 @@ def _zero_totals() -> dict[str, Any]:
     }
 
 
+def lock_partition_rows(
+    session: Session, *, soldier_ids, quarter_starts,
+) -> None:
+    """FOR UPDATE on the existing partition rows of the given soldiers and
+    quarters, ordered by (quarter, soldier, row id).
+
+    Projection lock order shared by refresh_projection_for_change and
+    refresh_projections_for_assignments_bulk: (dirty buckets, refresh only)
+    -> partition rows -> soldier totals (ascending) -> quarter totals
+    (ascending). Partition rows are then deleted and re-inserted in the same
+    (quarter, soldier) order."""
+    soldier_ids = sorted(set(soldier_ids))
+    quarter_starts = sorted(set(quarter_starts))
+    if not soldier_ids or not quarter_starts:
+        return
+    session.execute(
+        select(SoldierQuarterScoreProjection.id)
+        .where(
+            SoldierQuarterScoreProjection.soldier_id.in_(soldier_ids),
+            SoldierQuarterScoreProjection.quarter_start.in_(quarter_starts),
+        )
+        .order_by(
+            SoldierQuarterScoreProjection.quarter_start,
+            SoldierQuarterScoreProjection.soldier_id,
+            SoldierQuarterScoreProjection.id,
+        )
+        .with_for_update()
+    ).all()
+
+
 def _lock_soldier_total(session: Session, *, soldier_id: uuid.UUID) -> SoldierScoreProjection:
     return _lock_or_create_row(
         session, SoldierScoreProjection, SoldierScoreProjection.soldier_id, soldier_id,
@@ -1338,6 +1368,7 @@ def rebuild_projection_bucket(
     quarter_start_value: date,
     *,
     refresh_quarter_total: bool = True,
+    refresh_soldier_total: bool = True,
 ) -> list[SoldierQuarterScoreProjection]:
     _get_or_create_state(session)
     bucket = project_soldier_bucket(session, soldier_id, quarter_start_value)
@@ -1345,7 +1376,8 @@ def rebuild_projection_bucket(
     rows = [_partition_row_model(row) for row in _bucket_partition_rows(bucket)]
     session.add_all(rows)
     session.flush()
-    _upsert_soldier_total(session, soldier_id=soldier_id)
+    if refresh_soldier_total:
+        _upsert_soldier_total(session, soldier_id=soldier_id)
     if refresh_quarter_total:
         _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
     return rows
@@ -1371,13 +1403,13 @@ def refresh_projection_for_change(
     if not soldier_id_set or not quarter_starts:
         return
 
-    # Lock order: every dirty bucket (soldier id as text, then quarter), then
-    # every soldier total (soldier id as text), then every quarter total, all
-    # before the first rebuild. Locking them interleaved per soldier (bucket
-    # S1, totals, quarter total, bucket S2, ...) deadlocked against a
-    # concurrent refresh of a subset of the soldiers: one held the quarter
-    # total and wanted bucket S2, the other held bucket S2 and wanted the
-    # quarter total. The rebuilds below re-lock the same rows (re-entrant).
+    # Lock order (shared with refresh_projections_for_assignments_bulk; see
+    # lock_partition_rows): every dirty bucket (soldier id, then quarter),
+    # then the partition rows (quarter, soldier, row id), then the soldier
+    # totals (ascending), then the quarter totals (ascending). Interleaving
+    # these per soldier deadlocked against a concurrent refresh of a subset of
+    # the soldiers, and taking the totals before the partition rows deadlocked
+    # against the bulk writer, which takes partition rows first.
     soldiers_in_order = sorted(soldier_id_set, key=str)
     quarters_in_order = sorted(quarter_starts)
     dirty_rows: dict[tuple[uuid.UUID, date], ScoreProjectionDirtyBucket] = {}
@@ -1390,22 +1422,27 @@ def refresh_projection_for_change(
                 old_node_ids=old_node_ids,
                 new_node_ids=new_node_ids,
             )
-    for soldier_id in soldiers_in_order:
-        _lock_soldier_total(session, soldier_id=soldier_id)
+    lock_partition_rows(session, soldier_ids=soldiers_in_order, quarter_starts=quarters_in_order)
     for quarter_start_value in quarters_in_order:
-        _lock_quarter_total(session, quarter_start_value=quarter_start_value)
-
+        for soldier_id in soldiers_in_order:
+            rebuild_projection_bucket(
+                session, soldier_id, quarter_start_value,
+                refresh_soldier_total=False, refresh_quarter_total=False,
+            )
     for soldier_id in soldiers_in_order:
-        for quarter_start_value in quarters_in_order:
-            dirty = dirty_rows[(soldier_id, quarter_start_value)]
-            rebuild_projection_bucket(session, soldier_id, quarter_start_value)
-            dirty.status = "current"
-            # A successful rebuild clears any recorded divergence; leaving it
-            # set would make every subsequent read re-repair this bucket.
-            dirty.divergence = None
-            dirty.refreshed_at = _utcnow()
-            dirty.updated_at = _utcnow()
-            session.flush()
+        _upsert_soldier_total(session, soldier_id=soldier_id)
+    for quarter_start_value in quarters_in_order:
+        _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
+
+    now = _utcnow()
+    for dirty in dirty_rows.values():
+        dirty.status = "current"
+        # A successful rebuild clears any recorded divergence; leaving it
+        # set would make every subsequent read re-repair this bucket.
+        dirty.divergence = None
+        dirty.refreshed_at = now
+        dirty.updated_at = now
+    session.flush()
 
 
 def _normalize_required_quarters(
@@ -1822,6 +1859,12 @@ def refresh_projections_for_assignments_bulk(
     if not affected_soldiers or not affected_quarters:
         return
 
+    # Same lock order as refresh_projection_for_change (see
+    # lock_partition_rows): partition rows, then soldier totals ascending,
+    # then quarter totals ascending. The soldier totals used to be upserted
+    # inside the per-quarter loop, i.e. after one quarter's total and before
+    # the next quarter's partition rows.
+    lock_partition_rows(session, soldier_ids=affected_soldiers, quarter_starts=affected_quarters)
     for quarter in sorted(affected_quarters):
         _rebuild_quarter_buckets_bulk(
             session,
@@ -1829,7 +1872,10 @@ def refresh_projections_for_assignments_bulk(
             soldier_ids=affected_soldiers,
             force_buckets=True,
         )
-        _bulk_upsert_soldier_totals(session, affected_soldiers)
+    for soldier_id in sorted(affected_soldiers):
+        _lock_soldier_total(session, soldier_id=soldier_id)
+    _bulk_upsert_soldier_totals(session, affected_soldiers)
+    for quarter in sorted(affected_quarters):
         _upsert_quarter_total(session, quarter_start_value=quarter)
 
 

@@ -29,7 +29,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import func, select
 
 from app.db.models import (
@@ -204,7 +203,6 @@ def test_overlapping_multi_soldier_refreshes_do_not_deadlock(race, admin_session
     assert all(o.ok for o in outcomes), f"outcomes={outcomes}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="refresh vs bulk projection writer deadlock")
 def test_refresh_and_bulk_refresh_of_one_soldier_do_not_deadlock(race, admin_session, monkeypatch):
     """Task 6 review — the Task 6 refresh order (buckets, soldier totals,
     quarter totals, then each bucket's partition rows inside the rebuild) is
