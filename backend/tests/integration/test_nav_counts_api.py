@@ -311,9 +311,13 @@ def test_admin_exemption_badge_counts_scoped_target_union_with_one_sql_aggregate
     excluded = create_soldier(
         admin_session, personal_number=f"nav_ex_excluded_{suffix}", hierarchy_node_id=outside.id
     )
+    linked_approved_enrollment = SoldierEnrollmentRequest(
+        soldier_id=pending_target.id, requested_node_id=outside.id, status="approved"
+    )
     admin_session.add_all([
         SoldierEnrollmentRequest(soldier_id=pending_target.id, requested_node_id=child.id, status="pending"),
         SoldierEnrollmentRequest(soldier_id=pending_target.id, requested_node_id=root.id, status="pending"),
+        linked_approved_enrollment,
         SoldierEnrollmentRequest(soldier_id=excluded.id, requested_node_id=child.id, status="approved"),
     ])
     exemption_type = ExemptionType(name=f"nav-ex-count-{suffix}", is_commander_exemption=False)
@@ -331,6 +335,8 @@ def test_admin_exemption_badge_counts_scoped_target_union_with_one_sql_aggregate
         admin_session.add(ExemptionRequest(
             soldier_id=soldier.id,
             exemption_type_id=exemption_type.id,
+            enrollment_request_id=linked_approved_enrollment.id
+            if soldier.id == pending_target.id and status == "pending_commander" else None,
             reason="admin count scope",
             status=status,
         ))
