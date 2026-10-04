@@ -647,7 +647,8 @@ def list_soldier_roster(
 
     roles = tuple(part.strip() for part in role_order.split(",")) if role_order else ()
     valid_roles = {"admin", "commander", "duty_manager", "soldier"}
-    if (role_order is not None and (len(roles) != 4 or set(roles) != valid_roles)) or (sort == "role" and not roles):
+    # An empty role_order means "not provided" (clients send "" when not sorting by role).
+    if (roles and (len(roles) != 4 or set(roles) != valid_roles)) or (sort == "role" and not roles):
         raise HTTPException(status_code=400, detail="invalid_role_order")
     normalized_search = search.strip().casefold()
     binding = _roster_cursor_binding(
