@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { EllipsisVertical } from "lucide-react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -105,7 +106,7 @@ function SoldierDragHandle({
       type="button"
       {...attributes}
       {...listeners}
-      className={`cursor-grab text-gray-400 hover:text-gray-600 active:cursor-grabbing ${isDragging ? "opacity-40" : ""}`}
+      className={`cursor-grab touch-none p-1 text-gray-400 hover:text-gray-600 active:cursor-grabbing ${isDragging ? "opacity-40" : ""}`}
       aria-label={soldier.full_name}
       title={soldier.full_name}
     >
@@ -148,6 +149,81 @@ function BranchTail({
         {failed ? labels.retry : busy ? labels.loading : labels.loadMore}
       </button>
     </li>
+  );
+}
+
+function NodeSoldiers({
+  nodeId,
+  scopeKey,
+  onOpenSoldier,
+  t,
+}: {
+  nodeId: string;
+  scopeKey: string;
+  onOpenSoldier: (soldierId: string) => void;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const queryClient = useQueryClient();
+  // Nested under the branch keys so the tree's existing resets also refresh these.
+  const queryKey = useMemo(() => [...queryKeys.hierarchyBranches(scopeKey), "soldiers", nodeId] as const, [scopeKey, nodeId]);
+  const soldiersQuery = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam, signal }) =>
+      listSoldierRosterPage({
+        cursor: pageParam,
+        node_id: nodeId,
+        direct_node_only: true,
+        active_only: true,
+        search: "",
+        sort: "full_name",
+        descending: false,
+        page_size: 50,
+        signal,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.next_cursor ?? undefined : undefined,
+    staleTime: Infinity,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const soldiers = useMemo(() => soldiersQuery.data?.pages.flatMap((page) => page.items) ?? [], [soldiersQuery.data]);
+  const loadMore = useCallback(() => {
+    if (soldiersQuery.isFetchNextPageError && isStaleSoldierRosterCursorError(soldiersQuery.error)) {
+      void queryClient.resetQueries({ queryKey, exact: true });
+    } else if (soldiersQuery.hasNextPage) {
+      void soldiersQuery.fetchNextPage();
+    } else if (soldiersQuery.isError) {
+      void soldiersQuery.refetch();
+    }
+  }, [queryClient, queryKey, soldiersQuery]);
+
+  return (
+    <>
+      {soldiersQuery.isPending && <li className="mr-4 py-1 text-sm text-gray-500" role="status">{t("team.roster_loading")}</li>}
+      {soldiersQuery.isError && soldiers.length === 0 && (
+        <li className="mr-4 py-1 text-sm text-red-600" role="alert">
+          {t("team.roster_load_failed")} <button type="button" className="underline" onClick={loadMore}>{t("team.roster_retry")}</button>
+        </li>
+      )}
+      {soldiers.map((soldier) => (
+        <li key={soldier.id} className="flex items-center gap-2 px-2 py-1 mr-4 rounded hover:bg-gray-50 dark:hover:bg-gray-700" data-testid={`tree-soldier-${soldier.personal_number}`}>
+          <SoldierDragHandle soldier={soldier} nodeId={nodeId} />
+          <button type="button" className="min-w-0 truncate text-right text-indigo-600 dark:text-indigo-300 hover:underline" onClick={() => onOpenSoldier(soldier.id)}>
+            {soldier.full_name}
+          </button>
+          <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">{t(`role.${soldier.role}`)}</span>
+        </li>
+      ))}
+      <BranchTail
+        hasMore={Boolean(soldiersQuery.hasNextPage)}
+        busy={soldiersQuery.isFetchingNextPage}
+        failed={soldiersQuery.isFetchNextPageError}
+        onLoadMore={loadMore}
+        labels={{ loading: t("team.roster_loading_more"), loadMore: t("team.roster_load_more"), retry: t("team.roster_retry") }}
+      />
+    </>
   );
 }
 
@@ -211,6 +287,7 @@ function TreeNodeBranch({
   onAssignCommander,
   onManageDutyManagers,
   onOpenPortfolio,
+  onOpenSoldier,
   onRename,
   onDelete,
   onSelect,
@@ -234,6 +311,7 @@ function TreeNodeBranch({
   onAssignCommander: (node: NodeDTO) => void;
   onManageDutyManagers: (nodeId: string) => void;
   onOpenPortfolio: (soldierId: string, soldierName: string) => void;
+  onOpenSoldier: (soldierId: string) => void;
   onRename: (node: NodeDTO) => void;
   onDelete: (nodeId: string) => void;
   onSelect: (node: NodeDTO) => void;
@@ -246,6 +324,7 @@ function TreeNodeBranch({
     data: { kind: "node-drop-target", nodeId: node.id },
   });
   const isExpanded = expanded.has(node.id);
+  const canExpand = node.has_children === true || node.has_soldiers === true;
   const queryKey = queryKeys.hierarchyBranch(scopeKey, node.id);
   const childrenQuery = useInfiniteQuery({
     queryKey,
@@ -296,6 +375,7 @@ function TreeNodeBranch({
       onAssignCommander={onAssignCommander}
       onManageDutyManagers={onManageDutyManagers}
       onOpenPortfolio={onOpenPortfolio}
+      onOpenSoldier={onOpenSoldier}
       onRename={onRename}
       onDelete={onDelete}
       onSelect={onSelect}
@@ -312,7 +392,7 @@ function TreeNodeBranch({
     >
       <div className="py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
         <div className="flex flex-wrap items-center gap-1 sm:gap-2">
-          {node.has_children === true ? (
+          {canExpand ? (
             <button
               type="button"
               className="w-6 h-7 shrink-0"
@@ -357,6 +437,7 @@ function TreeNodeBranch({
                 panelDir="rtl"
                 panelClassName="absolute top-full left-0 mt-1 z-30 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl min-w-52 flex flex-col py-1"
                 triggerTestId={`tree-actions-menu-${node.id}`}
+                icon={<EllipsisVertical aria-hidden="true" size={16} />}
               >
                 {(close) => (
                   <>
@@ -387,10 +468,10 @@ function TreeNodeBranch({
           </div>
         )}
       </div>
-      {isExpanded && node.has_children === true && (
+      {isExpanded && canExpand && (
         <ul id={`tree-children-${node.id}`} className="border-r-2 border-gray-100 mr-2" aria-label={node.name}>
-          {childrenQuery.isPending && children.length === 0 && <li className="mr-4 py-2 text-sm text-gray-500" role="status">{t("team.hierarchy_loading")}</li>}
-          {childrenQuery.isError && children.length === 0 && (
+          {node.has_children === true && childrenQuery.isPending && children.length === 0 && <li className="mr-4 py-2 text-sm text-gray-500" role="status">{t("team.hierarchy_loading")}</li>}
+          {node.has_children === true && childrenQuery.isError && children.length === 0 && (
             <li className="mr-4 py-2 text-sm text-red-600" role="alert">
               {t("team.hierarchy_load_failed")} <button type="button" className="underline" onClick={loadMore}>{t("team.hierarchy_retry")}</button>
             </li>
@@ -403,6 +484,9 @@ function TreeNodeBranch({
             onLoadMore={loadMore}
             labels={{ loading: t("team.hierarchy_loading"), loadMore: t("team.hierarchy_load_more"), retry: t("team.hierarchy_retry") }}
           />
+          {node.has_soldiers === true && (
+            <NodeSoldiers nodeId={node.id} scopeKey={scopeKey} onOpenSoldier={onOpenSoldier} t={t} />
+          )}
         </ul>
       )}
     </li>
@@ -420,7 +504,7 @@ function NodeDragHandle({ node }: { node: NodeDTO }) {
       type="button"
       {...attributes}
       {...listeners}
-      className={`shrink-0 cursor-grab text-gray-400 active:cursor-grabbing ${isDragging ? "opacity-40" : ""}`}
+      className={`shrink-0 cursor-grab touch-none p-1 text-gray-400 active:cursor-grabbing ${isDragging ? "opacity-40" : ""}`}
       aria-label={node.name}
       title={node.name}
     >
@@ -780,6 +864,7 @@ export default function LazyHierarchyTree({
               onAssignCommander={openCommander}
               onManageDutyManagers={openDutyManagers}
               onOpenPortfolio={onOpenPortfolio}
+              onOpenSoldier={(soldierId) => void openSoldierModal(soldierId, onChanged)}
               onRename={openRename}
               onDelete={openDelete}
               onSelect={selectTreeNode}

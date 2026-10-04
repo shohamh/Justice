@@ -12,6 +12,8 @@ interface Props {
   panelDir?: "rtl" | "ltr";
   /** Optional test id applied to the trigger button, for tests that need to open the panel directly. */
   triggerTestId?: string;
+  /** Replaces the default "▾" caret (e.g. a lucide icon for icon-only triggers). */
+  icon?: ReactNode;
   children: (close: () => void) => ReactNode;
 }
 
@@ -23,6 +25,7 @@ export default function PopoverDropdown({
   triggerClassName,
   panelDir,
   triggerTestId,
+  icon,
   children,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -62,7 +65,7 @@ export default function PopoverDropdown({
         {badgeCount > 0 && (
           <span className="bg-blue-600 text-white rounded-full text-[10px] px-1.5">{badgeCount}</span>
         )}
-        <span>▾</span>
+        {icon ?? <span>▾</span>}
       </button>
       {open && (
         <div

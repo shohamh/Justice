@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as hierarchyApi from "../api/hierarchy";
+import * as soldiersApi from "../api/soldiers";
 import LazyHierarchyTree from "./LazyHierarchyTree";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -37,10 +38,19 @@ beforeEach(() => {
     next_cursor: null,
     has_more: false,
   });
+  vi.mocked(soldiersApi.listSoldierRosterPage).mockResolvedValue({
+    items: [{
+      id: "s-1", personal_number: "1234567", full_name: "Inline Soldier", role: "soldier",
+      hierarchy_node_id: "leaf-1", left_at: null, telegram_linked: false, is_commander: false,
+      commander_node_name: null, hierarchy_path: [],
+    }],
+    next_cursor: null,
+    has_more: false,
+  });
 });
 
 describe("LazyHierarchyTree", () => {
-  it("does not offer expansion for a soldier-containing leaf and still opens its roster", async () => {
+  it("lets a soldier-containing leaf expand to list its soldiers inline and still opens its roster", async () => {
     const onSelectedNodeChange = vi.fn();
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -59,7 +69,11 @@ describe("LazyHierarchyTree", () => {
     );
 
     expect(await screen.findByText("Soldier Leaf")).toBeInTheDocument();
-    expect(screen.queryByTestId("tree-toggle-leaf-1")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("tree-toggle-leaf-1"));
+    expect(await screen.findByText("Inline Soldier")).toBeInTheDocument();
+    expect(soldiersApi.listSoldierRosterPage).toHaveBeenCalledWith(
+      expect.objectContaining({ node_id: "leaf-1", direct_node_only: true }),
+    );
 
     fireEvent.click(screen.getByTestId("tree-name-leaf-1"));
 
