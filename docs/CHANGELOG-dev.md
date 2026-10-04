@@ -8,6 +8,8 @@ by `release-dev-to-master`.
 
 ## Unreleased
 
+## 2026-10-04 (released, third cut)
+
 ### Native dev stack runs storage; roster 400; inline tree soldiers; i18n polish (`fix/dev-stack-roster-tree-i18n`, 2026-10-04)
 Docs: none
 - `dev.ps1` (native mode): generates `deploy/seaweedfs/secrets` + certs on first run via `scripts/dev-certs.ps1` (previously `docker compose` failed on the missing env files), regenerates a SeaweedFS cert that lacks the `localhost` SAN, and starts SeaweedFS + S3 proxy, `seaweedfs-init`, `file-authorization`, `file-gateway` through compose, staged with `--no-deps` (file-gateway `depends_on: backend` would otherwise start the Dockerized backend on :8000). Sets `COMPOSE_FILE` to include the new overlay and exports `STORAGE_*` (from `api.env`), `STORAGE_ENDPOINT_URL=https://localhost:19443`, `STORAGE_CA_BUNDLE_PATH` and `VITE_FILE_GATEWAY_URL=http://localhost:18080` for the native backend / Vite.

@@ -3,6 +3,9 @@
 ## 2026-10-04
 
 ### Features
+- The hierarchy tree now shows the soldiers inside each unit. Expand a unit to see its soldiers after its sub-units; you can open a soldier's profile or drag them to another unit, including on a phone.
+  Why: before, the tree only showed units, and soldiers were only visible in a separate list after selecting a unit.
+- On the transparency page, the fairness data now opens as a titled panel, "נתונים בחלוקה לקבוצות משרתים", instead of a plain link.
 - Added single sign-on (SSO) to the login page, alongside the existing personal-number-and-password login.
   Why: soldiers can use their organizational account, and password login stays available during the rollout.
 - People who sign in with SSO but have no account yet can register without an invite code; their verified email is prefilled and read-only, and they must be approved by a commander at mador level or above before getting access.
@@ -19,6 +22,11 @@
 - Official duty events can be published to the organization's Exchange calendar (an optional setup). Admins see sync status, and dismissed duties are removed from the calendar too.
 
 ### Fixes
+- Fixed the soldiers list on the team page (and under a selected unit) failing to load with "טעינת החיילים נכשלה".
+- Fixed the transparency "place in group" column showing "פטור" for everyone until the fairness panel was opened; it now shows "—" until the data is loaded.
+- Fixed untranslated texts: the team page, the home page sections, and the food-type help tooltip are now fully in Hebrew.
+- "HR" now appears as משא"ן in HR-sync notifications.
+- The dashboard reminder now reads "תאריך אל"ל אחרון לא מעודכן" (and likewise for ranges).
 - Fixed several cases where two people acting at the same moment could produce wrong results: double-booked soldiers, shifts or range events filled past capacity, a request approved or rejected twice, duplicate reminders or emails, lost updates to scores, and two admins' decisions overwriting each other. A shift deleted while being assigned now shows "not found" instead of an error.
 - A soldier covering for a reserve is now treated as busy on days they have a day override, so they can't be double-booked.
 - The app now retries when restoring your session after a temporary network error, instead of signing you out.
