@@ -75,6 +75,23 @@ def test_bounded_display_lookup_admin_without_roots_gets_requested_personal_numb
     assert too_many.status_code == 422
 
 
+def test_roster_treats_empty_role_order_as_unset_and_rejects_malformed(client: TestClient, admin_session: Session):
+    admin = create_soldier(admin_session, personal_number="4900120", full_name="Admin", role="admin")
+    admin_session.commit()
+    params = {"search": "", "sort": "full_name", "descending": "false", "page_size": 100, "active_only": "true"}
+
+    # The frontend sends role_order="" when not sorting by role; that must not be a 400.
+    response = client.get("/api/soldiers/roster", headers=auth_headers(admin), params={**params, "role_order": ""})
+    assert response.status_code == 200
+
+    malformed = client.get("/api/soldiers/roster", headers=auth_headers(admin), params={**params, "role_order": "admin,soldier"})
+    assert malformed.status_code == 400
+    assert malformed.json()["detail"] == "invalid_role_order"
+
+    role_sort_without_order = client.get("/api/soldiers/roster", headers=auth_headers(admin), params={**params, "sort": "role", "role_order": ""})
+    assert role_sort_without_order.status_code == 400
+
+
 def test_admin_onboards_without_password_gets_temp(client: TestClient, admin_session: Session):
     admin = create_soldier(admin_session, personal_number="4000001", role="admin")
     d = create_node(admin_session, level="department", name="d")
