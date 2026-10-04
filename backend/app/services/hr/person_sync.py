@@ -367,7 +367,7 @@ def _notify_admins_of_anomaly(session: Session, run: HrPersonSync) -> None:
     for admin in admins:
         create_notification(
             session, soldier_id=admin.id, type=NotificationType.hr_sync_anomaly_aborted,
-            title="סנכרון HR הופסק: התקבלו פחות משתמשים מהצפוי",
+            title="סנכרון משא\"ן הופסק: התקבלו פחות משתמשים מהצפוי",
             body=run.error_message,
         )
 

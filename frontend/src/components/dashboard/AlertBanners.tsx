@@ -25,7 +25,7 @@ function alertMessage(
   warnDays: number,
   label: string
 ): string | null {
-  if (!lastDateStr) return `תאריך ${label} לא מעודכן`;
+  if (!lastDateStr) return `תאריך ${label} אחרון לא מעודכן`;
   const expiry = new Date(lastDateStr);
   expiry.setDate(expiry.getDate() + validityDays);
   const today = new Date();

@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -693,7 +694,9 @@ export default function TransparencyPage() {
       ),
       cell: (r: NumberedRow) => {
         const g = r._group;
-        if (!g || g.compIndex === -1) return <span className="text-gray-400 text-xs">פטור</span>;
+        // No group info means the fairness panel hasn't loaded yet — not that the soldier is exempt.
+        if (!g) return <span className="text-gray-400 text-xs">—</span>;
+        if (g.compIndex === -1) return <span className="text-gray-400 text-xs">פטור</span>;
         if (g.groupSize < 2) return <span className="text-gray-400 text-xs">—</span>;
         const isTop = g.rank <= 3;
         const isBottom = g.rank >= g.groupSize - 2;
@@ -712,7 +715,8 @@ export default function TransparencyPage() {
       sortValue: (r: NumberedRow) => r._group?.rank ?? 9999,
       exportValue: (r: NumberedRow) => {
         const g = r._group;
-        if (!g || g.compIndex === -1) return "פטור";
+        if (!g) return "—";
+        if (g.compIndex === -1) return "פטור";
         if (g.groupSize < 2) return "—";
         return `${g.rank}/${g.groupSize}`;
       },
@@ -1128,17 +1132,19 @@ export default function TransparencyPage() {
         </div>
 
         {tab === 0 && (
-          <div>
+          <section className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50">
             <button
               type="button"
-              className="text-sm text-indigo-700 dark:text-indigo-300 underline"
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-right text-sm font-semibold text-gray-800 dark:text-gray-100"
               aria-expanded={fairnessOpen}
+              aria-controls="fairness-components-panel"
               onClick={() => setFairnessOpen((open) => !open)}
             >
-              {fairnessOpen ? "הסתר נתוני פיזור הוגנות" : "הצג נתוני פיזור הוגנות"}
+              <span>נתונים בחלוקה לקבוצות משרתים</span>
+              <ChevronDown size={18} aria-hidden="true" className={`shrink-0 transition-transform ${fairnessOpen ? "rotate-180" : ""}`} />
             </button>
             {fairnessOpen && (
-              <div className="mt-3">
+              <div id="fairness-components-panel" className="border-t border-gray-200 dark:border-gray-600 p-3">
                 <FairnessComponentsCard
                   activeGroupKeys={activeGroupKeys}
                   onGroupToggle={handleGroupToggle}
@@ -1151,7 +1157,7 @@ export default function TransparencyPage() {
                 />
               </div>
             )}
-          </div>
+          </section>
         )}
 
         {showDebug && tab === 0 && (

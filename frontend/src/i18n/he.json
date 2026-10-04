@@ -35,7 +35,15 @@
     "upcoming_scope_personal": "התורנויות האישיות הקרובות",
     "potential_scope_personal": "פוטנציאל אישי",
     "section_loading": "טעינת {{section}}...",
-    "section_error": "לא ניתן לטעון את {{section}}."
+    "section_error": "לא ניתן לטעון את {{section}}.",
+    "history_details": "היסטוריה ופירוט ניקוד",
+    "current_duties": "תורנויות נוכחיות",
+    "duty_types": "סוגי תורנות",
+    "locations": "מיקומים",
+    "score_breakdown": "פירוט ניקוד",
+    "settings": "הגדרות",
+    "swap_status": "סטטוס החלפות",
+    "upcoming_ranges": "מטווחים קרובים"
   },
   "common": {
     "yes": "כן",
@@ -417,6 +425,8 @@
     "create_new_soldier": "צור חייל חדש",
     "cancel": "בטל",
     "no_soldiers": "אין חיילים להצגה",
+    "select_node_from_tree": "בחר יחידה מהעץ",
+    "soldiers_in_node": "חיילים ב{{name}}",
     "roster_search_label": "חיפוש חיילים",
     "roster_search_placeholder": "חפש לפי שם, מספר אישי או יחידה...",
     "roster_loading": "טוען חיילים...",
@@ -965,7 +975,8 @@
     "food_kosher_le_mehadrin": "כשר למהדרין",
     "food_constraints": "אילוצי מזון",
     "food_constraints_help": "אלרגיות, רגישויות, העדפות תזונה או מגבלות אחרות שכדאי שנדע עליהן בעת הכנת מזון",
-    "food_constraints_placeholder": "לדוגמה: אלרגי לבוטנים"
+    "food_constraints_placeholder": "לדוגמה: אלרגי לבוטנים",
+    "food_constraints_tooltip": "בחרו את סוג המזון, ופרטו אלרגיות ומגבלות תזונה בשדה אילוצי המזון"
   },
   "eligibility": {
     "title": "דרישות כשירות",
@@ -1541,8 +1552,8 @@
     "type_mitvahim_expired": "תוקף מטווחים פג",
     "type_alal_expiring_soon": "תוקף אל\"ל יפוג בקרוב",
     "type_alal_expired": "תוקף אל\"ל פג",
-    "type_hr_sync_anomaly_aborted": "סנכרון HR הופסק",
-    "type_hr_rank_conflict": "עדכון דרגה עקב סנכרון HR"
+    "type_hr_sync_anomaly_aborted": "סנכרון משא\"ן הופסק",
+    "type_hr_rank_conflict": "עדכון דרגה עקב סנכרון משא\"ן"
   },
   "announcements": {
     "title": "הכרזות",

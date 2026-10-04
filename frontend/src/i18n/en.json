@@ -1,5 +1,7 @@
 {
   "team": {
+    "select_node_from_tree": "Select a unit from the tree",
+    "soldiers_in_node": "Soldiers in {{name}}",
     "roster_keyboard_hint": "Focus the list and use Page Up or Page Down to scroll; choose Load more to fetch additional results.",
     "hierarchy_search": "Find a unit",
     "hierarchy_search_placeholder": "Search units...",
