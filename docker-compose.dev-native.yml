@@ -1,0 +1,15 @@
+# Overlay used by dev.ps1 (native backend + frontend, Docker for everything else).
+# Publishes the storage services on loopback so the native backend can reach
+# SeaweedFS and the Vite proxy can reach the file gateway. High host ports are
+# used on purpose: Windows (WinNAT/Hyper-V) tends to reserve the 8xxx ranges.
+services:
+  seaweedfs:
+    ports:
+      - "127.0.0.1:19443:9443"   # TLS S3 proxy (nginx shares this netns)
+    networks:
+      - storage
+      - default                  # `storage` is internal; a published port needs a routable network
+
+  file-gateway:
+    ports:
+      - "127.0.0.1:18080:8080"

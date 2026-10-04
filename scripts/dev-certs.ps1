@@ -57,7 +57,8 @@ $san
     }
 }
 
-New-LocalCertificate "seaweedfs" @("seaweedfs") "serverAuth"
+# "localhost" lets the natively-run dev backend (dev.ps1) verify the published S3 proxy.
+New-LocalCertificate "seaweedfs" @("seaweedfs", "localhost") "serverAuth"
 New-LocalCertificate "gateway" @("gateway") "serverAuth,clientAuth"
 New-LocalCertificate "file-authorization" @("file-authorization") "serverAuth"
 New-LocalCertificate "proxy" @("proxy", "frontend") "serverAuth"

@@ -100,6 +100,10 @@ if (-not (Test-Path "$root\frontend\node_modules\.bin\vite")) {
     Pop-Location
 }
 
+# Native mode: every `docker compose` call below also loads the overlay that
+# publishes the storage services (S3 proxy, file gateway) on loopback.
+$env:COMPOSE_FILE = "$root\docker-compose.yml;$root\docker-compose.dev-native.yml"
+
 # ── Stop Docker app containers so their ports are free ────────────────────────
 Write-Host "[dev] Stopping Docker app containers (keeping DB)..." -ForegroundColor Yellow
 try { docker compose stop backend frontend telegram-bot exchange-calendar-worker *>$null } catch {}
@@ -147,6 +151,27 @@ foreach ($port in @(8000, 5173)) {
 }
 
 # ── Start only the DB ─────────────────────────────────────────────────────────
+# docker-compose.yml references gitignored env files (deploy/seaweedfs/secrets/*.env)
+# and compose validates them for every service, even with --no-deps. Generate them
+# once (idempotent) so the DB containers can start.
+$seaweedCertDir = Join-Path $root 'deploy\seaweedfs\certs\seaweedfs'
+$seaweedCert = Join-Path $seaweedCertDir 'public.crt'
+if (Test-Path $seaweedCert) {
+    # Certs generated before the native-dev overlay lack the "localhost" SAN the
+    # native backend needs to verify the published S3 proxy; regenerate that one.
+    $san = ([System.Security.Cryptography.X509Certificates.X509Certificate2]::new($seaweedCert).Extensions |
+        Where-Object { $_.Oid.Value -eq '2.5.29.17' } | ForEach-Object { $_.Format($false) }) -join ' '
+    if ($san -notmatch 'localhost') {
+        Write-Host "[dev] Regenerating SeaweedFS TLS cert (adding localhost SAN)..." -ForegroundColor Yellow
+        Remove-Item -Recurse -Force $seaweedCertDir
+        & (Join-Path $root 'scripts\dev-certs.ps1')
+    }
+}
+if (-not (Test-Path (Join-Path $root 'deploy\seaweedfs\secrets\initializer.env'))) {
+    Write-Host "[dev] Generating local storage certs/secrets (first run)..." -ForegroundColor Cyan
+    & (Join-Path $root 'scripts\dev-certs.ps1')
+    if ($LASTEXITCODE -ne 0) { Write-Error '[dev] Local storage certificate setup failed.'; exit 1 }
+}
 Write-Host "[dev] Starting DB + Redis + observability containers..." -ForegroundColor Cyan
 # Prometheus uses the native-backend target while dev.ps1 runs Uvicorn on the host.
 $previousPrometheusConfig = $env:PROMETHEUS_CONFIG
@@ -202,6 +227,15 @@ $env:DB_ADMIN_URL = $localAdminUrl
 $env:REDIS_URL = $localRedisUrl
 $env:LOKI_URL = "http://localhost:3100"
 $env:ENVIRONMENT = $envVars['ENVIRONMENT']
+# Storage: the native backend talks to the S3 proxy published by the overlay,
+# using the API identity from the generated secrets (same file the Docker backend uses).
+Get-Content (Join-Path $root 'deploy\seaweedfs\secrets\api.env') | Where-Object { $_ -match '^[A-Z_]+=.+$' } | ForEach-Object {
+    $parts = $_ -split '=', 2
+    Set-Item -Path "Env:$($parts[0])" -Value $parts[1]
+}
+$env:STORAGE_ENDPOINT_URL = 'https://localhost:19443'
+$env:STORAGE_CA_BUNDLE_PATH = Join-Path $root 'deploy\seaweedfs\certs\ca.crt'
+$env:VITE_FILE_GATEWAY_URL = 'http://localhost:18080'
 Push-Location "$root\backend"
 & $venvPy -m alembic upgrade head
 $migrationExitCode = $LASTEXITCODE
@@ -211,6 +245,18 @@ if ($migrationExitCode -ne 0) {
     exit 1
 }
 Write-Host "[dev] Migrations done." -ForegroundColor Green
+
+# ── Storage stack (Docker): SeaweedFS -> bucket init -> authz + file gateway ──
+# Staged with --no-deps because file-gateway `depends_on: backend`, which would
+# start the Dockerized backend and fight the native one for port 8000.
+Write-Host "[dev] Starting storage containers (SeaweedFS, S3 proxy)..." -ForegroundColor Cyan
+docker compose up -d --no-deps --wait seaweedfs seaweedfs-s3-proxy
+if ($LASTEXITCODE -ne 0) { Write-Error "[dev] SeaweedFS failed to start."; exit 1 }
+docker compose run --rm --no-deps --build seaweedfs-init
+if ($LASTEXITCODE -ne 0) { Write-Error "[dev] Storage bucket initialization failed."; exit 1 }
+docker compose up -d --no-deps --build file-authorization file-gateway
+if ($LASTEXITCODE -ne 0) { Write-Error "[dev] file-authorization/file-gateway failed to start."; exit 1 }
+Write-Host "[dev] Storage ready (S3 https://localhost:19443, file gateway http://localhost:18080)." -ForegroundColor Green
 
 # ── Build service list for concurrently ──────────────────────────────────────
 $names  = [System.Collections.Generic.List[string]]::new()
