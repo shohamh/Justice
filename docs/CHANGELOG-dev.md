@@ -8,6 +8,11 @@ by `release-dev-to-master`.
 
 ## Unreleased
 
+### Fix timezone flake in EntriesExitsPanel release-date test (2026-10-04)
+Docs: none
+- `EntriesExitsPanel.test.tsx` computed "today" with `toISOString()` (UTC) while the component uses the local day (`todayIso`), so the test failed between local midnight and the UTC offset (00:00-03:00 in Israel). It now uses local `getFullYear/getMonth/getDate`.
+- Type: fix
+
 ## 2026-10-04 (released)
 
 ### Split dev and user-facing changelogs (`chore/split-changelogs`, 2026-10-04)

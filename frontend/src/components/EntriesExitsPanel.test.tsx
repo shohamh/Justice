@@ -137,7 +137,12 @@ describe("EntriesExitsPanel - release flow", () => {
 
     fireEvent.click(screen.getByText("command_dashboard.release"));
 
-    const [todayY, todayM, todayD] = new Date().toISOString().slice(0, 10).split("-");
+    // Local calendar day, matching the component — toISOString() is UTC and
+    // differs from the local date between local midnight and the UTC offset.
+    const now = new Date();
+    const todayY = String(now.getFullYear());
+    const todayM = String(now.getMonth() + 1).padStart(2, "0");
+    const todayD = String(now.getDate()).padStart(2, "0");
     const dateInput = await screen.findByTestId("release-date-input");
     expect(dateInput).toHaveValue(`${todayD}/${todayM}/${todayY}`);
 
