@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./i18n";
 import App from "./App";
@@ -19,6 +19,14 @@ vi.mock("./pages/HakpazaPage", () => ({
 
 vi.mock("./pages/RangesPage", () => ({
   default: () => <div data-testid="ranges-page" />,
+}));
+
+vi.mock("./pages/ImportSessionReviewPage", () => ({
+  default: () => <div data-testid="import-session-review-page" />,
+}));
+
+vi.mock("./pages/admin/AdminSettingsPage", () => ({
+  default: () => <div data-testid="admin-settings-page" />,
 }));
 
 // HomePage pulls in a deep tree (Layout/UnifiedNav -> AlgorithmSeenContext,
@@ -69,9 +77,15 @@ function renderApp(path: string) {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
         <App />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>
   );
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="router-location">{`${location.pathname}${location.search}${location.hash}`}</output>;
 }
 
 describe("App - forced callup gating", () => {
@@ -111,6 +125,36 @@ describe("App - retired command dashboard route", () => {
     renderApp("/command-dashboard");
 
     expect(screen.getByTestId("home-page")).toBeInTheDocument();
+  });
+});
+
+describe("App - internal route targets", () => {
+  it("renders a nested protected route and keeps its internal query in the return path", () => {
+    mockUsePublicSettings.mockReturnValue({});
+    renderApp("/import/sessions/session-42?tab=summary");
+
+    expect(screen.getByTestId("import-session-review-page")).toBeInTheDocument();
+    expect(screen.getByTestId("router-location")).toHaveTextContent("/import/sessions/session-42?tab=summary");
+    expect(window.location.origin).toBe("http://localhost:3000");
+  });
+
+  it("redirects legacy settings URLs to the internal destination with its query", () => {
+    mockUsePublicSettings.mockReturnValue({});
+    renderApp("/admin/invite-codes");
+
+    expect(screen.getByTestId("admin-settings-page")).toBeInTheDocument();
+    expect(screen.getByTestId("router-location")).toHaveTextContent("/admin/settings?tab=1");
+    expect(window.location.origin).toBe("http://localhost:3000");
+  });
+
+  it("redirects an unknown URL internally to home", () => {
+    mockUsePublicSettings.mockReturnValue({});
+    renderApp("/not-a-route?next=https%3A%2F%2Fevil.example");
+
+    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+    expect(screen.getByTestId("router-location")).toHaveTextContent("/");
+    expect(screen.getByTestId("router-location")).not.toHaveTextContent("evil.example");
+    expect(window.location.origin).toBe("http://localhost:3000");
   });
 });
 
