@@ -1,13 +1,10 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { test, expect, vi } from "vitest";
-import * as XLSX from "xlsx";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, expect, test, vi } from "vitest";
+import { exportTable } from "../api/exports";
 import { ExcelExportButton } from "./ExcelExportButton";
 import type { ColDef } from "./DataTable";
 
-vi.mock("xlsx", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("xlsx")>();
-  return { ...actual, writeFile: vi.fn() };
-});
+vi.mock("../api/exports", () => ({ exportTable: vi.fn() }));
 
 interface Row { name: string; score: number; }
 
@@ -28,6 +25,11 @@ const rows: Row[] = [
   { name: "Bob", score: 7 },
 ];
 
+beforeEach(() => {
+  vi.mocked(exportTable).mockReset();
+  vi.mocked(exportTable).mockResolvedValue(undefined);
+});
+
 test("is disabled when there are no rows", () => {
   render(<ExcelExportButton columns={columns} rows={[]} filename="x.xlsx" />);
   expect(screen.getByRole("button")).toBeDisabled();
@@ -38,20 +40,66 @@ test("is enabled when there are rows", () => {
   expect(screen.getByRole("button")).not.toBeDisabled();
 });
 
-test("writes a workbook with header row and exportValue fallback chain on click", () => {
-  const writeFileSpy = vi.mocked(XLSX.writeFile);
-  writeFileSpy.mockClear();
+test("sends localized headers and visible rows with the export value fallback chain", async () => {
   render(<ExcelExportButton columns={columns} rows={rows} filename="export.xlsx" />);
   fireEvent.click(screen.getByRole("button"));
 
-  expect(writeFileSpy).toHaveBeenCalledTimes(1);
-  const [wb, filename] = writeFileSpy.mock.calls[0];
-  expect(filename).toBe("export.xlsx");
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1 }) as unknown[][];
-  expect(aoa[0]).toEqual(["שם", "ניקוד", "תווית"]);
-  // row for Alice: name via filterValue, score via sortValue, label via exportValue
-  expect(aoa[1]).toEqual(["Alice", 3, "3 out of 10"]);
-  expect(aoa[2]).toEqual(["Bob", 7, "7 out of 10"]);
+  await waitFor(() => {
+    expect(exportTable).toHaveBeenCalledWith({
+      filename: "export.xlsx",
+      matrix: {
+        sheet_name: "Sheet1",
+        headers: ["שם", "ניקוד", "תווית"],
+        rows: [
+          ["Alice", 3, "3 out of 10"],
+          ["Bob", 7, "7 out of 10"],
+        ],
+      },
+    });
+  });
+});
 
+test("sends the rows returned by onBeforeExport", async () => {
+  const preparedRows = [{ name: "Prepared", score: 11 }];
+  const onBeforeExport = vi.fn().mockResolvedValue(preparedRows);
+  render(<ExcelExportButton columns={columns} rows={rows} filename="prepared.xlsx" onBeforeExport={onBeforeExport} />);
+  fireEvent.click(screen.getByRole("button"));
+
+  await waitFor(() => {
+    expect(exportTable).toHaveBeenCalledWith({
+      filename: "prepared.xlsx",
+      matrix: {
+        sheet_name: "Sheet1",
+        headers: ["שם", "ניקוד", "תווית"],
+        rows: [["Prepared", 11, "11 out of 10"]],
+      },
+    });
+  });
+});
+
+test("disables the button while the export request is pending", async () => {
+  let finishExport = () => {};
+  vi.mocked(exportTable).mockReturnValue(new Promise<void>((resolve) => {
+    finishExport = resolve;
+  }));
+  render(<ExcelExportButton columns={columns} rows={rows} filename="export.xlsx" />);
+  const button = screen.getByRole("button");
+  fireEvent.click(button);
+
+  expect(button).toBeDisabled();
+  expect(button).toHaveAttribute("aria-busy", "true");
+
+  finishExport();
+  await waitFor(() => expect(button).not.toBeDisabled());
+  expect(button).toHaveAttribute("aria-busy", "false");
+});
+
+test("reports export request errors through onExportError", async () => {
+  const error = new Error("Export failed");
+  const onExportError = vi.fn();
+  vi.mocked(exportTable).mockRejectedValue(error);
+  render(<ExcelExportButton columns={columns} rows={rows} filename="export.xlsx" onExportError={onExportError} />);
+  fireEvent.click(screen.getByRole("button"));
+
+  await waitFor(() => expect(onExportError).toHaveBeenCalledWith(error));
 });

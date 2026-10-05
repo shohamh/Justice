@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
-import * as XLSX from "xlsx";
+import { exportTable } from "../api/exports";
 import type { ColDef } from "./DataTable";
 
 interface ExcelExportButtonProps<T> {
@@ -28,13 +28,12 @@ export function ExcelExportButton<T>({ columns, rows, filename, onBeforeExport, 
   async function handleExport() {
     setLoading(true);
     try {
-    const exportRows = onBeforeExport ? await onBeforeExport() : rows;
-    const header = columns.map((c) => c.header);
-    const body = exportRows.map((row) => columns.map((c) => exportValueOf(c, row)));
-    const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-    XLSX.writeFile(wb, filename);
+      const exportRows = onBeforeExport ? await onBeforeExport() : rows;
+      const headers = columns.map((c) =>
+        typeof c.header === "string" || typeof c.header === "number" ? c.header : "",
+      );
+      const body = exportRows.map((row) => columns.map((c) => exportValueOf(c, row)));
+      await exportTable({ filename, matrix: { sheet_name: "Sheet1", headers, rows: body } });
     } catch (error) {
       onExportError?.(error);
     } finally {
