@@ -1,0 +1,112 @@
+{
+  "captured_at_utc": "2026-10-04T06:21:49.519244+00:00",
+  "method": "One authenticated TestClient API request; app lifespan/background workers not started. Existing active admin selected through a request dependency override; normal route visibility authorization remains active. Unique rank-order binding forces a first-page cache miss without changing the default burden-share sort.",
+  "database": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "name": "justice_scale_20k_scale",
+    "soldiers": 20270,
+    "active_soldiers": 20270,
+    "duty_assignments": 1002597
+  },
+  "request": {
+    "path": "/api/scoring/transparency/page",
+    "sort": "burden_share",
+    "descending": true,
+    "page_size": 100,
+    "cache_miss_forced_by_unique_binding": true
+  },
+  "response": {
+    "status": 200,
+    "bytes": 72266,
+    "rows_returned": 100,
+    "row_count": 20270
+  },
+  "wall_ms": 13928.3,
+  "phases_ms": {
+    "source_snapshot_capture": 1.785,
+    "transparency_rows_service": 5154.309,
+    "capacity_eviction_subset": 27.834,
+    "snapshot_persist_including_eviction": 5971.342
+  },
+  "unattributed_route_and_asgi_remainder_ms": 2800.863,
+  "sql": {
+    "cursor_statement_count": 60,
+    "accumulated_cursor_ms": 8466.447,
+    "top_fingerprints": [
+      {
+        "fingerprint": "e649c815d1fc",
+        "count": 1,
+        "total_ms": 5600.866,
+        "max_ms": 5600.866
+      },
+      {
+        "fingerprint": "8eb8724a8d65",
+        "count": 1,
+        "total_ms": 294.07,
+        "max_ms": 294.07
+      },
+      {
+        "fingerprint": "d59b4fb5cf87",
+        "count": 1,
+        "total_ms": 273.139,
+        "max_ms": 273.139
+      },
+      {
+        "fingerprint": "aa9fb3fca3c3",
+        "count": 1,
+        "total_ms": 268.546,
+        "max_ms": 268.546
+      },
+      {
+        "fingerprint": "e4eb17a148a6",
+        "count": 1,
+        "total_ms": 268.36,
+        "max_ms": 268.36
+      },
+      {
+        "fingerprint": "14f304e2fd8c",
+        "count": 1,
+        "total_ms": 255.638,
+        "max_ms": 255.638
+      },
+      {
+        "fingerprint": "345117c8e955",
+        "count": 1,
+        "total_ms": 177.859,
+        "max_ms": 177.859
+      },
+      {
+        "fingerprint": "475d3bd7ee7f",
+        "count": 1,
+        "total_ms": 166.114,
+        "max_ms": 166.114
+      },
+      {
+        "fingerprint": "6d72eb31ceb5",
+        "count": 1,
+        "total_ms": 144.959,
+        "max_ms": 144.959
+      },
+      {
+        "fingerprint": "4a7d606e9caa",
+        "count": 3,
+        "total_ms": 143.107,
+        "max_ms": 139.496
+      },
+      {
+        "fingerprint": "0ac0cdef1820",
+        "count": 1,
+        "total_ms": 116.457,
+        "max_ms": 116.457
+      },
+      {
+        "fingerprint": "8af8761c7fc0",
+        "count": 1,
+        "total_ms": 115.141,
+        "max_ms": 115.141
+      }
+    ]
+  },
+  "privacy": "No response body, personal identifiers, credentials, SQL text, or SQL parameters were written to the artifact."
+}

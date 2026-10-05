@@ -310,9 +310,25 @@ def test_transparency_readiness_uses_compact_quarters_for_full_active_population
 
     monkeypatch.setattr(scoring, "_ensure_projection_ready", record_readiness)
     monkeypatch.setattr(score_projection, "projection_has_pending_markers", record_pending_marker_check)
+    projection_select_lists = []
+    original_execute = admin_session.execute
+
+    def capture_projection_selects(statement, *args, **kwargs):
+        selected_names = [column.name for column in getattr(statement, "selected_columns", ())]
+        from_tables = getattr(statement, "get_final_froms", lambda: [])()
+        reads_projection_table = any(
+            getattr(table, "name", None) == SoldierScoreProjection.__tablename__
+            for table in from_tables
+        )
+        if reads_projection_table and "cumulative_score" in selected_names and "shift_count" in selected_names:
+            projection_select_lists.append(selected_names)
+        return original_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(admin_session, "execute", capture_projection_selects)
     result = scoring._try_projected_transparency_rows(admin_session)
 
     assert result is not None
+    assert projection_select_lists.count(["soldier_id", "cumulative_score", "shift_count"]) == 1
     assert {row["soldier_id"] for row in result["rows"]} == {s.id for s in active}
     active_ids = {soldier.id for soldier in active}
     assert checks == [

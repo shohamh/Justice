@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -19,10 +20,12 @@ from app.auth.deps import require_password_changed
 from app.db.models import DutyAssignment, HierarchyNode, Soldier
 from app.db.session import get_session
 from app.services import scoring as svc
+from app.services import transparency_page_store as page_store
 from app.services.authority import can_view_soldier_scope, has_any_visibility
 from app.settings import get_settings
 
 router = APIRouter(prefix="/scoring", tags=["scoring"])
+logger = logging.getLogger(__name__)
 
 
 class ExemptionSummaryItem(BaseModel):
@@ -209,23 +212,6 @@ def _transparency_source_changed_since_snapshot(session: Session, snapshot: str)
     )
 
 
-def _transparency_page_revision(
-    rows: list[dict], *, source_generation: int, as_of: date
-) -> str:
-    """Fingerprint row values plus the generation of all canonical inputs."""
-    content = json.dumps(
-        {
-            "rows": rows,
-            "source_generation": source_generation,
-            "as_of": as_of.isoformat(),
-        },
-        default=str,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-
 def _number_transparency_rows_in_place(rows: list[dict]) -> list[dict]:
     """Add display row numbers without copying every projected row dictionary."""
     for index, row in enumerate(rows, start=1):
@@ -269,20 +255,51 @@ def _transparency_page_binding(
 
 
 def _transparency_page_cursor(
-    *, binding: str, revision: str, offset: int, source_snapshot: str
+    *, snapshot: dict, offset: int
 ) -> str:
     settings = get_settings()
     return jwt.encode(
         {
-            "purpose": "transparency-page-v1",
-            "binding": binding,
-            "revision": revision,
+            "purpose": "transparency-page-v2",
+            "binding": snapshot["binding"],
+            "snapshot_id": str(snapshot["id"]),
             "offset": offset,
-            "source_snapshot": source_snapshot,
-            "exp": int((datetime.now(UTC) + timedelta(minutes=20)).timestamp()),
+            "source_snapshot": snapshot["source_snapshot"],
+            "exp": int(snapshot["expires_at"].timestamp()),
         },
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
+    )
+
+
+def _transparency_snapshot_current(session: Session, snapshot: dict) -> bool:
+    return (
+        snapshot["ready"]
+        and snapshot["as_of"] == date.today()
+        and snapshot["expires_at"] > datetime.now(UTC)
+        and _transparency_source_generation(session) == snapshot["source_generation"]
+        and not _transparency_source_changed_since_snapshot(session, snapshot["source_snapshot"])
+    )
+
+
+def _transparency_snapshot_page(
+    session: Session, snapshot: dict, *, binding: str, offset: int, page_size: int,
+) -> TransparencyPageOut:
+    # FOR SHARE prevents concurrent expiry cleanup from removing the metadata
+    # between validation and the bounded row read.
+    stored = page_store.get_snapshot(session, snapshot["id"], lock=True)
+    if stored is None or stored["binding"] != binding or not _transparency_snapshot_current(session, stored):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
+    items = page_store.read_slice(session, stored["id"], offset, page_size)
+    has_more = offset + page_size < stored["item_count"]
+    if len(items) != min(page_size, max(stored["item_count"] - offset, 0)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
+    return TransparencyPageOut(
+        items=[TransparencyPageItem(**row) for row in items],
+        next_cursor=_transparency_page_cursor(snapshot=stored, offset=offset + page_size) if has_more else None,
+        has_more=has_more,
+        summary=TransparencyPageSummary(**stored["summary"]),
+        can_see_exemption_aggregates=stored["can_see_exemption_aggregates"],
     )
 
 
@@ -302,41 +319,26 @@ def transparency_page(
     session: Session = Depends(get_session),
     user: Soldier = Depends(require_password_changed),
 ) -> TransparencyPageOut:
-    """Bound the response and DOM while preserving the global scoring projection.
-
-    The score projection still materializes all caller-visible rows to retain its
-    global normalization and burden-share ordering semantics. The legacy route
-    remains the complete export and sub-unit contract.
-    """
+    """Serve immutable, bounded slices of the global scoring projection."""
     if not has_any_visibility(session, user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="transparency_hidden")
-
-    source_generation = _transparency_source_generation(session)
-    source_snapshot = _transparency_source_snapshot(session)
-    result = svc.transparency_rows(session, viewer=user)
-    source_rows: list[dict] = result["rows"]
-    revision_as_of = date.today()
-    revision = _transparency_page_revision(
-        source_rows, source_generation=source_generation, as_of=revision_as_of
-    )
     if officer_filter not in {"all", "officer", "enlisted"}:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_officer_filter")
 
-    binding = _transparency_page_binding(
-        session=session,
-        user=user,
-        node_id=node_id,
-        officer_filter=officer_filter,
-        service_type=service_type,
-        group_keys=group_key,
-        rank_filter=rank_filter,
-        search=search,
-        sort=sort,
-        descending=descending,
-        page_size=page_size,
-        rank_order=rank_order,
-    )
-    offset = 0
+    def current_binding() -> str:
+        return _transparency_page_binding(
+            session=session, user=user, node_id=node_id,
+            officer_filter=officer_filter, service_type=service_type,
+            group_keys=group_key, rank_filter=rank_filter, search=search,
+            sort=sort, descending=descending, page_size=page_size,
+            rank_order=rank_order,
+        )
+
+    binding = current_binding()
+
+    def binding_still_authorized() -> bool:
+        session.refresh(user)
+        return has_any_visibility(session, user) and current_binding() == binding
     if cursor:
         try:
             payload = jwt.decode(
@@ -346,210 +348,221 @@ def transparency_page(
             )
         except jwt.PyJWTError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor") from exc
-        if payload.get("purpose") != "transparency-page-v1" or payload.get("binding") != binding:
+        if payload.get("purpose") != "transparency-page-v2" or payload.get("binding") != binding:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
-        cursor_snapshot = payload.get("source_snapshot")
-        snapshot_is_valid = isinstance(cursor_snapshot, str) and session.execute(
-            text("SELECT pg_input_is_valid(:snapshot, 'pg_snapshot')"),
-            {"snapshot": cursor_snapshot},
-        ).scalar_one()
-        if not snapshot_is_valid:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
-        source_snapshot = cursor_snapshot
-        if payload.get("revision") != revision:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
         try:
+            snapshot_id = uuid.UUID(payload["snapshot_id"])
             offset = int(payload["offset"])
         except (KeyError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor") from exc
-        if offset < 0:
+        if offset < 0 or offset % page_size != 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
+        snapshot = page_store.get_snapshot(session, snapshot_id, lock=True)
+        if snapshot is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
+        if snapshot["binding"] != binding or payload.get("source_snapshot") != snapshot["source_snapshot"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
+        if not binding_still_authorized():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
+        return _transparency_snapshot_page(session, snapshot, binding=binding, offset=offset, page_size=page_size)
 
-    node_ids: set[uuid.UUID] | None = None
-    if node_id:
-        node_ids = {
-            node.id
-            for node in session.execute(select(HierarchyNode)).scalars().all()
-            if node_id in (node.path_ids or [])
+    snapshot, reused = page_store.register_build(
+        session, binding=binding,
+        generation=_transparency_source_generation,
+        capture=_transparency_source_snapshot,
+        changed=_transparency_source_changed_since_snapshot,
+    )
+    if reused:
+        if not binding_still_authorized():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="data_changed")
+        return _transparency_snapshot_page(session, snapshot, binding=binding, offset=0, page_size=page_size)
+
+    try:
+        result = svc.transparency_rows(session, viewer=user)
+        source_rows: list[dict] = result["rows"]
+
+        node_ids: set[uuid.UUID] | None = None
+        if node_id:
+            node_ids = {
+                node.id
+                for node in session.execute(select(HierarchyNode)).scalars().all()
+                if node_id in (node.path_ids or [])
+            }
+            node_ids.add(node_id)
+
+        group_soldier_ids: set[uuid.UUID] | None = None
+        fairness_by_id: dict[uuid.UUID, tuple[int, float | None]] = {}
+        if group_key or sort in {"group_rank", "group_dev"}:
+            fairness = svc.fairness_components(session, viewer=user, node_id=node_id)
+            group_soldier_ids = set() if group_key else None
+            for component in fairness.get("components", []):
+                members = sorted(component.get("soldiers", []), key=lambda item: float(item.get("burden_share") or 0))
+                mean_value = component.get("burden_share")
+                group_mean = float(mean_value["mean"]) if isinstance(mean_value, dict) and mean_value.get("mean") is not None else None
+                for rank_index, item in enumerate(members, start=1):
+                    soldier_id = uuid.UUID(str(item["soldier_id"]))
+                    fairness_by_id[soldier_id] = (rank_index, group_mean)
+            for item in fairness.get("exempt_from_all", {}).get("soldiers", []):
+                fairness_by_id[uuid.UUID(str(item["soldier_id"]))] = (0, None)
+            if group_key:
+                assert group_soldier_ids is not None
+                for key in set(group_key):
+                    if key == "exempt":
+                        group_soldier_ids.update(
+                            uuid.UUID(str(item["soldier_id"]))
+                            for item in fairness.get("exempt_from_all", {}).get("soldiers", [])
+                        )
+                    elif key.startswith("comp_"):
+                        try:
+                            index = int(key[5:])
+                            component = fairness.get("components", [])[index]
+                        except (ValueError, IndexError):
+                            continue
+                        group_soldier_ids.update(
+                            uuid.UUID(str(item["soldier_id"])) for item in component.get("soldiers", [])
+                        )
+
+        filtered_rows = []
+        for row in source_rows:
+            if node_ids is not None and row.get("node_id") not in node_ids:
+                continue
+            if officer_filter == "officer" and not row.get("is_officer"):
+                continue
+            if officer_filter == "enlisted" and row.get("is_officer"):
+                continue
+            if service_type is not None and row.get("service_type") != service_type:
+                continue
+            if group_soldier_ids is not None and row.get("soldier_id") not in group_soldier_ids:
+                continue
+            filtered_rows.append(row)
+
+        burden_shares = [float(row.get("burden_share") or 0) for row in filtered_rows]
+        mean = sum(burden_shares) / len(burden_shares) if burden_shares else 0.0
+        stddev = (
+            math.sqrt(sum((value - mean) ** 2 for value in burden_shares) / len(burden_shares))
+            if len(burden_shares) >= 2
+            else None
+        )
+        summary = TransparencyPageSummary(
+            row_count=len(filtered_rows),
+            average_cumulative=(
+                sum(float(row.get("cumulative_score") or 0) for row in filtered_rows) / len(filtered_rows)
+                if filtered_rows
+                else 0.0
+            ),
+            average_active_days=(
+                math.floor(sum(int(row.get("active_days") or 0) for row in filtered_rows) / len(filtered_rows) + 0.5)
+                if filtered_rows
+                else 0
+            ),
+            average_score_per_day=(
+                sum(float(row.get("score_per_day") or 0) for row in filtered_rows) / len(filtered_rows)
+                if filtered_rows
+                else 0.0
+            ),
+            average_normalised=(
+                sum(float(row.get("normalised_score") or 0) for row in filtered_rows) / len(filtered_rows)
+                if filtered_rows
+                else 0.0
+            ),
+            burden_share_mean=mean if len(burden_shares) >= 2 else None,
+            burden_share_stddev=stddev,
+            burden_share_cv=(stddev / mean if stddev is not None and mean else 0.0)
+            if stddev is not None
+            else None,
+            burden_share_min=min(burden_shares) if len(burden_shares) >= 2 else None,
+            burden_share_max=max(burden_shares) if len(burden_shares) >= 2 else None,
+            burden_share_offset_min=min(
+                (int(row.get("burden_share_offset_raw") or 0) for row in source_rows), default=None
+            ),
+            burden_share_offset_max=max(
+                (int(row.get("burden_share_offset_raw") or 0) for row in source_rows), default=None
+            ),
+        )
+
+        numbered_rows = _number_transparency_rows_in_place(filtered_rows)
+        if rank_filter is not None:
+            numbered_rows = [row for row in numbered_rows if row.get("rank") == rank_filter]
+        query_text = search.casefold().strip()
+        if query_text:
+            numbered_rows = [
+                row
+                for row in numbered_rows
+                if any(
+                    query_text in str(row.get(field) or "").casefold()
+                    for field in ("full_name", "node_name", "exemptions_display", "rank")
+                )
+            ]
+
+        allowed_sort_fields = {
+            "num": "row_num",
+            "name": "full_name",
+            "full_name": "full_name",
+            "unit": "node_name",
+            "exemptions": "exemptions_display",
+            "enrolled_at": "enrolled_at",
+            "active_days": "active_days",
+            "rank": "rank",
+            "shift_count": "shift_count",
+            "cumulative": "cumulative_score",
+            "cumulative_score": "cumulative_score",
+            "score_per_day": "score_per_day",
+            "normalised": "normalised_score",
+            "burden_share": "burden_share",
+            "burden_share_offset_raw": "burden_share_offset_raw",
+            "c_over_d": "c_over_d",
+            "group_rank": "group_rank",
+            "group_dev": "group_dev",
+            "count_offset": "burden_share_offset_raw",
         }
-        node_ids.add(node_id)
+        if sort not in allowed_sort_fields:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_sort")
+        field = allowed_sort_fields[sort]
 
-    group_soldier_ids: set[uuid.UUID] | None = None
-    fairness_by_id: dict[uuid.UUID, tuple[int, float | None]] = {}
-    if group_key or sort in {"group_rank", "group_dev"}:
-        fairness = svc.fairness_components(session, viewer=user, node_id=node_id)
-        group_soldier_ids = set() if group_key else None
-        for component in fairness.get("components", []):
-            members = sorted(component.get("soldiers", []), key=lambda item: float(item.get("burden_share") or 0))
-            mean_value = component.get("burden_share")
-            group_mean = float(mean_value["mean"]) if isinstance(mean_value, dict) and mean_value.get("mean") is not None else None
-            for rank_index, item in enumerate(members, start=1):
-                soldier_id = uuid.UUID(str(item["soldier_id"]))
-                fairness_by_id[soldier_id] = (rank_index, group_mean)
-        for item in fairness.get("exempt_from_all", {}).get("soldiers", []):
-            fairness_by_id[uuid.UUID(str(item["soldier_id"]))] = (0, None)
-        if group_key:
-            assert group_soldier_ids is not None
-            for key in set(group_key):
-                if key == "exempt":
-                    group_soldier_ids.update(
-                        uuid.UUID(str(item["soldier_id"]))
-                        for item in fairness.get("exempt_from_all", {}).get("soldiers", [])
-                    )
-                elif key.startswith("comp_"):
-                    try:
-                        index = int(key[5:])
-                        component = fairness.get("components", [])[index]
-                    except (ValueError, IndexError):
-                        continue
-                    group_soldier_ids.update(
-                        uuid.UUID(str(item["soldier_id"])) for item in component.get("soldiers", [])
-                    )
+        def sort_value(row: dict) -> Any:
+            if sort in {"group_rank", "group_dev"}:
+                group_rank, group_mean = fairness_by_id.get(uuid.UUID(str(row["soldier_id"])), (999, None))
+                return group_rank if sort == "group_rank" else (
+                    float(row.get("burden_share") or 0) - group_mean if group_mean is not None else 9999.0
+                )
+            value = row.get(field)
+            if field in {"active_days", "shift_count", "row_num", "burden_share_offset_raw"}:
+                return int(value or 0)
+            if field in {"cumulative_score", "score_per_day", "normalised_score", "burden_share", "c_over_d"}:
+                return Decimal(str(value or 0))
+            if sort == "rank":
+                order = {value: index for index, value in enumerate(rank_order)}
+                return order.get(str(value or ""), len(order) + 1)
+            return str(value or "").casefold()
 
-    filtered_rows = []
-    for row in source_rows:
-        if node_ids is not None and row.get("node_id") not in node_ids:
-            continue
-        if officer_filter == "officer" and not row.get("is_officer"):
-            continue
-        if officer_filter == "enlisted" and row.get("is_officer"):
-            continue
-        if service_type is not None and row.get("service_type") != service_type:
-            continue
-        if group_soldier_ids is not None and row.get("soldier_id") not in group_soldier_ids:
-            continue
-        filtered_rows.append(row)
-
-    burden_shares = [float(row.get("burden_share") or 0) for row in filtered_rows]
-    mean = sum(burden_shares) / len(burden_shares) if burden_shares else 0.0
-    stddev = (
-        math.sqrt(sum((value - mean) ** 2 for value in burden_shares) / len(burden_shares))
-        if len(burden_shares) >= 2
-        else None
-    )
-    summary = TransparencyPageSummary(
-        row_count=len(filtered_rows),
-        average_cumulative=(
-            sum(float(row.get("cumulative_score") or 0) for row in filtered_rows) / len(filtered_rows)
-            if filtered_rows
-            else 0.0
-        ),
-        average_active_days=(
-            math.floor(sum(int(row.get("active_days") or 0) for row in filtered_rows) / len(filtered_rows) + 0.5)
-            if filtered_rows
-            else 0
-        ),
-        average_score_per_day=(
-            sum(float(row.get("score_per_day") or 0) for row in filtered_rows) / len(filtered_rows)
-            if filtered_rows
-            else 0.0
-        ),
-        average_normalised=(
-            sum(float(row.get("normalised_score") or 0) for row in filtered_rows) / len(filtered_rows)
-            if filtered_rows
-            else 0.0
-        ),
-        burden_share_mean=mean if len(burden_shares) >= 2 else None,
-        burden_share_stddev=stddev,
-        burden_share_cv=(stddev / mean if stddev is not None and mean else 0.0)
-        if stddev is not None
-        else None,
-        burden_share_min=min(burden_shares) if len(burden_shares) >= 2 else None,
-        burden_share_max=max(burden_shares) if len(burden_shares) >= 2 else None,
-        burden_share_offset_min=min(
-            (int(row.get("burden_share_offset_raw") or 0) for row in source_rows), default=None
-        ),
-        burden_share_offset_max=max(
-            (int(row.get("burden_share_offset_raw") or 0) for row in source_rows), default=None
-        ),
-    )
-
-    numbered_rows = _number_transparency_rows_in_place(filtered_rows)
-    if rank_filter is not None:
-        numbered_rows = [row for row in numbered_rows if row.get("rank") == rank_filter]
-    query_text = search.casefold().strip()
-    if query_text:
-        numbered_rows = [
-            row
-            for row in numbered_rows
-            if any(
-                query_text in str(row.get(field) or "").casefold()
-                for field in ("full_name", "node_name", "exemptions_display", "rank")
-            )
-        ]
-
-    allowed_sort_fields = {
-        "num": "row_num",
-        "name": "full_name",
-        "full_name": "full_name",
-        "unit": "node_name",
-        "exemptions": "exemptions_display",
-        "enrolled_at": "enrolled_at",
-        "active_days": "active_days",
-        "rank": "rank",
-        "shift_count": "shift_count",
-        "cumulative": "cumulative_score",
-        "cumulative_score": "cumulative_score",
-        "score_per_day": "score_per_day",
-        "normalised": "normalised_score",
-        "burden_share": "burden_share",
-        "burden_share_offset_raw": "burden_share_offset_raw",
-        "c_over_d": "c_over_d",
-        "group_rank": "group_rank",
-        "group_dev": "group_dev",
-        "count_offset": "burden_share_offset_raw",
-    }
-    if sort not in allowed_sort_fields:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_sort")
-    field = allowed_sort_fields[sort]
-
-    def sort_value(row: dict) -> Any:
-        if sort in {"group_rank", "group_dev"}:
-            group_rank, group_mean = fairness_by_id.get(uuid.UUID(str(row["soldier_id"])), (999, None))
-            return group_rank if sort == "group_rank" else (
-                float(row.get("burden_share") or 0) - group_mean if group_mean is not None else 9999.0
-            )
-        value = row.get(field)
-        if field in {"active_days", "shift_count", "row_num", "burden_share_offset_raw"}:
-            return int(value or 0)
-        if field in {"cumulative_score", "score_per_day", "normalised_score", "burden_share", "c_over_d"}:
-            return Decimal(str(value or 0))
-        if sort == "rank":
-            order = {value: index for index, value in enumerate(rank_order)}
-            return order.get(str(value or ""), len(order) + 1)
-        return str(value or "").casefold()
-
-    # Stable secondary key is always the soldier UUID, regardless of direction.
-    numbered_rows.sort(key=lambda row: str(row["soldier_id"]))
-    numbered_rows.sort(key=sort_value, reverse=descending)
-    page_rows = numbered_rows[offset : offset + page_size]
-    has_more = offset + page_size < len(numbered_rows)
-    next_cursor = (
-        _transparency_page_cursor(
-            binding=binding,
-            revision=revision,
-            offset=offset + page_size,
-            source_snapshot=source_snapshot,
+        # Stable secondary key is always the soldier UUID, regardless of direction.
+        numbered_rows.sort(key=lambda row: str(row["soldier_id"]))
+        numbered_rows.sort(key=sort_value, reverse=descending)
+        if (
+            _transparency_source_generation(session) != snapshot["source_generation"]
+            or _transparency_source_changed_since_snapshot(session, snapshot["source_snapshot"])
+            or date.today() != snapshot["as_of"]
+            or snapshot["expires_at"] <= datetime.now(UTC)
+            or not binding_still_authorized()
+        ):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="data_changed")
+        page_store.persist_rows(
+            session, snapshot["id"], numbered_rows, summary.model_dump(mode="json"),
+            result["can_see_exemption_aggregates"],
         )
-        if has_more
-        else None
-    )
-    if (
-        _transparency_source_generation(session) != source_generation
-        or _transparency_source_changed_since_snapshot(session, source_snapshot)
-        or date.today() != revision_as_of
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="stale_cursor" if cursor else "data_changed",
-        )
-    return TransparencyPageOut(
-        items=[TransparencyPageItem(**row) for row in page_rows],
-        next_cursor=next_cursor,
-        has_more=has_more,
-        summary=summary,
-        can_see_exemption_aggregates=result["can_see_exemption_aggregates"],
-    )
+        session.commit()
+        try:
+            return _transparency_snapshot_page(session, snapshot, binding=binding, offset=0, page_size=page_size)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_409_CONFLICT:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="data_changed") from exc
+            raise
+    except BaseException:
+        try:
+            page_store.discard_build(session, snapshot["id"])
+        except Exception:
+            logger.exception("failed to discard transparency page snapshot")
+        raise
 
 
 @router.get("/fairness-components")

@@ -1,0 +1,97 @@
+{
+  "captured_at_utc": "2026-10-04T05:45:23.165620+00:00",
+  "measurement": "direct ASGI HTTP via five concurrent FastAPI TestClient requests; app lifespan not started; no browser/frontend readiness",
+  "endpoint": "/api/scoring/transparency/page?sort=burden_share&descending=true&page_size=100",
+  "database": {
+    "name": "justice_scale_20k_scale",
+    "port": 5432,
+    "soldiers_total": 20270,
+    "duty_assignments_total": 1002597
+  },
+  "method": {
+    "concurrency": 5,
+    "all_requests_same_existing_admin_and_binding": true,
+    "snapshot_cache_cleared_before_start": true,
+    "response_bodies_stored": false,
+    "existing_admin_login_or_account_created": false,
+    "assertion": "one ready snapshot and 203 chunks after five successful responses confirms one shared full build"
+  },
+  "requests": [
+    {
+      "wall_ms": 10022.7,
+      "status": 200,
+      "response_bytes": 72266,
+      "items": 100,
+      "row_count": 20270
+    },
+    {
+      "wall_ms": 10096.55,
+      "status": 200,
+      "response_bytes": 72266,
+      "items": 100,
+      "row_count": 20270
+    },
+    {
+      "wall_ms": 10171.04,
+      "status": 200,
+      "response_bytes": 72266,
+      "items": 100,
+      "row_count": 20270
+    },
+    {
+      "wall_ms": 10133.02,
+      "status": 200,
+      "response_bytes": 72266,
+      "items": 100,
+      "row_count": 20270
+    },
+    {
+      "wall_ms": 10066.32,
+      "status": 200,
+      "response_bytes": 72266,
+      "items": 100,
+      "row_count": 20270
+    }
+  ],
+  "summary": {
+    "samples": 5,
+    "wall_ms": {
+      "p50": 10096.55,
+      "p95": 10171.04
+    },
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "items_per_response": [
+      100,
+      100,
+      100,
+      100,
+      100
+    ],
+    "row_count_per_response": [
+      20270,
+      20270,
+      20270,
+      20270,
+      20270
+    ],
+    "response_bytes": [
+      72266,
+      72266,
+      72266,
+      72266,
+      72266
+    ]
+  },
+  "post_run_snapshot": {
+    "ready_live_snapshots": 1,
+    "chunk_rows": 203,
+    "row_payload_bytes": 2214551,
+    "row_table_bytes": 7577600
+  }
+}

@@ -2098,9 +2098,16 @@ def _try_projected_transparency_rows(
         return None
 
     total_rows = session.execute(
-        select(SoldierScoreProjection).where(uuid_any("soldier_score_projection.soldier_id", soldier_ids))
-    ).scalars().all()
-    totals_by_soldier = {row.soldier_id: row for row in total_rows}
+        select(
+            SoldierScoreProjection.soldier_id,
+            SoldierScoreProjection.cumulative_score,
+            SoldierScoreProjection.shift_count,
+        ).where(uuid_any("soldier_score_projection.soldier_id", soldier_ids))
+    ).all()
+    totals_by_soldier = {
+        soldier_id: (cumulative_score, shift_count)
+        for soldier_id, cumulative_score, shift_count in total_rows
+    }
     active_days_map = _bulk_active_days(session, list(soldiers))
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
     exempted_ids = globally_exempted_soldier_ids(session)
@@ -2137,8 +2144,8 @@ def _try_projected_transparency_rows(
                 extra={"soldier_id": str(s.id)},
             )
             return None
-        cum = _q6(total.cumulative_score)
-        shift_count = total.shift_count
+        cum = _q6(total[0])
+        shift_count = total[1]
         ad = active_days_map.get(s.id, 1)
         # Normalisation is computed over the FULL active population (dev
         # behavior) regardless of which rows this viewer may see.

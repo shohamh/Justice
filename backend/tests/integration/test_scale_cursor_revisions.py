@@ -289,6 +289,15 @@ def test_transparency_cursor_rejects_source_transaction_committed_after_page_one
         )
     assert committed_journal_xid == writer_xids[0]
     assert is_invisible_to_captured_snapshot
+    from app.services import transparency_page_store
+
+    with SessionLocal() as cleanup_session:
+        transparency_page_store.cleanup_expired(cleanup_session)
+        cleanup_session.commit()
+        assert cleanup_session.execute(text("""
+            SELECT count(*) FROM transparency_source_change_journal
+            WHERE transaction_id = CAST(:xid AS xid8)
+        """), {"xid": writer_xids[0]}).scalar_one() == 1
     second_page = client.get(
         "/api/scoring/transparency/page",
         params={"page_size": 1, "cursor": first_page.json()["next_cursor"]},
@@ -297,6 +306,187 @@ def test_transparency_cursor_rejects_source_transaction_committed_after_page_one
 
     assert second_page.status_code == 409
     assert second_page.json()["detail"] == "stale_cursor"
+
+
+def test_transparency_journal_cleanup_retains_event_for_live_snapshot(client, admin_session, monkeypatch):
+    from app.routes import scoring as scoring_route
+    from app.services import transparency_page_store
+
+    admin = create_soldier(admin_session, personal_number="journal-retention-admin", role="admin")
+    target = create_soldier(admin_session, personal_number="journal-retention-target")
+    admin_session.commit()
+    rows = [
+        _transparency_row(admin.id, admin.full_name),
+        _transparency_row(target.id, target.full_name),
+    ]
+    monkeypatch.setattr(scoring_route.svc, "transparency_rows", lambda session, *, viewer: {
+        "rows": [dict(row) for row in rows],
+        "can_see_exemption_aggregates": True,
+    })
+    first = client.get(
+        "/api/scoring/transparency/page", params={"page_size": 1},
+        headers=auth_headers(admin),
+    )
+    assert first.status_code == 200
+    payload = scoring_route.jwt.decode(
+        first.json()["next_cursor"], scoring_route.get_settings().jwt_secret,
+        algorithms=[scoring_route.get_settings().jwt_algorithm],
+    )
+    snapshot_id = payload["snapshot_id"]
+    captured = payload["source_snapshot"]
+
+    admin_session.execute(text("UPDATE soldiers SET full_name = 'After Capture' WHERE id = :id"), {"id": target.id})
+    writer_xid = admin_session.execute(text("SELECT pg_current_xact_id()::text")).scalar_one()
+    admin_session.commit()
+    assert admin_session.execute(text("""
+        SELECT NOT pg_visible_in_snapshot(CAST(:xid AS xid8), CAST(:snapshot AS pg_snapshot))
+    """), {"xid": writer_xid, "snapshot": captured}).scalar_one()
+
+    transparency_page_store.cleanup_expired(admin_session)
+    admin_session.commit()
+    assert admin_session.execute(text("""
+        SELECT count(*) FROM transparency_source_change_journal
+        WHERE transaction_id = CAST(:xid AS xid8)
+    """), {"xid": writer_xid}).scalar_one() == 1
+
+    admin_session.execute(text("""
+        UPDATE transparency_page_snapshots SET expires_at = now() - interval '1 second'
+        WHERE id = :id
+    """), {"id": snapshot_id})
+    admin_session.commit()
+    transparency_page_store.cleanup_expired(admin_session)
+    admin_session.commit()
+    assert admin_session.execute(text("""
+        SELECT count(*) FROM transparency_source_change_journal
+        WHERE transaction_id = CAST(:xid AS xid8)
+    """), {"xid": writer_xid}).scalar_one() == 0
+    assert admin_session.execute(text("""
+        SELECT count(*) FROM transparency_page_snapshots WHERE id = :id
+    """), {"id": snapshot_id}).scalar_one() == 0
+
+
+def test_transparency_persisted_cursor_is_bound_to_user_filters_and_page_size(
+    client, admin_session, monkeypatch,
+):
+    from app.routes import scoring as scoring_route
+
+    first_admin = create_soldier(admin_session, personal_number="snapshot-binding-first", role="admin")
+    other_admin = create_soldier(admin_session, personal_number="snapshot-binding-other", role="admin")
+    rows = [
+        _transparency_row(first_admin.id, first_admin.full_name),
+        _transparency_row(other_admin.id, other_admin.full_name),
+    ]
+    monkeypatch.setattr(scoring_route.svc, "transparency_rows", lambda session, *, viewer: {
+        "rows": [dict(row) for row in rows],
+        "can_see_exemption_aggregates": True,
+    })
+    first = client.get(
+        "/api/scoring/transparency/page", params={"page_size": 1},
+        headers=auth_headers(first_admin),
+    )
+    assert first.status_code == 200
+    cursor = first.json()["next_cursor"]
+    assert cursor
+
+    for headers, extra in (
+        (auth_headers(other_admin), {}),
+        (auth_headers(first_admin), {"search": "other"}),
+        (auth_headers(first_admin), {"sort": "name"}),
+        (auth_headers(first_admin), {"page_size": 2}),
+        (auth_headers(first_admin), {"rank_order": "A"}),
+    ):
+        response = client.get(
+            "/api/scoring/transparency/page",
+            params={"page_size": 1, "cursor": cursor, **extra}, headers=headers,
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "invalid_cursor"
+
+
+def test_failed_transparency_build_discards_registered_snapshot(client, admin_session, monkeypatch):
+    from app.routes import scoring as scoring_route
+
+    admin = create_soldier(admin_session, personal_number="failed-snapshot-admin", role="admin")
+    admin_session.commit()
+    monkeypatch.setattr(scoring_route.svc, "transparency_rows", lambda session, *, viewer: {
+        "rows": [_transparency_row(admin.id, admin.full_name)],
+        "can_see_exemption_aggregates": True,
+    })
+
+    def fail_fairness(session, *, viewer, node_id):
+        raise RuntimeError("fairness assembly failed")
+
+    monkeypatch.setattr(scoring_route.svc, "fairness_components", fail_fairness)
+    response = client.get(
+        "/api/scoring/transparency/page", params={"group_key": "comp_0"},
+        headers=auth_headers(admin),
+    )
+    assert response.status_code == 500
+    assert admin_session.execute(text("""
+        SELECT count(*) FROM transparency_page_snapshots WHERE ready = false
+    """)).scalar_one() == 0
+
+
+def test_persisted_fairness_group_sort_and_summary_use_canonical_grouping(
+    client, admin_session, monkeypatch,
+):
+    from app.routes import scoring as scoring_route
+
+    admin = create_soldier(admin_session, personal_number="snapshot-fairness-admin", role="admin")
+    a = create_soldier(admin_session, personal_number="snapshot-fairness-a")
+    b = create_soldier(admin_session, personal_number="snapshot-fairness-b")
+    c = create_soldier(admin_session, personal_number="snapshot-fairness-c")
+    admin_session.commit()
+    source_rows = [
+        _transparency_row(b.id, "B"),
+        _transparency_row(c.id, "C"),
+        _transparency_row(a.id, "A"),
+    ]
+    for row, share in zip(source_rows, (0.3, 0.2, 0.1), strict=True):
+        row["burden_share"] = share
+    monkeypatch.setattr(scoring_route.svc, "transparency_rows", lambda session, *, viewer: {
+        "rows": [dict(row) for row in source_rows],
+        "can_see_exemption_aggregates": True,
+    })
+    calls = 0
+
+    def fairness(session, *, viewer, node_id):
+        nonlocal calls
+        calls += 1
+        return {
+            "components": [{
+                "burden_share": {"mean": 0.2},
+                "soldiers": [
+                    {"soldier_id": str(b.id), "burden_share": 0.3},
+                    {"soldier_id": str(a.id), "burden_share": 0.1},
+                ],
+            }],
+            "exempt_from_all": {"soldiers": []},
+        }
+
+    monkeypatch.setattr(scoring_route.svc, "fairness_components", fairness)
+    ordinary = client.get(
+        "/api/scoring/transparency/page", params={"sort": "name"},
+        headers=auth_headers(admin),
+    )
+    assert ordinary.status_code == 200
+    assert calls == 0
+
+    params = {"group_key": "comp_0", "sort": "group_dev", "page_size": 1}
+    first = client.get("/api/scoring/transparency/page", params=params, headers=auth_headers(admin))
+    assert first.status_code == 200
+    assert first.json()["summary"]["row_count"] == 2
+    assert (first.json()["items"][0]["soldier_id"], first.json()["items"][0]["row_num"]) == (str(b.id), 1)
+    assert calls == 1
+
+    monkeypatch.setattr(scoring_route.svc, "fairness_components", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("fairness recomputed")))
+    second = client.get(
+        "/api/scoring/transparency/page",
+        params={**params, "cursor": first.json()["next_cursor"]},
+        headers=auth_headers(admin),
+    )
+    assert second.status_code == 200
+    assert (second.json()["items"][0]["soldier_id"], second.json()["items"][0]["row_num"]) == (str(a.id), 2)
 
 
 def test_transparency_page_rejects_concurrent_source_change_during_fairness_assembly(

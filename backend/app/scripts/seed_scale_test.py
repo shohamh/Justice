@@ -177,6 +177,7 @@ def iter_soldier_rows(
             "role": "soldier",
             "hierarchy_node_id": team_node_id(team_index),
             "email": f"{pn.lower()}@example.invalid",
+            "ad_username": pn.lower(),
             "gender": "male" if index % 2 == 0 else "female",
         }
 
@@ -392,6 +393,7 @@ def _preflight(
             "role",
             "hierarchy_node_id",
             "email",
+            "ad_username",
             "gender",
         ),
     )

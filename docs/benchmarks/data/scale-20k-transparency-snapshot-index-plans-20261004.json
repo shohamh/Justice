@@ -1,0 +1,56 @@
+{
+  "captured_at_utc": "2026-10-04T06:42:21.474770+00:00",
+  "database": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "name": "justice_scale_20k_scale"
+  },
+  "synthetic_plan_fixture": "Temporary table on the isolated scale DB, 100 rows (10 expired, 90 ready/live), indexes matching the migration, ANALYZE run in session; transaction rolled back and temp table dropped.",
+  "plans": {
+    "reuse_lookup": [
+      "Limit  (cost=4.51..4.52 rows=1 width=30) (actual time=0.044..0.045 rows=1 loops=1)",
+      "  Buffers: local hit=3",
+      "  ->  LockRows  (cost=4.51..4.52 rows=1 width=30) (actual time=0.043..0.044 rows=1 loops=1)",
+      "        Buffers: local hit=3",
+      "        ->  Sort  (cost=4.51..4.51 rows=1 width=30) (actual time=0.041..0.042 rows=1 loops=1)",
+      "              Sort Key: expires_at DESC",
+      "              Sort Method: quicksort  Memory: 25kB",
+      "              Buffers: local hit=2",
+      "              ->  Seq Scan on plan_transparency_snapshots  (cost=0.00..4.50 rows=1 width=30) (actual time=0.013..0.019 rows=1 loops=1)",
+      "                    Filter: (ready AND (binding = 'synthetic-binding-50'::text) AND (source_generation = 1) AND (expires_at > now()) AND (as_of = CURRENT_DATE))",
+      "                    Rows Removed by Filter: 99",
+      "                    Buffers: local hit=2",
+      "Planning:",
+      "  Buffers: shared hit=63, local hit=5",
+      "Planning Time: 1.250 ms",
+      "Execution Time: 0.134 ms"
+    ],
+    "expiry_cleanup_candidates": [
+      "Limit  (cost=0.14..1.97 rows=2 width=30) (actual time=0.015..0.017 rows=2 loops=1)",
+      "  Buffers: local hit=4",
+      "  ->  LockRows  (cost=0.14..10.20 rows=11 width=30) (actual time=0.013..0.014 rows=2 loops=1)",
+      "        Buffers: local hit=4",
+      "        ->  Index Scan using plan_expiry on plan_transparency_snapshots  (cost=0.14..10.09 rows=11 width=30) (actual time=0.010..0.011 rows=2 loops=1)",
+      "              Index Cond: (expires_at <= now())",
+      "              Buffers: local hit=2",
+      "Planning:",
+      "  Buffers: shared hit=3, local hit=2",
+      "Planning Time: 0.162 ms",
+      "Execution Time: 0.041 ms"
+    ],
+    "capacity_eviction_candidate": [
+      "Limit  (cost=0.14..0.33 rows=1 width=30) (actual time=0.028..0.029 rows=1 loops=1)",
+      "  Buffers: local hit=3",
+      "  ->  LockRows  (cost=0.14..16.91 rows=89 width=30) (actual time=0.027..0.028 rows=1 loops=1)",
+      "        Buffers: local hit=3",
+      "        ->  Index Scan using plan_expiry on plan_transparency_snapshots  (cost=0.14..16.02 rows=89 width=30) (actual time=0.025..0.025 rows=1 loops=1)",
+      "              Index Cond: (expires_at > now())",
+      "              Filter: ready",
+      "              Buffers: local hit=2",
+      "Planning:",
+      "  Buffers: local hit=2",
+      "Planning Time: 0.234 ms",
+      "Execution Time: 0.069 ms"
+    ]
+  }
+}
