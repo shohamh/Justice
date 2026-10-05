@@ -276,3 +276,65 @@ def test_summary_empty_and_single_row_null_rules(admin_session):
     assert one["burden_share_mean"] is None
     assert one["burden_share_stddev"] is None
     assert one["burden_share_offset_min"] == 7
+
+
+def test_worker_tick_publishes_generation_then_reuses_it(admin_session, monkeypatch):
+    from app import transparency_read_model_worker as worker
+    from app.services import scoring
+
+    create_soldier(admin_session, personal_number="rm-worker")
+    canonical = scoring.transparency_rows(admin_session, viewer=None)
+    monkeypatch.setattr(
+        scoring, "_try_projected_transparency_rows",
+        lambda session, *, viewer: canonical,
+    )
+
+    assert worker._refresh_tick() is True
+    source_generation, _snapshot = model.capture_source_state(admin_session)
+    published = model.current_generation(
+        admin_session, source_generation=source_generation, as_of=date.today(),
+    )
+    assert published is not None
+    assert admin_session.execute(text("""
+        SELECT count(*) FROM transparency_read_model_rows WHERE generation_id = :id
+    """), {"id": published["id"]}).scalar_one() == len(canonical["rows"])
+
+    assert worker._refresh_tick() is True
+    assert admin_session.execute(text("""
+        SELECT count(*) FROM transparency_read_model_generations WHERE ready
+    """)).scalar_one() == 1
+
+
+def test_overlapping_worker_tick_cannot_duplicate_build_after_builder_commit(monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app import transparency_read_model_worker as worker
+
+    started = threading.Event()
+    finish = threading.Event()
+    builds: list[str] = []
+    monkeypatch.setattr(worker.model, "capture_source_state", lambda session: (23, "snapshot"))
+    monkeypatch.setattr(worker.model, "current_generation", lambda *args, **kwargs: None)
+
+    def commit_then_pause(session):
+        # Task 1's real builder commits before returning. Its transaction must
+        # not release the advisory lock that protects this whole refresh tick.
+        session.execute(text("SELECT 1"))
+        session.commit()
+        builds.append("started")
+        started.set()
+        assert finish.wait(timeout=10)
+        return {"id": "generation-23", "source_generation": 23}
+
+    monkeypatch.setattr(worker.model, "rebuild_generation", commit_then_pause)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        first = executor.submit(worker._refresh_tick)
+        assert started.wait(timeout=10)
+        second = worker._refresh_tick()
+        finish.set()
+        assert first.result(timeout=10) is True
+
+    assert second is False
+    assert builds == ["started"]

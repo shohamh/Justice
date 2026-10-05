@@ -92,6 +92,7 @@ from app.score_projection_revalidation_worker import run_score_projection_revali
 from app.services.import_parsers import v1_standard as _v1_standard_import_parser  # noqa: F401
 from app.settings import get_settings
 from app.swap_expiry_worker import run_swap_expiry_worker
+from app.transparency_read_model_worker import run_transparency_read_model_worker
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -213,10 +214,17 @@ async def lifespan(app: FastAPI):
     hr_sync_task = asyncio.create_task(run_hr_sync_worker())
     qualification_expiry_task = asyncio.create_task(run_qualification_expiry_worker())
     score_projection_revalidation_task = asyncio.create_task(run_score_projection_revalidation_worker())
+    transparency_read_model_task = asyncio.create_task(run_transparency_read_model_worker())
     yield
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, hr_sync_task, qualification_expiry_task, score_projection_revalidation_task):
+    tasks = (
+        email_task, swap_expiry_task, range_reminder_task, range_attendance_task,
+        duty_eligibility_task, rank_advancement_task, hr_sync_task,
+        qualification_expiry_task, score_projection_revalidation_task,
+        transparency_read_model_task,
+    )
+    for task in tasks:
         task.cancel()
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, hr_sync_task, qualification_expiry_task, score_projection_revalidation_task):
+    for task in tasks:
         try:
             await task
         except asyncio.CancelledError:
