@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import uuid
 from datetime import UTC, datetime
 
 import pytest
@@ -45,6 +46,43 @@ def _submit(client: TestClient, reporter, **overrides):
     resp = client.post("/api/bug-reports", json=body, headers=auth_headers(reporter))
     assert resp.status_code == 201
     return resp
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/calendar?tab=1",
+        "/calendar#top",
+        "//external.example",
+        "javascript:alert(1)",
+        r"/\\external",
+        "/bad\x00path",
+        "/bad\x85path",
+    ],
+)
+def test_bug_report_rejects_non_path_navigation_history(client, admin_session, path):
+    reporter = create_soldier(admin_session, personal_number=f"nav{uuid.uuid4().hex[:8]}")
+    response = client.post(
+        "/api/bug-reports",
+        json={
+            "description": "bad history",
+            "severity": "low",
+            "route": "/",
+            "nav_history": [{"path": path, "timestamp": "2026-10-05T10:00:00Z"}],
+        },
+        headers=auth_headers(reporter),
+    )
+    assert response.status_code == 422
+
+
+def test_bug_report_accepts_local_absolute_navigation_history_path(client, admin_session):
+    reporter = create_soldier(admin_session, personal_number="navpath002")
+    response = _submit(
+        client,
+        reporter,
+        nav_history=[{"path": "/calendar/month", "timestamp": "2026-10-05T10:00:00Z"}],
+    )
+    assert response.status_code == 201
 
 
 def test_update_bug_report_status_to_wont_fix(client: TestClient, admin_session: Session):

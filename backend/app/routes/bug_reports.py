@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -79,6 +79,20 @@ def _comment_attachment_magic_bytes_match(content_type: str, data: bytes) -> boo
 class NavHistoryEntry(BaseModel):
     path: str = Field(max_length=500)
     timestamp: str = Field(max_length=64)
+
+    @field_validator("path")
+    @classmethod
+    def require_local_path(cls, value: str) -> str:
+        if (
+            not value.startswith("/")
+            or value.startswith("//")
+            or "\\" in value
+            or "?" in value
+            or "#" in value
+            or any(ord(char) < 0x20 or 0x7F <= ord(char) <= 0x9F for char in value)
+        ):
+            raise ValueError("path must be a local absolute path")
+        return value
 
 
 class BugReportSubmitBody(BaseModel):
