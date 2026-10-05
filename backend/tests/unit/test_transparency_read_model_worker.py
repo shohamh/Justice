@@ -103,3 +103,39 @@ async def test_worker_runs_immediately_and_propagates_poll_cancellation(monkeypa
         await worker.run_transparency_read_model_worker()
 
     tick.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_worker_waits_for_inflight_refresh_thread_before_cancellation(monkeypatch):
+    import threading
+
+    worker = _worker()
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def blocked_refresh():
+        started.set()
+        assert release.wait(timeout=5)
+        finished.set()
+
+    monkeypatch.setattr(worker, "_refresh_tick", blocked_refresh)
+    task = asyncio.create_task(worker.run_transparency_read_model_worker())
+    completed_before_release = False
+    cancellation_sent = False
+    try:
+        assert await asyncio.to_thread(started.wait, 5)
+        task.cancel()
+        cancellation_sent = True
+        await asyncio.sleep(0)
+        completed_before_release = task.done()
+    finally:
+        release.set()
+        if not cancellation_sent:
+            task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=5)
+
+    assert completed_before_release is False
+    assert finished.is_set()

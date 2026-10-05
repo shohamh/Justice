@@ -75,9 +75,20 @@ def _refresh_tick() -> bool:
 async def run_transparency_read_model_worker() -> None:
     """Refresh immediately, then check source freshness every ten seconds."""
     while True:
+        refresh_task = asyncio.create_task(asyncio.to_thread(_refresh_tick))
         try:
-            await asyncio.to_thread(_refresh_tick)
+            await asyncio.shield(refresh_task)
         except asyncio.CancelledError:
+            # Cancelling asyncio.to_thread's await does not stop its OS thread.
+            # Keep shutdown pending until the DB work releases its session and
+            # advisory lock, and consume/log any error from that work.
+            try:
+                await refresh_task
+            except Exception:
+                logger.warning(
+                    "transparency read model refresh failed during shutdown",
+                    exc_info=True,
+                )
             raise
         except Exception:
             logger.warning("transparency read model worker: unhandled error", exc_info=True)
