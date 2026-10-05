@@ -198,6 +198,77 @@ def test_transparency_page_cursor_rejects_direct_sql_name_change(client, admin_s
     assert second_page.json()["detail"] == "stale_cursor"
 
 
+def test_transparency_keyset_cursor_rejects_source_generation_change(client, admin_session):
+    from app.routes import scoring as scoring_route
+
+    admin = create_soldier(admin_session, personal_number="keyset-source-admin", role="admin")
+    first_soldier = create_soldier(admin_session, personal_number="keyset-source-first")
+    second_soldier = create_soldier(admin_session, personal_number="keyset-source-second")
+    generation_id = uuid.uuid4()
+    source_generation = _source_generation(admin_session)
+    source_snapshot = scoring_route._transparency_source_snapshot(admin_session)
+    admin_session.execute(text("""
+        INSERT INTO transparency_read_model_generations
+          (id, source_generation, source_snapshot, as_of, normalization_denominator,
+           ready, published_at)
+        VALUES (:id, :generation, :snapshot, :as_of, 1, true, now())
+    """), {
+        "id": generation_id, "generation": source_generation,
+        "snapshot": source_snapshot, "as_of": date.today(),
+    })
+    source_rows = [admin, first_soldier, second_soldier]
+    admin_session.execute(text("""
+        INSERT INTO transparency_read_model_rows
+          (generation_id, soldier_id, burden_share, cumulative_score, score_per_day,
+           normalised_score, c_over_d, active_days, shift_count, burden_share_offset_raw,
+           full_name, node_id, node_name, enrolled_at, rank, is_officer, service_type,
+           is_globally_exempted)
+        VALUES
+          (:generation_id, :soldier_id, :burden_share, 2, 0.2, 1, 1, 10, 1, 0,
+           :full_name, :node_id, NULL, :enrolled_at, :rank, :is_officer, NULL, false)
+    """), [
+        {
+            "generation_id": generation_id, "soldier_id": soldier.id,
+            "burden_share": Decimal("0.9") - Decimal(index) / Decimal("10"),
+            "full_name": soldier.full_name, "node_id": soldier.hierarchy_node_id,
+            "enrolled_at": soldier.enrolled_at, "rank": soldier.rank,
+            "is_officer": soldier.is_officer,
+        }
+        for index, soldier in enumerate(source_rows)
+    ])
+    admin_session.commit()
+
+    first_page = client.get(
+        "/api/scoring/transparency/page",
+        params={"page_size": 1},
+        headers=auth_headers(admin),
+    )
+    assert first_page.status_code == 200, first_page.text
+    cursor = first_page.json()["next_cursor"]
+    assert cursor
+    payload = scoring_route.jwt.decode(
+        cursor,
+        scoring_route.get_settings().jwt_secret,
+        algorithms=[scoring_route.get_settings().jwt_algorithm],
+        options={"verify_exp": False},
+    )
+    assert payload["purpose"] == "transparency-page-v3"
+    assert payload["model_id"] == str(generation_id)
+
+    admin_session.execute(
+        text("UPDATE soldiers SET full_name = 'Keyset source changed' WHERE id = :id"),
+        {"id": second_soldier.id},
+    )
+    admin_session.commit()
+    stale = client.get(
+        "/api/scoring/transparency/page",
+        params={"page_size": 1, "cursor": cursor},
+        headers=auth_headers(admin),
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"] == "stale_cursor"
+
+
 def test_transparency_cursor_rejects_source_transaction_committed_after_page_one(
     client, admin_engine, admin_session, monkeypatch
 ):

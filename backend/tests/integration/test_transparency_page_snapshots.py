@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, timedelta
+from decimal import Decimal
 
+import jwt
+from sqlalchemy import text
+
+from app.services import transparency_read_model
+from app.settings import get_settings
 from tests.helpers import auth_headers, create_node, create_soldier
 
 
@@ -103,3 +110,84 @@ def test_persisted_scoped_page_matches_complete_scoped_export(client, admin_sess
     assert body["summary"]["row_count"] == len(export.json()["rows"])
     assert [{key: value for key, value in row.items() if key != "row_num"} for row in body["items"]] == export.json()["rows"]
     assert [row["row_num"] for row in body["items"]] == list(range(1, len(body["items"]) + 1))
+
+
+def test_default_v2_cursor_continues_its_saved_snapshot_after_read_model_appears(
+    client, admin_session, monkeypatch,
+):
+    import app.routes.scoring as scoring_route
+
+    admin = create_soldier(admin_session, personal_number="v2-model-appears-admin", role="admin")
+    first_soldier = create_soldier(admin_session, personal_number="v2-model-appears-first")
+    second_soldier = create_soldier(admin_session, personal_number="v2-model-appears-second")
+
+    def row(soldier, burden_share):
+        return {
+            "soldier_id": soldier.id,
+            "full_name": soldier.full_name,
+            "node_id": soldier.hierarchy_node_id,
+            "node_name": None,
+            "enrolled_at": date(2020, 1, 1),
+            "active_days": 10,
+            "shift_count": 1,
+            "rank": None,
+            "is_officer": False,
+            "service_type": None,
+            "cumulative_score": Decimal("2.0"),
+            "score_per_day": Decimal("0.2"),
+            "normalised_score": Decimal("1.0"),
+            "is_globally_exempted": False,
+            "burden_share": burden_share,
+            "c_over_d": 1.0,
+            "burden_share_offset_raw": 0,
+            "exemptions_display": "",
+            "exemptions_visible": False,
+            "exemptions": [],
+            "has_global_exemption": None,
+            "has_partial_exemption": None,
+            "has_temporary_exemption": None,
+        }
+
+    monkeypatch.setattr(scoring_route.svc, "transparency_rows", lambda _session, *, viewer: {
+        "rows": [row(first_soldier, 0.9), row(second_soldier, 0.5)],
+        "can_see_exemption_aggregates": True,
+    })
+    first = client.get(
+        "/api/scoring/transparency/page", params={"page_size": 1}, headers=auth_headers(admin),
+    )
+    assert first.status_code == 200, first.text
+    cursor = first.json()["next_cursor"]
+    assert cursor
+    payload = jwt.decode(
+        cursor,
+        get_settings().jwt_secret,
+        algorithms=[get_settings().jwt_algorithm],
+        options={"verify_exp": False},
+    )
+    assert payload["purpose"] == "transparency-page-v2"
+    snapshot_id = uuid.UUID(payload["snapshot_id"])
+
+    source_generation, source_snapshot = transparency_read_model.capture_source_state(admin_session)
+    admin_session.execute(text("""
+        INSERT INTO transparency_read_model_generations
+          (id, source_generation, source_snapshot, as_of, normalization_denominator,
+           ready, published_at)
+        VALUES (:id, :generation, :snapshot, :as_of, 1, true, now())
+    """), {
+        "id": uuid.uuid4(), "generation": source_generation,
+        "snapshot": source_snapshot, "as_of": date.today(),
+    })
+    admin_session.commit()
+
+    second = client.get(
+        "/api/scoring/transparency/page",
+        params={"page_size": 1, "cursor": cursor},
+        headers=auth_headers(admin),
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["items"][0]["soldier_id"] == str(second_soldier.id)
+    assert second.json()["items"][0]["row_num"] == 2
+    assert second.json()["next_cursor"] is None
+    assert admin_session.execute(text(
+        "SELECT ready FROM transparency_page_snapshots WHERE id = :id"
+    ), {"id": snapshot_id}).scalar_one() is True

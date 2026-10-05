@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import uuid
+from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -17,11 +18,22 @@ from sqlalchemy.orm import Session
 
 from app.auth.authz import Action, authorize, scope_root_ids
 from app.auth.deps import require_password_changed
-from app.db.models import DutyAssignment, HierarchyNode, Soldier
+from app.db.models import (
+    DutyAssignment,
+    ExemptionType,
+    HierarchyNode,
+    Soldier,
+    SoldierExemption,
+)
 from app.db.session import get_session
 from app.services import scoring as svc
 from app.services import transparency_page_store as page_store
-from app.services.authority import can_view_soldier_scope, has_any_visibility
+from app.services import transparency_read_model as read_model
+from app.services.authority import (
+    build_soldier_scope_visibility,
+    can_view_soldier_scope,
+    has_any_visibility,
+)
 from app.settings import get_settings
 
 router = APIRouter(prefix="/scoring", tags=["scoring"])
@@ -303,6 +315,164 @@ def _transparency_snapshot_page(
     )
 
 
+def _transparency_keyset_binding(
+    *, request_binding: str, model_id: uuid.UUID, source_generation: int, as_of: date,
+) -> str:
+    value = {
+        "request": request_binding,
+        "model_id": str(model_id),
+        "source_generation": source_generation,
+        "as_of": as_of.isoformat(),
+    }
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _transparency_keyset_cursor(
+    *, binding: str, model: dict, last_row: dict, emitted_count: int,
+) -> str:
+    settings = get_settings()
+    return jwt.encode(
+        {
+            "purpose": "transparency-page-v3",
+            "binding": binding,
+            "model_id": str(model["id"]),
+            "source_generation": int(model["source_generation"]),
+            "as_of": model["as_of"].isoformat(),
+            "last_burden_share": str(last_row["burden_share"]),
+            "last_soldier_id": str(last_row["soldier_id"]),
+            "emitted_count": emitted_count,
+            "exp": int((datetime.now(UTC) + timedelta(minutes=20)).timestamp()),
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def _transparency_read_model_current(session: Session, model: dict) -> bool:
+    if model["as_of"] != date.today():
+        return False
+    current = read_model.current_generation(
+        session,
+        source_generation=_transparency_source_generation(session),
+        as_of=date.today(),
+    )
+    return current is not None and current["id"] == model["id"]
+
+
+def _transparency_keyset_page(
+    session: Session,
+    user: Soldier,
+    *,
+    model: dict,
+    keyset_binding: str,
+    page_size: int,
+    after_score: Decimal | None,
+    after_soldier_id: uuid.UUID | None,
+    emitted_count: int,
+    binding_still_authorized,
+    stale_detail: str,
+) -> TransparencyPageOut:
+    visibility = build_soldier_scope_visibility(session, user)
+    roots = scope_root_ids(session, user)
+    fetched_rows = read_model.read_page(
+        session,
+        generation_id=model["id"],
+        viewer=user,
+        visibility=visibility,
+        after_score=after_score,
+        after_soldier_id=after_soldier_id,
+        limit=page_size + 1,
+    )
+    summary = read_model.read_summary(
+        session, generation_id=model["id"], viewer=user, visibility=visibility,
+    )
+    has_more = len(fetched_rows) > page_size
+    rows = fetched_rows[:page_size]
+
+    soldier_ids = [row["soldier_id"] for row in rows]
+    exemptions_by_soldier: dict[uuid.UUID, list[tuple[SoldierExemption, ExemptionType]]] = defaultdict(list)
+    if soldier_ids:
+        exemption_rows = session.execute(
+            select(SoldierExemption, ExemptionType)
+            .join(ExemptionType, SoldierExemption.exemption_type_id == ExemptionType.id)
+            .where(
+                SoldierExemption.soldier_id.in_(soldier_ids),
+                SoldierExemption.revoked_at.is_(None),
+                SoldierExemption.start_date <= date.today(),
+                (SoldierExemption.end_date.is_(None) | (SoldierExemption.end_date >= date.today())),
+            )
+        ).all()
+        for exemption, exemption_type in exemption_rows:
+            exemptions_by_soldier[exemption.soldier_id].append((exemption, exemption_type))
+
+    node_ids = {row["node_id"] for row in rows if row["node_id"] is not None}
+    node_paths = {
+        node_id: path_ids
+        for node_id, path_ids in session.execute(
+            select(HierarchyNode.id, HierarchyNode.path_ids).where(HierarchyNode.id.in_(node_ids))
+        ).all()
+    } if node_ids else {}
+    can_see_exemption_aggregates = user.role == "admin" or bool(roots)
+    numbered_rows: list[dict] = []
+    for offset, row in enumerate(rows, start=1):
+        soldier_exemptions = exemptions_by_soldier.get(row["soldier_id"], [])
+        path_ids = node_paths.get(row["node_id"], []) if row["node_id"] is not None else []
+        in_scope = row["node_id"] is not None and any(root in path_ids for root in roots)
+        if in_scope:
+            exemptions_display = ", ".join(
+                svc._exemption_label(exemption, exemption_type)
+                for exemption, exemption_type in soldier_exemptions
+            )
+            exemption_details = [
+                {
+                    "id": exemption.id,
+                    "exemption_type_name": exemption_type.name,
+                    "is_global": exemption_type.is_global,
+                    "start_date": exemption.start_date,
+                    "end_date": exemption.end_date,
+                }
+                for exemption, exemption_type in soldier_exemptions
+            ]
+        else:
+            exemptions_display = "\u05d7\u05e1\u05d5\u05d9"
+            exemption_details = []
+        has_global = any(exemption_type.is_global for _, exemption_type in soldier_exemptions)
+        has_partial = any(not exemption_type.is_global for _, exemption_type in soldier_exemptions)
+        has_temporary = any(exemption.end_date is not None for exemption, _ in soldier_exemptions)
+        numbered_rows.append({
+            **row,
+            "row_num": emitted_count + offset,
+            "exemptions_display": exemptions_display,
+            "exemptions_visible": in_scope,
+            "exemptions": exemption_details,
+            "has_global_exemption": has_global if can_see_exemption_aggregates else None,
+            "has_partial_exemption": has_partial if can_see_exemption_aggregates else None,
+            "has_temporary_exemption": has_temporary if can_see_exemption_aggregates else None,
+        })
+
+    # The final checks fence the bounded page and scalar summary to the same
+    # current source and viewer scope used to create or validate the cursor.
+    if not binding_still_authorized() or not _transparency_read_model_current(session, model):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=stale_detail)
+
+    next_cursor = None
+    if has_more and numbered_rows:
+        next_cursor = _transparency_keyset_cursor(
+            binding=keyset_binding,
+            model=model,
+            last_row=rows[-1],
+            emitted_count=emitted_count + len(rows),
+        )
+    return TransparencyPageOut(
+        items=[TransparencyPageItem(**row) for row in numbered_rows],
+        next_cursor=next_cursor,
+        has_more=has_more,
+        summary=TransparencyPageSummary(**summary),
+        can_see_exemption_aggregates=can_see_exemption_aggregates,
+    )
+
+
 @router.get("/transparency/page", response_model=TransparencyPageOut)
 def transparency_page(
     cursor: str | None = None,
@@ -339,6 +509,25 @@ def transparency_page(
     def binding_still_authorized() -> bool:
         session.refresh(user)
         return has_any_visibility(session, user) and current_binding() == binding
+
+    keyset_shape = (
+        sort == "burden_share"
+        and descending
+        and not search.strip()
+        and node_id is None
+        and officer_filter == "all"
+        and service_type is None
+        and not group_key
+        and rank_filter is None
+        and not rank_order
+    )
+
+    def keyset_access_still_current() -> bool:
+        session.refresh(user)
+        if not has_any_visibility(session, user):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="transparency_hidden")
+        return current_binding() == binding
+
     if cursor:
         try:
             payload = jwt.decode(
@@ -348,6 +537,64 @@ def transparency_page(
             )
         except jwt.PyJWTError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
+        if payload.get("purpose") == "transparency-page-v3":
+            if not keyset_shape:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
+            try:
+                model_id = uuid.UUID(payload["model_id"])
+                source_generation = payload["source_generation"]
+                as_of = date.fromisoformat(payload["as_of"])
+                last_score_text = payload["last_burden_share"]
+                if not isinstance(last_score_text, str):
+                    raise ValueError("cursor score must be a string")
+                last_score = Decimal(last_score_text)
+                last_soldier_id = uuid.UUID(payload["last_soldier_id"])
+                emitted_count = payload["emitted_count"]
+                cursor_binding = payload["binding"]
+                if (
+                    not isinstance(source_generation, int)
+                    or isinstance(source_generation, bool)
+                    or source_generation < 0
+                    or not last_score.is_finite()
+                    or not isinstance(emitted_count, int)
+                    or isinstance(emitted_count, bool)
+                    or emitted_count < 1
+                    or not isinstance(cursor_binding, str)
+                ):
+                    raise ValueError("invalid cursor fields")
+            except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor") from exc
+            expected_binding = _transparency_keyset_binding(
+                request_binding=binding,
+                model_id=model_id,
+                source_generation=source_generation,
+                as_of=as_of,
+            )
+            if cursor_binding != expected_binding:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
+            if source_generation != _transparency_source_generation(session) or as_of != date.today():
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
+            model = read_model.current_generation(
+                session, source_generation=source_generation, as_of=as_of,
+            )
+            if model is None or model["id"] != model_id:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
+            if not keyset_access_still_current():
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
+            return _transparency_keyset_page(
+                session,
+                user,
+                model=model,
+                keyset_binding=cursor_binding,
+                page_size=page_size,
+                after_score=last_score,
+                after_soldier_id=last_soldier_id,
+                emitted_count=emitted_count,
+                binding_still_authorized=keyset_access_still_current,
+                stale_detail="stale_cursor",
+            )
         if payload.get("purpose") != "transparency-page-v2" or payload.get("binding") != binding:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
         try:
@@ -365,6 +612,31 @@ def transparency_page(
         if not binding_still_authorized():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
         return _transparency_snapshot_page(session, snapshot, binding=binding, offset=offset, page_size=page_size)
+
+    if keyset_shape:
+        source_generation = _transparency_source_generation(session)
+        model = read_model.current_generation(
+            session, source_generation=source_generation, as_of=date.today(),
+        )
+        if model is not None:
+            keyset_binding = _transparency_keyset_binding(
+                request_binding=binding,
+                model_id=model["id"],
+                source_generation=source_generation,
+                as_of=model["as_of"],
+            )
+            return _transparency_keyset_page(
+                session,
+                user,
+                model=model,
+                keyset_binding=keyset_binding,
+                page_size=page_size,
+                after_score=None,
+                after_soldier_id=None,
+                emitted_count=0,
+                binding_still_authorized=keyset_access_still_current,
+                stale_detail="data_changed",
+            )
 
     snapshot, reused = page_store.register_build(
         session, binding=binding,
