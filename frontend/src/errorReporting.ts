@@ -49,6 +49,15 @@ function redact(value: unknown, depth = 0): unknown {
   return value;
 }
 
+function safePath(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    return new URL(value, window.location.origin).pathname;
+  } catch {
+    return value.split(/[?#]/, 1)[0];
+  }
+}
+
 export function newRequestId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -76,12 +85,12 @@ export function reportAxiosError(error: AxiosError, config?: AxiosRequestConfig)
     request_id: headers?.[REQUEST_ID_HEADER] ?? headers?.[REQUEST_ID_HEADER.toLowerCase()] ?? error.response?.headers?.[REQUEST_ID_HEADER.toLowerCase()],
     message: error.message,
     stack: error.stack,
-    url: request?.url,
+    url: safePath(request?.url),
     method: request?.method,
     status: error.response?.status,
     request_data: request?.data,
     response_data: error.response?.data,
-    browser_url: window.location.href,
+    browser_url: window.location.pathname,
     user_agent: navigator.userAgent,
     response_headers: error.response?.headers,
   });
@@ -90,10 +99,10 @@ export function reportAxiosError(error: AxiosError, config?: AxiosRequestConfig)
 export function installGlobalErrorReporting(): void {
   if (typeof window === "undefined") return;
   window.addEventListener("error", (event) => {
-    reportFrontendError({ kind: "uncaught-error", message: event.message, stack: event.error?.stack, url: window.location.href, filename: event.filename, line: event.lineno, column: event.colno, user_agent: navigator.userAgent });
+    reportFrontendError({ kind: "uncaught-error", message: event.message, stack: event.error?.stack, url: window.location.pathname, filename: event.filename, line: event.lineno, column: event.colno, user_agent: navigator.userAgent });
   });
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason as { message?: string; stack?: string } | undefined;
-    reportFrontendError({ kind: "unhandled-rejection", message: reason?.message ?? String(event.reason), stack: reason?.stack, url: window.location.href, user_agent: navigator.userAgent });
+    reportFrontendError({ kind: "unhandled-rejection", message: reason?.message ?? String(event.reason), stack: reason?.stack, url: window.location.pathname, user_agent: navigator.userAgent });
   });
 }

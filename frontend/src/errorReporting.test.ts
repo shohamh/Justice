@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { reportFrontendError, setErrorReportingToken } from "./errorReporting";
+import { AxiosError, type AxiosResponse } from "axios";
+import { installGlobalErrorReporting, reportAxiosError, reportFrontendError, setErrorReportingToken } from "./errorReporting";
 
 describe("reportFrontendError rate limiting", () => {
   beforeEach(() => {
@@ -46,6 +47,62 @@ describe("reportFrontendError rate limiting", () => {
       expect(fetch).toHaveBeenCalledTimes(11);
     } finally {
       vi.useRealTimers();
+    }
+  });
+});
+
+describe("frontend telemetry URLs", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({}));
+    setErrorReportingToken(null);
+  });
+
+  it("sends only request and browser paths for HTTP-500 reports", () => {
+    const originalUrl = window.location.href;
+    window.history.replaceState({}, "", "/reset-password?token=secret-token#fragment-secret");
+    try {
+      const error = new AxiosError("HTTP 500");
+      error.response = { status: 500 } as AxiosResponse;
+      reportAxiosError(error, {
+        url: "https://api.example/api/private?token=secret-token#fragment-secret",
+        method: "get",
+      });
+
+      const body = String(vi.mocked(fetch).mock.calls[0][1]?.body);
+      expect(JSON.parse(body)).toMatchObject({
+        kind: "http-500",
+        status: 500,
+        url: "/api/private",
+        browser_url: "/reset-password",
+      });
+      expect(body).not.toContain("secret-token");
+      expect(body).not.toContain("fragment-secret");
+      expect(body).not.toContain("api.example");
+    } finally {
+      window.history.replaceState({}, "", originalUrl);
+    }
+  });
+
+  it("sends only browser paths for error and unhandledrejection reports", () => {
+    const originalUrl = window.location.href;
+    window.history.replaceState({}, "", "/reset-password?token=secret-token#fragment-secret");
+    try {
+      installGlobalErrorReporting();
+      window.dispatchEvent(new ErrorEvent("error", { message: "global test error", filename: "/src/main.ts" }));
+      const rejection = new Event("unhandledrejection");
+      Object.defineProperty(rejection, "reason", { value: new Error("global test rejection") });
+      window.dispatchEvent(rejection);
+
+      const bodies = vi.mocked(fetch).mock.calls.map(([, init]) => String(init?.body));
+      expect(bodies).toHaveLength(2);
+      expect(JSON.parse(bodies[0])).toMatchObject({ kind: "uncaught-error", url: "/reset-password" });
+      expect(JSON.parse(bodies[1])).toMatchObject({ kind: "unhandled-rejection", url: "/reset-password" });
+      for (const body of bodies) {
+        expect(body).not.toContain("secret-token");
+        expect(body).not.toContain("fragment-secret");
+      }
+    } finally {
+      window.history.replaceState({}, "", originalUrl);
     }
   });
 });
