@@ -1,8 +1,10 @@
 """Measure Transparency read-model build and isolated scale API paths.
 
 Run from ``backend`` with ``JUSTICE_SCALE_DATABASE_URL`` set to an isolated
-PostgreSQL database whose name contains ``_scale`` or ``_perf``. The script
-never seeds business rows and never prints or writes the connection URL.
+PostgreSQL database whose URL has an explicit loopback host, whose name
+contains ``_scale`` or ``_perf``, and whose name and host have no
+production-like marker. The script never seeds business rows and never prints
+or writes the connection URL.
 """
 
 from __future__ import annotations
@@ -44,7 +46,9 @@ _CREDENTIAL_KEY_PARTS = (
     "credential",
     "database_url",
     "connection_string",
-    "access_token",
+    "token",
+    "cookie",
+    "jwt",
     "authorization",
 )
 _DATABASE_URL_PATTERN = re.compile(r"postgres(?:ql)?(?:\+[^:/]+)?://", re.IGNORECASE)
@@ -143,6 +147,18 @@ def validate_artifact_schema(artifact: Mapping[str, Any]) -> None:
                     or not isinstance(page_ready.get("p95"), (int, float))
                 ):
                     raise ValueError(f"captured browser {label} {mode} mode needs page-ready p50/p95")
+                first_contentful_paint = (
+                    value.get("first_contentful_paint_ms") if isinstance(value, Mapping) else None
+                )
+                if first_contentful_paint is not None and (
+                    not isinstance(first_contentful_paint, Mapping)
+                    or not isinstance(first_contentful_paint.get("p50"), (int, float))
+                    or not isinstance(first_contentful_paint.get("p95"), (int, float))
+                ):
+                    raise ValueError(
+                        f"captured browser {label} {mode} first-contentful-paint "
+                        "must include p50/p95 when present"
+                    )
     query_plan = artifact["query_plan"]
     if (
         not isinstance(query_plan, Mapping)

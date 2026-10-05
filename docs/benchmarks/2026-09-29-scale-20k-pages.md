@@ -720,6 +720,8 @@ The current-model first page and continuation are within the proposed 500 ms API
 
 Separate instrumented Playwright Chromium captures loaded the transparency route at c1 and c5. The backend profiling processes explicitly set `TRANSPARENCY_READ_MODEL_ENABLED=true`; the deployment default remains false. All measured pages reached readiness: 5/5 cold and warm at c1 and 25/25 cold and warm at c5. Full per-sample data is in the [c1 artifact](data/transparency-keyset-browser-c1-instrumented-20261005.json) and [c5 artifact](data/transparency-keyset-browser-c5-instrumented-20261005.json).
 
+These captures record page readiness and selector visibility, but not the browser Paint Timing API. First-contentful-paint instrumentation has since been added to the profiler; there is no first-render p50/p95 for these captures, and the older measurements cannot be reconstructed as paint timings.
+
 | Concurrency | Mode | Ready | Page-ready p50/p95 | Transparency API p50/p95 | API SQL p95 |
 |---:|---|---:|---:|---:|---:|
 | 1 | Cold | 5/5 | 1.984 / 2.260 s | 131 / 180 ms | 82 ms |
@@ -731,7 +733,7 @@ At c1 the cold page-ready p95 slightly exceeds the proposed two-second target; w
 
 The original report baseline recorded one transparency pair at 317.4 s cold / 323.1 s warm. The prior uncommitted candidate recorded one pair at 42.63 / 42.60 s. Current c1 page-ready p50 is 1.984 s cold / 1.726 s warm, but these historical measurements differ in setup and sample count. They show direction only; the improvement cannot be attributed solely to the read model. The c5 results also show that the route needs more work under concurrent use.
 
-`/api/admin/errors/unread-count` returned HTTP 503 because `LOKI_URL` was unset in this isolated stack. Initial `/api/settings/public` 401 responses were followed by successful 200s, and one warm c5 admin-error request was aborted. No transparency API requests failed and every page reached readiness. These unrelated statuses are present in the raw artifacts. The API runner still has no live request-frequency or worker telemetry: it made one controlled fallback request, records model publication age at the end of the sample sequence, and does not infer live fallback frequency or worker refresh lag. API `TestClient` timings and browser readiness are distinct measures, not values to add together.
+`/api/admin/errors/unread-count` returned HTTP 503 because `LOKI_URL` was unset in this isolated stack. Initial `/api/settings/public` 401 responses were followed by successful 200s, and one warm c5 admin-error request was recorded as failed without an HTTP status; the artifact does not establish why it failed. No transparency API requests failed and every page reached readiness. These unrelated statuses are present in the raw artifacts. The API runner still has no live request-frequency or worker telemetry: it made one controlled fallback request, records model publication age at the end of the sample sequence, and does not infer live fallback frequency or worker refresh lag. API `TestClient` timings and browser readiness are distinct measures, not values to add together.
 
 
 ### Task 22 commander score readiness follow-up (2026-10-03)

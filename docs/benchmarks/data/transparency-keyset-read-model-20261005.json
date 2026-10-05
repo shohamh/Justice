@@ -305,6 +305,7 @@
       "scope": "isolated profiling backend process only"
     },
     "measurement": "Playwright Chromium route readiness after page marker and network quiet; profile_scale_server supplies SQL and ASGI timing headers.",
+    "first_contentful_paint_status": "not-captured; these browser artifacts predate Paint Timing API instrumentation",
     "captures": {
       "c1": {
         "artifact": "transparency-keyset-browser-c1-instrumented-20261005.json",
@@ -879,7 +880,8 @@
     "The snapshot fallback is one verified cold-miss API sample and has no p50/p95 estimate.",
     "The standalone API runner has no production request-rate or worker telemetry source, so live fallback frequency and worker refresh lag remain unavailable.",
     "SQL cursor time excludes row fetching, ORM/Python work, and response serialization; browser endpoint wall time includes a different instrumented request path.",
-    "LOKI_URL was unset in the isolated profiling stack, so /api/admin/errors/unread-count returned HTTP 503; one warm c5 request to that endpoint was aborted.",
+    "LOKI_URL was unset in the isolated profiling stack, so /api/admin/errors/unread-count returned HTTP 503; one warm c5 request to that endpoint was recorded as failed without an HTTP status, and the cause was not captured.",
+    "The browser captures record page readiness and selector visibility but no Paint Timing API entries; first-contentful-paint cannot be reconstructed for these historical runs.",
     "Initial /api/settings/public requests returned 401 before refresh and successful 200; no transparency endpoint request failed and all measured pages reached readiness."
   ]
 }

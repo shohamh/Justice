@@ -13,16 +13,23 @@ def test_scale_target_requires_explicit_safe_database_url_and_never_uses_databas
 
     for database_name in ("justice", "postgres", "justice_test"):
         url = f"postgresql://bench:secret@localhost/{database_name}"
-        with pytest.raises(ValueError, match="_scale or _perf"):
+        with pytest.raises(ValueError, match="isolated"):
             benchmark.validate_scale_target_url({"JUSTICE_SCALE_DATABASE_URL": url})
 
     parsed = benchmark.validate_scale_target_url({
         "JUSTICE_SCALE_DATABASE_URL": "postgresql://bench:secret@localhost/justice_scale_20k"
     })
     assert parsed.database == "justice_scale_20k"
-    assert benchmark.validate_scale_target_url({
-        "JUSTICE_SCALE_DATABASE_URL": "postgresql://bench:secret@localhost/justice_prod_scale"
-    }).database == "justice_prod_scale"
+    for unsafe_url in (
+        "postgresql://bench:secret@localhost/justice_prod_scale",
+        "postgresql://bench:secret@localhost/justice_prd_scale",
+        "postgresql://bench:secret@prod-db.example.invalid/justice_scale_20k",
+        "postgresql://bench:secret@prod1-db.example.invalid/justice_scale_20k",
+        "postgresql://bench:secret@prd-db.example.invalid/justice_scale_20k",
+        "postgresql:///justice_scale_20k",
+    ):
+        with pytest.raises(ValueError, match="isolated"):
+            benchmark.validate_scale_target_url({"JUSTICE_SCALE_DATABASE_URL": unsafe_url})
 
 
 def _valid_artifact() -> dict:
@@ -72,7 +79,10 @@ def test_artifact_schema_checks_captured_browser_concurrency_and_readiness():
             label: {
                 "concurrency": concurrency,
                 "modes": {
-                    mode: {"page_ready_ms": {"p50": 100.0, "p95": 200.0}}
+                    mode: {
+                        "page_ready_ms": {"p50": 100.0, "p95": 200.0},
+                        "first_contentful_paint_ms": {"p50": 50.0, "p95": 75.0},
+                    }
                     for mode in ("cold", "warm")
                 },
             }
@@ -85,6 +95,28 @@ def test_artifact_schema_checks_captured_browser_concurrency_and_readiness():
     with pytest.raises(ValueError, match="page-ready p50/p95"):
         benchmark.validate_artifact_schema(artifact)
 
+    artifact = _valid_artifact()
+    artifact["browser"] = {
+        "status": "captured",
+        "captures": {
+            label: {
+                "concurrency": concurrency,
+                "modes": {
+                    mode: {"page_ready_ms": {"p50": 100.0, "p95": 200.0}}
+                    for mode in ("cold", "warm")
+                },
+            }
+            for label, concurrency in (("c1", 1), ("c5", 5))
+        },
+    }
+    assert benchmark.validate_artifact_schema(artifact) is None
+
+    artifact["browser"]["captures"]["c1"]["modes"]["cold"]["first_contentful_paint_ms"] = {
+        "p50": 50.0,
+    }
+    with pytest.raises(ValueError, match="first-contentful-paint must include p50/p95"):
+        benchmark.validate_artifact_schema(artifact)
+
 
 @pytest.mark.parametrize(
     "credential_field,credential_value",
@@ -92,6 +124,8 @@ def test_artifact_schema_checks_captured_browser_concurrency_and_readiness():
         ("database_url", "postgresql://bench:secret@localhost/justice_scale_20k"),
         ("password", "secret"),
         ("access_token", "sensitive"),
+        ("refresh_token", "sensitive"),
+        ("cookie", "session=value"),
     ],
 )
 def test_artifact_rejects_credentials_and_connection_urls(credential_field, credential_value):
