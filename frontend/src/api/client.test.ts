@@ -1,4 +1,4 @@
-import axios, {
+import {
   AxiosError,
   AxiosHeaders,
   type AxiosAdapter,

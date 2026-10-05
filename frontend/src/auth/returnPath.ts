@@ -24,11 +24,12 @@ export function safeInternalReturnPath(candidate: unknown): string | null {
     return null;
   }
 
-  if (
-    !target.startsWith("/") ||
-    target.startsWith("//") ||
-    /[\\\u0000-\u001f\u007f-\u009f]/.test(target)
-  ) {
+  const hasControlCharacter = [...target].some((character) => {
+    const codePoint = character.codePointAt(0)!;
+    return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
+  });
+
+  if (!target.startsWith("/") || target.startsWith("//") || target.includes("\\") || hasControlCharacter) {
     return null;
   }
 
