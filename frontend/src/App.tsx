@@ -1,7 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
+import { useLocation } from "react-router-dom";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { consumeAuthReturnPath, readAuthReturnPath } from "./auth/returnPathStorage";
 import { ThemeProvider } from "./theme/ThemeContext";
 import { SoldierModalProvider } from "./contexts/SoldierModalContext";
 import { BugReportModalProvider } from "./contexts/BugReportModalContext";
@@ -66,8 +68,52 @@ function TelegramGate({ children }: { children: ReactElement }) {
   return children;
 }
 
+function AuthReturnPathGate({ children }: { children: ReactElement }) {
+  const location = useLocation();
+  const settings = usePublicSettings();
+  const currentPath = `${location.pathname}${location.search}${location.hash}`;
+  const [redirectAttempt, setRedirectAttempt] = useState<{ target: string; fromKey: string } | null>(null);
+  const [resolved, setResolved] = useState(() => readAuthReturnPath() === null);
+
+  useEffect(() => {
+    // TelegramGate intentionally leaves app routes visible while settings load.
+    // Keep the saved destination until that gate can make its decision.
+    if (settings === null) return;
+
+    if (redirectAttempt) {
+      if (location.key !== redirectAttempt.fromKey) {
+        // A route change means the one redirect attempt completed, including
+        // catch-all redirects for stale but otherwise safe internal paths.
+        setRedirectAttempt(null);
+        setResolved(true);
+      }
+      return;
+    }
+
+    const target = consumeAuthReturnPath();
+    if (target && target !== currentPath) {
+      setRedirectAttempt({ target, fromKey: location.key });
+      return;
+    }
+    setResolved(true);
+  }, [currentPath, location.key, redirectAttempt, settings]);
+
+  if (settings === null) return children;
+  if (redirectAttempt && location.key === redirectAttempt.fromKey) {
+    return <Navigate to={redirectAttempt.target} replace />;
+  }
+  if (!resolved && readAuthReturnPath() !== null) return null;
+  return children;
+}
+
 function AppGate({ children }: { children: ReactElement }) {
-  return <ForcedPasswordGate><TelegramGate>{children}</TelegramGate></ForcedPasswordGate>;
+  return (
+    <ForcedPasswordGate>
+      <TelegramGate>
+        <AuthReturnPathGate>{children}</AuthReturnPathGate>
+      </TelegramGate>
+    </ForcedPasswordGate>
+  );
 }
 
 export default function App() {

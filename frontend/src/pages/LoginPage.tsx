@@ -6,6 +6,7 @@ import { AxiosError } from "axios";
 import { fetchOidcStatus, startSsoLogin } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 import { safeInternalReturnPath } from "../auth/returnPath";
+import { readAuthReturnPath, storeAuthReturnPath } from "../auth/returnPathStorage";
 import JusticeLogo from "../components/JusticeLogo";
 import PasswordInput from "../components/PasswordInput";
 
@@ -21,10 +22,10 @@ export default function LoginPage() {
     routeState && typeof routeState === "object" && "resetSuccess" in routeState
       ? routeState.resetSuccess === true
       : false;
-  const returnTo =
-    routeState && typeof routeState === "object" && "from" in routeState
-      ? safeInternalReturnPath(routeState.from)
-      : null;
+  const hasRouterReturnTo = Boolean(routeState && typeof routeState === "object" && "from" in routeState);
+  const returnTo = hasRouterReturnTo
+    ? safeInternalReturnPath((routeState as { from?: unknown }).from)
+    : readAuthReturnPath();
 
   const [searchParams] = useSearchParams();
   // The callback only ever sends the bare flag; nothing else from the URL is read or shown.
@@ -52,7 +53,8 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(personalNumber, password, rememberMe);
-      navigate(returnTo ?? "/", { replace: true });
+      storeAuthReturnPath(returnTo);
+      navigate("/", { replace: true });
     } catch (err) {
       if (err instanceof AxiosError) {
         if (err.response?.status === 401) {
@@ -157,7 +159,10 @@ export default function LoginPage() {
         {ssoEnabled && (
           <button
             type="button"
-            onClick={() => startSsoLogin()}
+            onClick={() => {
+              storeAuthReturnPath(returnTo);
+              startSsoLogin();
+            }}
             className="w-full border border-indigo-600 text-indigo-600 dark:text-indigo-300 dark:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-gray-700 font-medium py-2 rounded-md"
             data-testid="sso-login-button"
           >

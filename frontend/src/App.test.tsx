@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./i18n";
@@ -54,6 +54,7 @@ vi.mock("./hooks/usePublicSettings", () => ({
 beforeEach(() => {
   mockUsePublicSettings.mockReset();
   mockUseAuth.mockReset();
+  window.sessionStorage.clear();
   mockUseAuth.mockReturnValue({
     loggedIn: true,
     authLoading: false,
@@ -129,6 +130,86 @@ describe("App - retired command dashboard route", () => {
 });
 
 describe("App - internal route targets", () => {
+  it("resumes a stored internal destination with query and hash after AppGate passes", async () => {
+    mockUsePublicSettings.mockReturnValue({});
+    const returnPath = "/import/sessions/session-42?tab=summary#details";
+    window.sessionStorage.setItem("justice.auth.return-to", returnPath);
+    renderApp("/");
+
+    expect(await screen.findByTestId("import-session-review-page")).toBeInTheDocument();
+    expect(screen.getByTestId("router-location")).toHaveTextContent(returnPath);
+    expect(window.sessionStorage.getItem("justice.auth.return-to")).toBeNull();
+  });
+
+  it.each([
+    ["external URL", "https://attacker.example/steal"],
+    ["protocol-relative URL", "//attacker.example/steal"],
+    ["backslash path", "/\\attacker.example/steal"],
+    ["control character", "/profile\u0000"],
+    ["malformed path", "not-a-path"],
+  ])("discards a tampered %s stored target", async (_label, returnPath) => {
+    mockUsePublicSettings.mockReturnValue({});
+    window.sessionStorage.setItem("justice.auth.return-to", returnPath);
+    renderApp("/");
+
+    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+    expect(screen.getByTestId("router-location")).toHaveTextContent("/");
+    await waitFor(() => expect(window.sessionStorage.getItem("justice.auth.return-to")).toBeNull());
+  });
+
+  it("consumes an unknown local target before the catch-all redirects home", async () => {
+    mockUsePublicSettings.mockReturnValue({});
+    window.sessionStorage.setItem("justice.auth.return-to", "/stale-bookmark?from=oidc");
+    renderApp("/");
+
+    await waitFor(() => expect(screen.getByTestId("router-location")).toHaveTextContent("/"));
+    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("justice.auth.return-to")).toBeNull();
+  });
+
+  it("does not consume the target while Telegram settings are still loading", () => {
+    mockUsePublicSettings.mockReturnValue(null);
+    const returnPath = "/profile?tab=notifications";
+    window.sessionStorage.setItem("justice.auth.return-to", returnPath);
+    renderApp("/");
+
+    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+    expect(screen.getByTestId("router-location")).toHaveTextContent("/");
+    expect(window.sessionStorage.getItem("justice.auth.return-to")).toBe(returnPath);
+  });
+
+  it("keeps the target until the forced-password gate has passed", async () => {
+    mockUsePublicSettings.mockReturnValue({});
+    mockUseAuth.mockReturnValue({
+      loggedIn: true,
+      authLoading: false,
+      mustChangePassword: true,
+      telegramRequired: false,
+      telegramLinked: true,
+    });
+    window.sessionStorage.setItem("justice.auth.return-to", "/profile?tab=security");
+    renderApp("/");
+
+    await waitFor(() => expect(screen.getByTestId("router-location")).toHaveTextContent("/change-password"));
+    expect(window.sessionStorage.getItem("justice.auth.return-to")).toBe("/profile?tab=security");
+  });
+
+  it("keeps the target until the required Telegram gate has passed", async () => {
+    mockUsePublicSettings.mockReturnValue({ "telegram.enabled": true });
+    mockUseAuth.mockReturnValue({
+      loggedIn: true,
+      authLoading: false,
+      mustChangePassword: false,
+      telegramRequired: true,
+      telegramLinked: false,
+    });
+    window.sessionStorage.setItem("justice.auth.return-to", "/profile?tab=notifications");
+    renderApp("/");
+
+    await waitFor(() => expect(screen.getByTestId("router-location")).toHaveTextContent("/setup/telegram"));
+    expect(window.sessionStorage.getItem("justice.auth.return-to")).toBe("/profile?tab=notifications");
+  });
+
   it("renders a nested protected route and keeps its internal query in the return path", () => {
     mockUsePublicSettings.mockReturnValue({});
     renderApp("/import/sessions/session-42?tab=summary");

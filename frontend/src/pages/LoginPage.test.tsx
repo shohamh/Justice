@@ -18,6 +18,7 @@ vi.mock("../api/auth");
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.sessionStorage.clear();
   vi.mocked(authApi.fetchOidcStatus).mockResolvedValue(false);
 });
 
@@ -43,13 +44,14 @@ async function submitValidLogin(initialEntry: { pathname: string; state?: unknow
 }
 
 describe("password login return target", () => {
-  it("returns to a saved internal path with its query and hash", async () => {
+  it("persists a saved internal path with its query and hash for AppGate", async () => {
     const originalOrigin = await submitValidLogin({
       pathname: "/login",
       state: { from: { pathname: "/import/sessions/session-42", search: "?tab=summary", hash: "#details" } },
     });
 
-    expect(screen.getByTestId("current-location")).toHaveTextContent("/import/sessions/session-42?tab=summary#details");
+    expect(screen.getByTestId("current-location")).toHaveTextContent("/");
+    expect(window.sessionStorage.getItem("justice.auth.return-to")).toBe("/import/sessions/session-42?tab=summary#details");
     expect(window.location.origin).toBe(originalOrigin);
   });
 
@@ -57,7 +59,26 @@ describe("password login return target", () => {
     const originalOrigin = await submitValidLogin({ pathname: "/login" });
 
     expect(screen.getByTestId("current-location")).toHaveTextContent("/");
+    expect(window.sessionStorage.getItem("justice.auth.return-to")).toBeNull();
     expect(window.location.origin).toBe(originalOrigin);
+  });
+
+  it("keeps the stored safe target available to password login after an SSO error", async () => {
+    const returnPath = "/profile?tab=notifications#telegram";
+    window.sessionStorage.setItem("justice.auth.return-to", returnPath);
+    mockLogin.mockResolvedValueOnce(undefined);
+    render(
+      <MemoryRouter initialEntries={["/login?sso_error=1"]}>
+        <LocationProbe />
+        <LoginPage />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByTestId("personal-number-input"), { target: { value: "123" } });
+    fireEvent.change(screen.getByTestId("password-input"), { target: { value: "password" } });
+    fireEvent.submit(screen.getByTestId("login-form"));
+
+    await waitFor(() => expect(screen.getByTestId("current-location")).toHaveTextContent("/"));
+    expect(window.sessionStorage.getItem("justice.auth.return-to")).toBe(returnPath);
   });
 
   it("keeps the reset-password success banner when router state also carries a return path", async () => {
@@ -183,9 +204,34 @@ describe("SSO login", () => {
 
   it("starts SSO with a top-level navigation when the button is clicked", async () => {
     vi.mocked(authApi.fetchOidcStatus).mockResolvedValue(true);
-    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    const returnPath = "/import/sessions/session-42?tab=summary#details";
+    vi.mocked(authApi.startSsoLogin).mockImplementation(() => {
+      expect(window.sessionStorage.getItem("justice.auth.return-to")).toBe(returnPath);
+    });
+    render(
+      <MemoryRouter initialEntries={[{
+        pathname: "/login",
+        state: { from: { pathname: "/import/sessions/session-42", search: "?tab=summary", hash: "#details" } },
+      }] }>
+        <LoginPage />
+      </MemoryRouter>,
+    );
     fireEvent.click(await screen.findByTestId("sso-login-button"));
     expect(authApi.startSsoLogin).toHaveBeenCalledTimes(1);
+    expect(authApi.startSsoLogin).toHaveBeenCalledWith();
+    vi.mocked(authApi.startSsoLogin).mockReset();
+  });
+
+  it("still starts SSO when session storage rejects the return-path write", async () => {
+    vi.mocked(authApi.fetchOidcStatus).mockResolvedValue(true);
+    const setItem = vi.spyOn(window.sessionStorage, "setItem").mockImplementation(() => {
+      throw new DOMException("Storage is blocked", "SecurityError");
+    });
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fireEvent.click(await screen.findByTestId("sso-login-button"));
+
+    expect(authApi.startSsoLogin).toHaveBeenCalledWith();
+    setItem.mockRestore();
   });
 
   it("shows only a generic banner for ?sso_error=1 and echoes nothing else", async () => {
