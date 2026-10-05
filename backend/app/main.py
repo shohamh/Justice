@@ -47,6 +47,7 @@ from app.routes import deputies as deputy_routes
 from app.routes import dm_scope as dm_scope_routes
 from app.routes import duty_config as duty_config_routes
 from app.routes import enrollment as enrollment_routes
+from app.routes import exports as exports_routes
 from app.routes import exchange_calendar_sync as exchange_calendar_sync_routes
 from app.routes import exemption_requests as exemption_request_routes
 from app.routes import exemptions as exemption_routes
@@ -285,6 +286,7 @@ def create_app() -> FastAPI:
     app.include_router(dm_scope_routes.router, prefix="/api")
     app.include_router(deputy_routes.router, prefix="/api")
     app.include_router(enrollment_routes.router, prefix="/api")
+    app.include_router(exports_routes.router, prefix="/api")
     app.include_router(invite_code_routes.router, prefix="/api")
     app.include_router(system_settings_routes.router, prefix="/api")
     app.include_router(hakpaza_routes.router, prefix="/api")
