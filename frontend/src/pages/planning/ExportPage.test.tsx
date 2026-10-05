@@ -1,13 +1,13 @@
 import { beforeEach, describe, test, it, expect, vi, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import * as XLSX from "xlsx";
 import "../../i18n";
 import { dfsOrder } from "./ExportPage";
 import ExportPage from "./ExportPage";
 import type { NodeDTO } from "../../api/hierarchy";
 import * as hierarchyApi from "../../api/hierarchy";
 import * as scoringApi from "../../api/scoring";
+import * as exportsApi from "../../api/exports";
 import type { TransparencyRow } from "../../api/scoring";
 import { getTransparencyAuthorizationScope } from "../../api/auth";
 import { queryKeys } from "../../queryKeys";
@@ -76,11 +76,7 @@ test("dfsOrder groups children under their parent, not globally alphabetically",
 
 vi.mock("../../api/scoring", () => ({ getTransparencyForExport: vi.fn().mockResolvedValue({ rows: [] }) }));
 vi.mock("../../api/hierarchy", () => ({ fetchFullTreeForExport: vi.fn().mockResolvedValue([]) }));
-vi.mock("../../api/client", () => ({ getAccessToken: vi.fn().mockReturnValue("test-token") }));
-vi.mock("xlsx", async () => {
-  const actual = await vi.importActual<typeof import("xlsx")>("xlsx");
-  return { ...actual, writeFile: vi.fn() };
-});
+vi.mock("../../api/exports", () => ({ exportPlanning: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("../../auth/AuthContext", () => ({
   useAuth: () => ({
     user: {
@@ -99,17 +95,8 @@ vi.mock("../../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-global.fetch = vi.fn().mockResolvedValue({
-  ok: true,
-  arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-});
-
 beforeEach(() => {
   vi.clearAllMocks();
-  global.fetch = vi.fn().mockResolvedValue({
-    ok: true,
-    arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
-  });
 });
 
 afterEach(() => {
@@ -193,41 +180,6 @@ describe("ExportPage", () => {
     expect(selectAll.checked).toBe(false);
   });
 
-  it("calls /config/export with only the checked config sheets when export is clicked", async () => {
-    renderWithProviders(<ExportPage />);
-    await waitFor(() => screen.getByText("ייצוא"));
-    fireEvent.click(screen.getByLabelText(/סוגי תורנות/));
-    fireEvent.click(screen.getByText("ייצוא"));
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/config/export?sheets=duty_types"),
-        expect.anything(),
-      );
-    });
-  });
-
-  it("calls /import/export with only the checked data sheets when export is clicked", async () => {
-    const importWb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(importWb, XLSX.utils.aoa_to_sheet([["personal_number"], ["123"]]), "soldiers");
-    const importBuf = XLSX.write(importWb, { type: "array", bookType: "xlsx" });
-
-    const fetchMock = vi.fn().mockResolvedValue({
-      arrayBuffer: () => Promise.resolve(importBuf),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderWithProviders(<ExportPage />);
-    fireEvent.click(await screen.findByLabelText(/^חיילים$/));
-    fireEvent.click(screen.getByText("ייצוא"));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/import/export?sheets=soldiers",
-        expect.objectContaining({ headers: expect.any(Object) }),
-      );
-    });
-  });
-
   it("renders checkboxes for the new range sheets", async () => {
     renderWithProviders(<ExportPage />);
     await waitFor(() => screen.getByText("ייצוא"));
@@ -236,60 +188,30 @@ describe("ExportPage", () => {
     expect(screen.getByLabelText(/שיבוצי מטווח/)).toBeInTheDocument();
   });
 
-  it("calls /config/export with range_locations when checked", async () => {
-    renderWithProviders(<ExportPage />);
-    await waitFor(() => screen.getByText("ייצוא"));
-    fireEvent.click(screen.getByLabelText(/מיקומי מטווח/));
-    fireEvent.click(screen.getByText("ייצוא"));
-    await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/config/export?sheets=range_locations"),
-        expect.anything(),
-      );
-    });
-  });
-
-  it("calls /import/export with range_events and range_assignments when checked", async () => {
-    const importWb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(importWb, XLSX.utils.aoa_to_sheet([["hierarchy_node_name"], ["מדור א"]]), "range_events");
-    const importBuf = XLSX.write(importWb, { type: "array", bookType: "xlsx" });
-    const fetchMock = vi.fn().mockResolvedValue({ arrayBuffer: () => Promise.resolve(importBuf) });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderWithProviders(<ExportPage />);
-    fireEvent.click(await screen.findByLabelText(/^מטווחים$/));
-    fireEvent.click(await screen.findByLabelText(/שיבוצי מטווח/));
-    fireEvent.click(screen.getByText("ייצוא"));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/import/export?sheets=range_events,range_assignments",
-        expect.objectContaining({ headers: expect.any(Object) }),
-      );
-    });
-  });
-
-  it("does not fetch transparency rows or the tree for a configuration-only export", async () => {
-    const configWb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(configWb, XLSX.utils.aoa_to_sheet([["setting"]]), "duty_types");
-    const configBuffer = XLSX.write(configWb, { type: "array", bookType: "xlsx" });
-    const fetchMock = vi.fn().mockResolvedValue({
-      arrayBuffer: () => Promise.resolve(configBuffer),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const writeFile = vi.mocked(XLSX.writeFile);
-
+  it("sends config and data selections with empty tables without loading hierarchy data", async () => {
     renderWithProviders(<ExportPage />);
     fireEvent.click(checkboxAt(3));
+    fireEvent.click(screen.getByLabelText(/מיקומי מטווח/));
+    fireEvent.click(screen.getByLabelText(/^חיילים$/));
+    fireEvent.click(screen.getByLabelText(/שיבוצי מטווח/));
     fireEvent.click(screen.getByRole("button"));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/config/export?sheets=duty_types"),
-      expect.anything(),
-    ));
+    await waitFor(() => expect(exportsApi.exportPlanning).toHaveBeenCalledTimes(1));
+    expect(exportsApi.exportPlanning).toHaveBeenCalledWith({
+      filename: "export.xlsx",
+      tables: [],
+      config_sheets: ["duty_types", "range_locations"],
+      data_sheets: ["soldiers", "range_assignments"],
+    });
     expect(scoringApi.getTransparencyForExport).not.toHaveBeenCalled();
     expect(hierarchyApi.fetchFullTreeForExport).not.toHaveBeenCalled();
-    expect(writeFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not request an export when no sheet is selected", async () => {
+    renderWithProviders(<ExportPage />);
+    fireEvent.click(screen.getByRole("button"));
+    await waitFor(() => expect(screen.getByRole("button")).toBeEnabled());
+    expect(exportsApi.exportPlanning).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -348,7 +270,7 @@ describe("ExportPage", () => {
     let resolveRows!: (value: { rows: TransparencyRow[]; can_see_exemption_aggregates: boolean }) => void;
     vi.mocked(scoringApi.getTransparencyForExport).mockReturnValue(new Promise((resolve) => { resolveRows = resolve; }));
     vi.mocked(hierarchyApi.fetchFullTreeForExport).mockResolvedValue([]);
-    const writeFile = vi.mocked(XLSX.writeFile);
+    const exportPlanning = vi.mocked(exportsApi.exportPlanning);
     renderWithProviders(<ExportPage />);
     fireEvent.click(checkboxAt(1));
 
@@ -356,7 +278,7 @@ describe("ExportPage", () => {
     const exportButton = screen.getByRole("button");
     expect(exportButton).toBeDisabled();
     fireEvent.click(exportButton);
-    expect(writeFile).not.toHaveBeenCalled();
+    expect(exportPlanning).not.toHaveBeenCalled();
 
     resolveRows({ rows: [], can_see_exemption_aggregates: false });
     await waitFor(() => expect(exportButton).toBeEnabled());
@@ -374,7 +296,7 @@ describe("ExportPage", () => {
         .mockRejectedValueOnce(new Error("Invalid hierarchy tree response"))
         .mockResolvedValueOnce([]);
     }
-    const writeFile = vi.mocked(XLSX.writeFile);
+    const exportPlanning = vi.mocked(exportsApi.exportPlanning);
     renderWithCachedEmptyHierarchyData();
     fireEvent.click(checkboxAt(1));
 
@@ -383,7 +305,7 @@ describe("ExportPage", () => {
     const exportButton = buttons[buttons.length - 1];
     expect(exportButton).toBeDisabled();
     fireEvent.click(exportButton);
-    expect(writeFile).not.toHaveBeenCalled();
+    expect(exportPlanning).not.toHaveBeenCalled();
 
     fireEvent.click(within(alert).getByRole("button"));
     await waitFor(() => {
@@ -393,10 +315,10 @@ describe("ExportPage", () => {
     });
 
     fireEvent.click(screen.getAllByRole("button").slice(-1)[0]);
-    await waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(exportPlanning).toHaveBeenCalledTimes(1));
   });
 
-  it("keeps all transparency rows in hierarchy order and exports complete sub-unit aggregates", async () => {
+  it("sends localized matrices in hierarchy order and includes only selected sheet keys", async () => {
     const rootAlpha: NodeDTO = {
       id: "alpha",
       name: "Alpha",
@@ -432,11 +354,13 @@ describe("ExportPage", () => {
       can_see_exemption_aggregates: false,
     });
     vi.mocked(hierarchyApi.fetchFullTreeForExport).mockResolvedValue([rootAlpha, childAlpha, rootBeta]);
-    const writeFile = vi.mocked(XLSX.writeFile);
-
     renderWithProviders(<ExportPage />);
     fireEvent.click(checkboxAt(1));
     fireEvent.click(checkboxAt(2));
+    fireEvent.click(screen.getByLabelText(/סוגי תורנות/));
+    fireEvent.click(screen.getByLabelText(/מיקומי מטווח/));
+    fireEvent.click(screen.getByLabelText(/^חיילים$/));
+    fireEvent.click(screen.getByLabelText(/שיבוצי מטווח/));
     await waitFor(() => {
       expect(scoringApi.getTransparencyForExport).toHaveBeenCalledTimes(1);
       expect(hierarchyApi.fetchFullTreeForExport).toHaveBeenCalledTimes(1);
@@ -444,22 +368,48 @@ describe("ExportPage", () => {
     });
     fireEvent.click(screen.getByRole("button"));
 
-    await waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
-    const [workbook] = writeFile.mock.calls[0];
-    const transparencyRows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.transparency, { header: 1 });
-    expect(transparencyRows).toHaveLength(5);
-    expect(transparencyRows.slice(1).map((row) => row[1])).toEqual([
-      "A. Alpha",
-      "B. Child",
-      "C. Beta",
-      "Z. Unassigned",
-    ]);
+    await waitFor(() => expect(exportsApi.exportPlanning).toHaveBeenCalledTimes(1));
+    expect(exportsApi.exportPlanning).toHaveBeenCalledWith({
+      filename: "export.xlsx",
+      tables: [
+        {
+          sheet_name: "transparency",
+          headers: [
+            "יחידה / תת-יחידה", "שם", "יחידה", "תאריך הצטרפות", "ימים פעילים", "דרגה",
+            "כמות משמרות", "ניקוד מצטבר", "ניקוד ליום", "ניקוד מנורמל",
+          ],
+          rows: [
+            ["Alpha", "A. Alpha", "Alpha", "2026-01-01", 10, "", 2, 10, 1.5, 2],
+            ["Alpha / Alpha Child", "B. Child", "Alpha Child", "2026-01-01", 20, "", 2, 20, 2.5, 4],
+            ["Beta", "C. Beta", "Beta", "2026-01-01", 30, "", 2, 30, 3.5, 6],
+            ["", "Z. Unassigned", "", "2026-01-01", 10, "", 2, 10, 1.5, 2],
+          ],
+        },
+        {
+          sheet_name: "sub_units",
+          headers: [
+            "יחידה", "כמות חיילים", "חיילים פעילים (%)", "ממוצע ימים פעילים", "ממוצע ניקוד לחייל",
+            "ממוצע ניקוד לחייל פעיל", "ניקוד ליום (מסגרת)", "ניקוד מנורמל ממוצע",
+          ],
+          rows: [
+            ["Alpha", 2, 100, 15, 15, 15, 4, 3],
+            ["Beta", 1, 100, 30, 30, 30, 3.5, 6],
+            ["Alpha Child", 1, 100, 20, 20, 20, 2.5, 4],
+          ],
+        },
+      ],
+      config_sheets: ["duty_types", "range_locations"],
+      data_sheets: ["soldiers", "range_assignments"],
+    });
+  });
 
-    const subUnitRows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.sub_units, { header: 1 });
-    expect(subUnitRows.slice(1).map((row) => [row[0], row[1], row[6]])).toEqual([
-      ["Alpha", 2, 4],
-      ["Beta", 1, 3.5],
-      ["Alpha Child", 1, 2.5],
-    ]);
+  it("shows an alert when the planning export request fails", async () => {
+    vi.mocked(exportsApi.exportPlanning).mockRejectedValueOnce(new Error("request failed"));
+    renderWithProviders(<ExportPage />);
+    fireEvent.click(screen.getByLabelText(/סוגי תורנות/));
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("הייצוא נכשל. נסה שוב.");
+    expect(exportsApi.exportPlanning).toHaveBeenCalledTimes(1);
   });
 });

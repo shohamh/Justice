@@ -1,16 +1,17 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import * as XLSX from "xlsx";
 import Layout from "../../components/Layout";
 import { queryKeys } from "../../queryKeys";
 import { useAuth } from "../../auth/AuthContext";
 import { getTransparencyAuthorizationScope } from "../../api/auth";
 import { TransparencyRow, getTransparencyForExport } from "../../api/scoring";
 import { fetchFullTreeForExport, NodeDTO } from "../../api/hierarchy";
-import { getAccessToken } from "../../api/client";
+import { exportPlanning } from "../../api/exports";
+import type { WorksheetMatrix } from "../../api/exports";
 import { exportValueOf } from "../../components/ExcelExportButton";
 import type { ColDef } from "../../components/DataTable";
+import { translateApiError } from "../../utils/translateApiError";
 
 export function flattenTree(nodes: NodeDTO[]): NodeDTO[] {
   const result: NodeDTO[] = [];
@@ -97,6 +98,7 @@ export default function ExportPage() {
   const { t } = useTranslation();
   const { user, authScopeReady } = useAuth();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const needsHierarchyData = !!(checked.transparency || checked.sub_units);
   const transparencyScope = authScopeReady ? getTransparencyAuthorizationScope(user) : null;
@@ -219,47 +221,40 @@ export default function ExportPage() {
   }
 
   async function handleExport() {
-    if (!hierarchyDataReady) return;
+    if (!hierarchyDataReady || !ALL_KEYS.some((key) => checked[key])) return;
 
-    const wb = XLSX.utils.book_new();
-
+    setExportError(null);
+    const tables: WorksheetMatrix[] = [];
     if (checked.transparency) {
-      const header = soldierCols.map((c) => c.header);
-      const body = soldierRows.map((row) => soldierCols.map((c) => exportValueOf(c, row)));
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...body]), "transparency");
+      tables.push({
+        sheet_name: "transparency",
+        headers: soldierCols.map((col) =>
+          typeof col.header === "string" || typeof col.header === "number" ? col.header : "",
+        ),
+        rows: soldierRows.map((row) => soldierCols.map((col) => exportValueOf(col, row))),
+      });
     }
     if (checked.sub_units) {
-      const header = subCols.map((c) => c.header);
-      const body = subRows.map((row) => subCols.map((c) => exportValueOf(c, row)));
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...body]), "sub_units");
-    }
-
-    const configSheets = CONFIG_SHEET_OPTIONS.filter((o) => checked[o.key]).map((o) => o.key);
-    if (configSheets.length > 0) {
-      const resp = await fetch(`/api/config/export?sheets=${configSheets.join(",")}`, {
-        headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+      tables.push({
+        sheet_name: "sub_units",
+        headers: subCols.map((col) =>
+          typeof col.header === "string" || typeof col.header === "number" ? col.header : "",
+        ),
+        rows: subRows.map((row) => subCols.map((col) => exportValueOf(col, row))),
       });
-      const buf = await resp.arrayBuffer();
-      const configWb = XLSX.read(buf, { type: "array" });
-      for (const name of configWb.SheetNames) {
-        XLSX.utils.book_append_sheet(wb, configWb.Sheets[name], name);
-      }
     }
 
-    const dataSheets = DATA_SHEET_OPTIONS.filter((o) => checked[o.key]).map((o) => o.key);
-    if (dataSheets.length > 0) {
-      const resp = await fetch(`/api/import/export?sheets=${dataSheets.join(",")}`, {
-        headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` },
+    const configSheets = CONFIG_SHEET_OPTIONS.filter((option) => checked[option.key]).map((option) => option.key);
+    const dataSheets = DATA_SHEET_OPTIONS.filter((option) => checked[option.key]).map((option) => option.key);
+    try {
+      await exportPlanning({
+        filename: "export.xlsx",
+        tables,
+        config_sheets: configSheets,
+        data_sheets: dataSheets,
       });
-      const buf = await resp.arrayBuffer();
-      const dataWb = XLSX.read(buf, { type: "array" });
-      for (const name of dataWb.SheetNames) {
-        XLSX.utils.book_append_sheet(wb, dataWb.Sheets[name], name);
-      }
-    }
-
-    if (wb.SheetNames.length > 0) {
-      XLSX.writeFile(wb, "export.xlsx");
+    } catch (error) {
+      setExportError(translateApiError(error, t, "הייצוא נכשל. נסה שוב."));
     }
   }
 
@@ -283,6 +278,7 @@ export default function ExportPage() {
             </button>
           </div>
         )}
+        {exportError && <div className="text-red-600 dark:text-red-400" role="alert">{exportError}</div>}
         <div className="space-y-2">
           <label className="flex items-center gap-2 font-medium border-b pb-2 dark:border-gray-700">
             <input type="checkbox" checked={allChecked} onChange={toggleAll} />
