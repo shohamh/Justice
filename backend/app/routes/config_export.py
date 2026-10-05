@@ -165,6 +165,16 @@ _WRITERS = {
 }
 
 
+def _filter_export_sheets(requested: list[str], actor: Soldier) -> list[str]:
+    """Apply the shared config export allowlist and admin-only sheet policy."""
+    filtered = [sheet for sheet in requested if sheet in _WRITERS]
+    if actor.role != "admin":
+        filtered = [
+            sheet for sheet in filtered if sheet not in ("system_settings", "bug_reports")
+        ]
+    return filtered
+
+
 @router.get("/export")
 def export_config(
     sheets: str | None = None,
@@ -172,12 +182,10 @@ def export_config(
     actor: Soldier = Depends(require_duty_manager_or_admin),
 ):
     requested = [s.strip() for s in sheets.split(",")] if sheets else ALL_SHEETS
-    requested = [s for s in requested if s in _WRITERS]
-    if actor.role != "admin":
-        # system_settings/bug_reports are admin-only end to end: a duty manager
-        # can still export the other sheets they're allowed to see, but these
-        # two are silently dropped rather than erroring the whole export.
-        requested = [s for s in requested if s not in ("system_settings", "bug_reports")]
+    # system_settings/bug_reports are admin-only end to end: a duty manager
+    # can still export the other sheets they're allowed to see, but these two
+    # are silently dropped rather than erroring the whole export.
+    requested = _filter_export_sheets(requested, actor)
 
     if not requested:
         # openpyxl can't save a workbook with zero visible sheets, and an

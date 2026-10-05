@@ -68,6 +68,33 @@ def test_import_storage_outage_does_not_fall_back_to_legacy_bytes():
         read_import_workbook(None, stored, FakeStorage({}))
 
 
+def test_legacy_import_export_route_keeps_attachment_contract(client, admin_session):
+    admin = create_soldier(admin_session, personal_number="legacy_data_export_admin", role="admin")
+    admin_session.commit()
+
+    response = client.get(
+        "/api/import/export?sheets=rank_advancement_intervals",
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert response.headers["content-disposition"] == 'attachment; filename="export.xlsx"'
+    workbook = openpyxl.load_workbook(io.BytesIO(response.content))
+    from app.services.excel_bilingual import HE_HEADERS, HE_SHEETS
+
+    assert workbook.sheetnames == [HE_SHEETS["rank_advancement_intervals"]]
+    assert [cell.value for cell in workbook[HE_SHEETS["rank_advancement_intervals"]][1]] == [
+        HE_HEADERS["track"],
+        HE_HEADERS["rank"],
+        HE_HEADERS["months_to_next"],
+        HE_HEADERS["advance_on_career_entry"],
+    ]
+
+
+
 def test_xlsx_validator_rejects_non_zip_before_parser():
     from app.services.file_validation import validate_xlsx
 

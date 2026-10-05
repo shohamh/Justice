@@ -4,19 +4,19 @@ import io
 import logging
 import secrets
 import uuid
-from datetime import date as date_type, datetime
-from typing import Any, Literal
+from datetime import date as date_type
+from datetime import datetime
+from typing import Literal
 
 import openpyxl
-
-from app.services.excel_bilingual import finalize_bilingual_workbook
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
 from app.audit.writer import write_audit
-from app.auth.deps import require_duty_manager_or_admin, require_password_changed
+from app.auth.deps import require_duty_manager_or_admin
 from app.db.models import (
     DutyAssignment,
     DutyLocation,
@@ -34,13 +34,18 @@ from app.db.models import (
     TelegramLink,
 )
 from app.db.session import get_session
+from app.services.excel_bilingual import finalize_bilingual_workbook
 from app.services.exchange_calendar.triggers import (
     enqueue_affected_by_soldier,
     enqueue_assignment_change,
 )
+from app.services.identity_write import (
+    BulkIdentityCheck,
+    assign_soldier_email,
+    resolve_identity_fields,
+)
 from app.services.import_parsers._shared_parsing import parse_bool as _parse_bool
 from app.services.import_parsers._shared_parsing import parse_date as _parse_date
-from app.services.identity_write import BulkIdentityCheck, assign_soldier_email, resolve_identity_fields
 from app.services.import_scope import is_node_in_actor_scope
 from app.services.notifications import create_notification
 from app.services.rank_advancement import resolve_track
@@ -703,26 +708,11 @@ def download_template():
 EXPORT_DATA_SHEETS = ["soldiers", "duty_shifts", "assignments", "shift_templates", "range_events", "range_assignments", "rank_advancement_intervals"]
 
 
-@router.get("/export")
-def export_current_data(
-    sheets: str | None = None,
-    session: Session = Depends(get_session),
-    actor: Soldier = Depends(require_duty_manager_or_admin),
-):
-    """Dump current soldiers/duty_shifts/assignments/shift_templates into the
-    same layout as the import template, for a full export -> edit -> re-import
-    round trip. Assignments with no linked `duty_shift_id` (not tied to a
-    shift instance) are omitted — they have no composite key to export.
-
-    `sheets` is an optional comma-separated subset of EXPORT_DATA_SHEETS;
-    defaults to all four when omitted, matching /config/export's convention.
-    """
-    requested = (
-        {s.strip() for s in sheets.split(",")} if sheets else set(EXPORT_DATA_SHEETS)
-    )
-    wb = openpyxl.Workbook()
-    wb.remove(wb.active)
-
+def _write_export_data_sheets(
+    workbook: openpyxl.Workbook, session: Session, requested: set[str]
+) -> None:
+    """Write the selected import/export data sheets into an existing workbook."""
+    wb = workbook
     nodes_by_id = {n.id: n for n in session.execute(select(HierarchyNode)).scalars()}
     soldiers_by_id = {s.id: s for s in session.execute(select(Soldier)).scalars()}
     telegram_links_by_soldier_id = {
@@ -918,6 +908,30 @@ def export_current_data(
         for rai in session.execute(select(RankAdvancementInterval)).scalars():
             ws_rai.append([rai.track, rai.rank, rai.months_to_next,
                             "true" if rai.advance_on_career_entry else "false"])
+
+
+
+@router.get("/export")
+def export_current_data(
+    sheets: str | None = None,
+    session: Session = Depends(get_session),
+    actor: Soldier = Depends(require_duty_manager_or_admin),
+):
+    """Dump current soldiers/duty_shifts/assignments/shift_templates into the
+    same layout as the import template, for a full export -> edit -> re-import
+    round trip. Assignments with no linked `duty_shift_id` (not tied to a
+    shift instance) are omitted — they have no composite key to export.
+
+    `sheets` is an optional comma-separated subset of EXPORT_DATA_SHEETS;
+    defaults to all four when omitted, matching /config/export's convention.
+    """
+    requested = (
+        {s.strip() for s in sheets.split(",")} if sheets else set(EXPORT_DATA_SHEETS)
+    )
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    _write_export_data_sheets(wb, session, requested)
 
     finalize_bilingual_workbook(wb)
 
