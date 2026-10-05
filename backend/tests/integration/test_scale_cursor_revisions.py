@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 from threading import Event, Thread
+from types import SimpleNamespace
 
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
@@ -198,9 +199,15 @@ def test_transparency_page_cursor_rejects_direct_sql_name_change(client, admin_s
     assert second_page.json()["detail"] == "stale_cursor"
 
 
-def test_transparency_keyset_cursor_rejects_source_generation_change(client, admin_session):
+def test_transparency_keyset_cursor_rejects_source_generation_change(client, admin_session, monkeypatch):
     from app.routes import scoring as scoring_route
 
+    settings = scoring_route.get_settings()
+    monkeypatch.setattr(scoring_route, "get_settings", lambda: SimpleNamespace(
+        jwt_secret=settings.jwt_secret,
+        jwt_algorithm=settings.jwt_algorithm,
+        transparency_read_model_enabled=True,
+    ))
     admin = create_soldier(admin_session, personal_number="keyset-source-admin", role="admin")
     first_soldier = create_soldier(admin_session, personal_number="keyset-source-first")
     second_soldier = create_soldier(admin_session, personal_number="keyset-source-second")

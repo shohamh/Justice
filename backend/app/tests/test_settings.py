@@ -16,6 +16,18 @@ def test_redis_url_defaults_to_localhost(monkeypatch):
     assert s.redis_url == "redis://localhost:6379/0"
 
 
+def test_transparency_read_model_fast_path_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("TRANSPARENCY_READ_MODEL_ENABLED", raising=False)
+    s = Settings(_env_file=None, DATABASE_URL="x", DB_ADMIN_URL="x", JWT_SECRET="x" * 32)
+    assert s.transparency_read_model_enabled is False
+
+
+def test_transparency_read_model_fast_path_can_be_enabled_from_env(monkeypatch):
+    monkeypatch.setenv("TRANSPARENCY_READ_MODEL_ENABLED", "true")
+    s = Settings(_env_file=None, DATABASE_URL="x", DB_ADMIN_URL="x", JWT_SECRET="x" * 32)
+    assert s.transparency_read_model_enabled is True
+
+
 def test_redis_url_reads_from_env():
     s = Settings(
         _env_file=None, DATABASE_URL="x", DB_ADMIN_URL="x", JWT_SECRET="x" * 32,

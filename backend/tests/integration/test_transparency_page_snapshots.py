@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 import jwt
 from sqlalchemy import text
@@ -117,6 +118,12 @@ def test_default_v2_cursor_continues_its_saved_snapshot_after_read_model_appears
 ):
     import app.routes.scoring as scoring_route
 
+    settings = scoring_route.get_settings()
+    monkeypatch.setattr(scoring_route, "get_settings", lambda: SimpleNamespace(
+        jwt_secret=settings.jwt_secret,
+        jwt_algorithm=settings.jwt_algorithm,
+        transparency_read_model_enabled=False,
+    ))
     admin = create_soldier(admin_session, personal_number="v2-model-appears-admin", role="admin")
     first_soldier = create_soldier(admin_session, personal_number="v2-model-appears-first")
     second_soldier = create_soldier(admin_session, personal_number="v2-model-appears-second")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 import jwt
 import pytest
@@ -78,11 +79,25 @@ def _decode_cursor(cursor: str) -> dict:
     )
 
 
+def _set_read_model_enabled(monkeypatch, enabled: bool):
+    import app.routes.scoring as scoring_route
+
+    settings = scoring_route.get_settings()
+    override = SimpleNamespace(
+        jwt_secret=settings.jwt_secret,
+        jwt_algorithm=settings.jwt_algorithm,
+        transparency_read_model_enabled=enabled,
+    )
+    monkeypatch.setattr(scoring_route, "get_settings", lambda: override)
+    return override
+
+
 def test_default_keyset_pages_ties_continuously_and_summarizes_full_visible_set(
     client, admin_session, monkeypatch,
 ):
     import app.routes.scoring as scoring_route
 
+    _set_read_model_enabled(monkeypatch, True)
     admin = create_soldier(admin_session, personal_number="keyset-page-admin", role="admin")
     soldiers = [
         create_soldier(admin_session, personal_number=f"keyset-page-{index}", full_name=f"Person {index}")
@@ -147,8 +162,9 @@ def test_default_keyset_pages_ties_continuously_and_summarizes_full_visible_set(
 
 
 def test_scoped_keyset_includes_self_and_redacts_exemptions_outside_raw_roots(
-    client, admin_session,
+    client, admin_session, monkeypatch,
 ):
+    _set_read_model_enabled(monkeypatch, True)
     root = create_node(admin_session, level="department", name="Keyset Scope")
     child = create_node(admin_session, level="team", name="Keyset Child", parent=root)
     outside = create_node(admin_session, level="department", name="Keyset Outside")
@@ -236,7 +252,63 @@ def test_default_request_without_ready_read_model_keeps_snapshot_fallback(client
     assert response.json()["items"][0]["soldier_id"] == str(soldier.id)
 
 
-def test_visible_rank_wide_rows_keep_exemption_labels_and_aggregates_redacted(client, admin_session):
+def test_disabling_read_model_stales_v3_cursor_and_restarts_through_v2_snapshot(
+    client, admin_session, monkeypatch,
+):
+    import app.routes.scoring as scoring_route
+
+    settings = _set_read_model_enabled(monkeypatch, True)
+    admin = create_soldier(admin_session, personal_number="keyset-toggle-admin", role="admin")
+    soldiers = [
+        create_soldier(admin_session, personal_number=f"keyset-toggle-{index}")
+        for index in range(2)
+    ]
+    model_rows = [_model_row(soldiers[0], "0.9"), _model_row(soldiers[1], "0.5")]
+    _insert_read_model(admin_session, model_rows)
+    fallback_rows = []
+    for row in model_rows:
+        fallback_row = dict(row)
+        fallback_row.update({
+            "exemptions_display": "",
+            "exemptions_visible": False,
+            "exemptions": [],
+            "has_global_exemption": None,
+            "has_partial_exemption": None,
+            "has_temporary_exemption": None,
+        })
+        fallback_rows.append(fallback_row)
+    monkeypatch.setattr(scoring_route.svc, "transparency_rows", lambda *_args, **_kwargs: {
+        "rows": fallback_rows, "can_see_exemption_aggregates": True,
+    })
+
+    first = client.get(
+        "/api/scoring/transparency/page", params={"page_size": 1}, headers=auth_headers(admin),
+    )
+    assert first.status_code == 200, first.text
+    v3_cursor = first.json()["next_cursor"]
+    assert v3_cursor and _decode_cursor(v3_cursor)["purpose"] == "transparency-page-v3"
+
+    settings.transparency_read_model_enabled = False
+    continued = client.get(
+        "/api/scoring/transparency/page",
+        params={"page_size": 1, "cursor": v3_cursor},
+        headers=auth_headers(admin),
+    )
+    assert continued.status_code == 409
+    assert continued.json()["detail"] == "stale_cursor"
+
+    restarted = client.get(
+        "/api/scoring/transparency/page", params={"page_size": 1}, headers=auth_headers(admin),
+    )
+    assert restarted.status_code == 200, restarted.text
+    assert restarted.json()["items"][0]["soldier_id"] == str(soldiers[0].id)
+    assert _decode_cursor(restarted.json()["next_cursor"])["purpose"] == "transparency-page-v2"
+
+
+def test_visible_rank_wide_rows_keep_exemption_labels_and_aggregates_redacted(
+    client, admin_session, monkeypatch,
+):
+    _set_read_model_enabled(monkeypatch, True)
     root = create_node(admin_session, level="department", name="Keyset Rank Visible")
     viewer = create_soldier(admin_session, personal_number="keyset-rank-viewer")
     target = create_soldier(admin_session, personal_number="keyset-rank-target", hierarchy_node_id=root.id)
@@ -271,7 +343,10 @@ def test_visible_rank_wide_rows_keep_exemption_labels_and_aggregates_redacted(cl
     assert item["has_temporary_exemption"] is None
 
 
-def test_signed_but_malformed_keyset_cursor_is_rejected_as_invalid(client, admin_session):
+def test_signed_but_malformed_keyset_cursor_is_rejected_as_invalid(
+    client, admin_session, monkeypatch,
+):
+    _set_read_model_enabled(monkeypatch, True)
     admin = create_soldier(admin_session, personal_number="keyset-malformed-admin", role="admin")
     malformed = jwt.encode({
         "purpose": "transparency-page-v3",
@@ -298,7 +373,8 @@ def test_signed_but_malformed_keyset_cursor_is_rejected_as_invalid(client, admin
     assert signature_failure.json()["detail"] == "invalid_cursor"
 
 
-def test_keyset_cursor_rejects_changed_binding_and_stale_source(client, admin_session):
+def test_keyset_cursor_rejects_changed_binding_and_stale_source(client, admin_session, monkeypatch):
+    _set_read_model_enabled(monkeypatch, True)
     admin = create_soldier(admin_session, personal_number="keyset-stale-admin", role="admin")
     soldiers = [
         create_soldier(admin_session, personal_number=f"keyset-stale-{index}")
@@ -331,7 +407,10 @@ def test_keyset_cursor_rejects_changed_binding_and_stale_source(client, admin_se
     assert stale.json()["detail"] == "stale_cursor"
 
 
-def test_keyset_cursor_returns_forbidden_after_transparency_scope_is_revoked(client, admin_session):
+def test_keyset_cursor_returns_forbidden_after_transparency_scope_is_revoked(
+    client, admin_session, monkeypatch,
+):
+    _set_read_model_enabled(monkeypatch, True)
     root = create_node(admin_session, level="department", name="Keyset Revoked")
     viewer = create_soldier(
         admin_session, personal_number="keyset-revoked-manager", role="duty_manager",

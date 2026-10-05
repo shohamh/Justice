@@ -574,6 +574,8 @@ def transparency_page(
             )
             if cursor_binding != expected_binding:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_cursor")
+            if not get_settings().transparency_read_model_enabled:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
             if source_generation != _transparency_source_generation(session) or as_of != date.today():
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
             model = read_model.current_generation(
@@ -613,7 +615,7 @@ def transparency_page(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stale_cursor")
         return _transparency_snapshot_page(session, snapshot, binding=binding, offset=offset, page_size=page_size)
 
-    if keyset_shape:
+    if keyset_shape and get_settings().transparency_read_model_enabled:
         source_generation = _transparency_source_generation(session)
         model = read_model.current_generation(
             session, source_generation=source_generation, as_of=date.today(),
