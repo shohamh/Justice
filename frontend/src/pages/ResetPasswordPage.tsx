@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { isAxiosError } from "axios";
 import { resetPassword } from "../api/auth";
@@ -9,12 +9,20 @@ import PasswordInput from "../components/PasswordInput";
 export default function ResetPasswordPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const token = params.get("token") ?? "";
+  const location = useLocation();
+  const [token] = useState(() => new URLSearchParams(location.search).get("token") ?? "");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (!params.has("token") && !location.hash) return;
+    params.delete("token");
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : "", hash: "" }, { replace: true, state: location.state });
+  }, [location.pathname, location.search, location.hash, location.state, navigate]);
 
   const mismatch = confirm.length > 0 && password !== confirm;
 

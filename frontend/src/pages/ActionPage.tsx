@@ -1,20 +1,31 @@
-import { useEffect, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api as client } from "../api/client";
 
 export default function ActionPage() {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
+  const [token] = useState(() => new URLSearchParams(location.search).get("token") ?? "");
+  const submitted = useRef(false);
   const [status, setStatus] = useState<"pending" | "success" | "error">("pending");
 
   useEffect(() => {
-    const token = searchParams.get("token");
+    const params = new URLSearchParams(location.search);
+    if (!params.has("token") && !location.hash) return;
+    params.delete("token");
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : "", hash: "" }, { replace: true, state: location.state });
+  }, [location.pathname, location.search, location.hash, location.state, navigate]);
+
+  useEffect(() => {
     if (!token) {
       setStatus("error");
       return;
     }
+    if (submitted.current) return;
+    submitted.current = true;
     client.post("/action", { token })
       .then((r) => {
         setStatus("success");
@@ -29,7 +40,7 @@ export default function ActionPage() {
       .catch(() => {
         setStatus("error");
       });
-  }, [navigate, searchParams]);
+  }, [navigate, token]);
 
   return (
     <main className="h-[100dvh] overflow-y-auto flex items-center justify-center p-6 dark:bg-gray-900" dir="rtl">

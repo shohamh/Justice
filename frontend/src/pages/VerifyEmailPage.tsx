@@ -1,15 +1,24 @@
 import { useEffect, useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { isAxiosError } from "axios";
 import { verifyEmail } from "../api/auth";
 
 export default function VerifyEmailPage() {
   const { t } = useTranslation();
-  const [params] = useSearchParams();
-  const token = params.get("token") ?? "";
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [token] = useState(() => new URLSearchParams(location.search).get("token") ?? "");
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   const [errorKey, setErrorKey] = useState<string>("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (!params.has("token") && !location.hash) return;
+    params.delete("token");
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : "", hash: "" }, { replace: true, state: location.state });
+  }, [location.pathname, location.search, location.hash, location.state, navigate]);
 
   useEffect(() => {
     if (!token) { setStatus("error"); setErrorKey("token_invalid"); return; }
