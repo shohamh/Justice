@@ -1,0 +1,885 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-10-05T05:58:31.215583+00:00",
+  "target": {
+    "database_name": "justice_scale_20k_scale",
+    "postgres_version": "16.15",
+    "work_mem": "4MB"
+  },
+  "dataset": {
+    "soldiers": 20120,
+    "synthetic_soldiers": 20000,
+    "active_soldiers": 20120,
+    "duty_assignments": 1000008,
+    "score_projection_rows": 20120,
+    "read_model_rows": 40240
+  },
+  "parameters": {
+    "endpoint": "/api/scoring/transparency/page",
+    "page_size": 100,
+    "repetitions": 5,
+    "warmups_per_api_operation": 2,
+    "actor_role": "admin",
+    "concurrency": 1,
+    "transparency_read_model_enabled": true,
+    "feature_flag_default": false,
+    "feature_flag_scope": "benchmark and browser profiling processes only"
+  },
+  "measurements": {
+    "model_build": {
+      "wall_ms": 8391.252,
+      "sql_count": 79,
+      "sql_cursor_ms": 5354.55,
+      "generation_id": "76563efc-feeb-47af-bc2e-b3f0d50c8325",
+      "source_generation": 1020767,
+      "as_of": "2026-10-05",
+      "published_at": "2026-10-05T05:58:13.960064+00:00",
+      "row_count": 20120,
+      "normalization_denominator": "0.06774699081539816789336617639"
+    },
+    "current_model_first_page": {
+      "warmups": 2,
+      "warmup_status_codes": [
+        200,
+        200
+      ],
+      "samples": [
+        {
+          "wall_ms": 80.576,
+          "server_ms": 76.461,
+          "sql_count": 24,
+          "sql_cursor_ms": 49.312,
+          "response_bytes": 72196,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        },
+        {
+          "wall_ms": 97.916,
+          "server_ms": 92.558,
+          "sql_count": 24,
+          "sql_cursor_ms": 64.252,
+          "response_bytes": 72196,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        },
+        {
+          "wall_ms": 82.405,
+          "server_ms": 79.168,
+          "sql_count": 24,
+          "sql_cursor_ms": 57.196,
+          "response_bytes": 72196,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        },
+        {
+          "wall_ms": 97.595,
+          "server_ms": 93.976,
+          "sql_count": 24,
+          "sql_cursor_ms": 70.369,
+          "response_bytes": 72196,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        },
+        {
+          "wall_ms": 80.697,
+          "server_ms": 77.46,
+          "sql_count": 24,
+          "sql_cursor_ms": 55.087,
+          "response_bytes": 72196,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        }
+      ],
+      "summary": {
+        "min_ms": 80.576,
+        "median_ms": 82.405,
+        "mean_ms": 87.838,
+        "p95_ms_nearest_rank": 97.916,
+        "max_ms": 97.916
+      }
+    },
+    "continuation": {
+      "warmups": 2,
+      "warmup_status_codes": [
+        200,
+        200
+      ],
+      "samples": [
+        {
+          "wall_ms": 61.163,
+          "server_ms": 57.154,
+          "sql_count": 29,
+          "sql_cursor_ms": 38.816,
+          "response_bytes": 71859,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        },
+        {
+          "wall_ms": 113.767,
+          "server_ms": 109.427,
+          "sql_count": 29,
+          "sql_cursor_ms": 68.429,
+          "response_bytes": 71859,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        },
+        {
+          "wall_ms": 69.474,
+          "server_ms": 66.799,
+          "sql_count": 29,
+          "sql_cursor_ms": 45.558,
+          "response_bytes": 71859,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        },
+        {
+          "wall_ms": 76.229,
+          "server_ms": 72.943,
+          "sql_count": 29,
+          "sql_cursor_ms": 51.012,
+          "response_bytes": 71859,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        },
+        {
+          "wall_ms": 74.344,
+          "server_ms": 71.146,
+          "sql_count": 29,
+          "sql_cursor_ms": 48.242,
+          "response_bytes": 71859,
+          "status_code": 200,
+          "item_count": 100,
+          "summary_row_count": 20120,
+          "has_more": true,
+          "has_next_cursor": true
+        }
+      ],
+      "summary": {
+        "min_ms": 61.163,
+        "median_ms": 74.344,
+        "mean_ms": 78.995,
+        "p95_ms_nearest_rank": 113.767,
+        "max_ms": 113.767
+      }
+    },
+    "snapshot_fallback_first_page": {
+      "wall_ms": 6422.407,
+      "server_ms": 6415.822,
+      "sql_count": 67,
+      "sql_cursor_ms": 3188.506,
+      "response_bytes": 72290,
+      "status_code": 200,
+      "item_count": 100,
+      "summary_row_count": 20120,
+      "has_more": true,
+      "has_next_cursor": true,
+      "snapshot_cache_hit_before_request": false,
+      "snapshot_cache_state": "cold_miss",
+      "search_binding_variant": {
+        "whitespace_characters": 1,
+        "normalized_search": "",
+        "reason": "A distinct cache binding preserves empty-search semantics for this cold fallback sample."
+      }
+    }
+  },
+  "refresh_observation": {
+    "controlled_fallback_requests": 1,
+    "fallback_rate_in_live_traffic": null,
+    "live_refresh_worker_build_lag": null,
+    "model_age_at_measurement_ms": 17259.77,
+    "note": "The standalone runner has no production request-rate or worker telemetry source; only one forced fallback request and this model's publication age are observed."
+  },
+  "query_plan": {
+    "captured": true,
+    "format": "json",
+    "statement_shape": "authorized default first-page read (admin scope), order by burden_share DESC, soldier_id ASC, limit 101",
+    "explain_elapsed_ms": 14.292,
+    "plan": [
+      {
+        "Plan": {
+          "Node Type": "Limit",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Startup Cost": 0.41,
+          "Total Cost": 6.18,
+          "Plan Rows": 1,
+          "Plan Width": 178,
+          "Actual Startup Time": 0.581,
+          "Actual Total Time": 8.757,
+          "Actual Rows": 101,
+          "Actual Loops": 1,
+          "Shared Hit Blocks": 11,
+          "Shared Read Blocks": 89,
+          "Shared Dirtied Blocks": 0,
+          "Shared Written Blocks": 0,
+          "Local Hit Blocks": 0,
+          "Local Read Blocks": 0,
+          "Local Dirtied Blocks": 0,
+          "Local Written Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0,
+          "Plans": [
+            {
+              "Node Type": "Index Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Scan Direction": "Forward",
+              "Index Name": "ix_transparency_read_model_keyset",
+              "Relation Name": "transparency_read_model_rows",
+              "Alias": "rows",
+              "Startup Cost": 0.41,
+              "Total Cost": 6.18,
+              "Plan Rows": 1,
+              "Plan Width": 178,
+              "Actual Startup Time": 0.579,
+              "Actual Total Time": 8.704,
+              "Actual Rows": 101,
+              "Actual Loops": 1,
+              "Index Cond": "(generation_id = '76563efc-feeb-47af-bc2e-b3f0d50c8325'::uuid)",
+              "Rows Removed by Index Recheck": 0,
+              "Shared Hit Blocks": 11,
+              "Shared Read Blocks": 89,
+              "Shared Dirtied Blocks": 0,
+              "Shared Written Blocks": 0,
+              "Local Hit Blocks": 0,
+              "Local Read Blocks": 0,
+              "Local Dirtied Blocks": 0,
+              "Local Written Blocks": 0,
+              "Temp Read Blocks": 0,
+              "Temp Written Blocks": 0
+            }
+          ]
+        },
+        "Planning": {
+          "Shared Hit Blocks": 0,
+          "Shared Read Blocks": 0,
+          "Shared Dirtied Blocks": 0,
+          "Shared Written Blocks": 0,
+          "Local Hit Blocks": 0,
+          "Local Read Blocks": 0,
+          "Local Dirtied Blocks": 0,
+          "Local Written Blocks": 0,
+          "Temp Read Blocks": 0,
+          "Temp Written Blocks": 0
+        },
+        "Planning Time": 0.134,
+        "Triggers": [],
+        "Execution Time": 8.835
+      }
+    ]
+  },
+  "browser": {
+    "status": "captured",
+    "backend_feature_flag": {
+      "name": "TRANSPARENCY_READ_MODEL_ENABLED",
+      "value": true,
+      "default": false,
+      "scope": "isolated profiling backend process only"
+    },
+    "measurement": "Playwright Chromium route readiness after page marker and network quiet; profile_scale_server supplies SQL and ASGI timing headers.",
+    "captures": {
+      "c1": {
+        "artifact": "transparency-keyset-browser-c1-instrumented-20261005.json",
+        "run_id": "20261005T061633326Z-32368-3d46e644",
+        "browser": {
+          "engine": "chromium",
+          "version": "148.0.7778.96"
+        },
+        "scenario": "transparency-whole-organization",
+        "concurrency": 1,
+        "samples_per_mode": {
+          "cold": {
+            "sample_count": 5,
+            "ready_count": 5,
+            "failed_count": 0
+          },
+          "warm": {
+            "sample_count": 5,
+            "ready_count": 5,
+            "failed_count": 0
+          }
+        },
+        "modes": {
+          "cold": {
+            "sample_count": 5,
+            "ready_count": 5,
+            "failed_count": 0,
+            "page_ready_ms": {
+              "p50": 1984.43,
+              "p95": 2260.47
+            },
+            "selector_visible_ms": {
+              "p50": 1317.01,
+              "p95": 1536.1
+            },
+            "total_api_duration_ms": {
+              "p50": 842.78,
+              "p95": 1349.17
+            },
+            "total_response_bytes": {
+              "p50": 75332,
+              "p95": 75332
+            },
+            "total_db_queries": {
+              "p50": 76,
+              "p95": 76
+            },
+            "total_db_ms": {
+              "p50": 174.1,
+              "p95": 307.04
+            },
+            "total_server_ms": {
+              "p50": 517.15,
+              "p95": 803.71
+            },
+            "long_task_count": {
+              "p50": 1,
+              "p95": 2
+            },
+            "long_task_total_ms": {
+              "p50": 94,
+              "p95": 223
+            },
+            "long_task_max_ms": {
+              "p50": 94,
+              "p95": 121
+            }
+          },
+          "warm": {
+            "sample_count": 5,
+            "ready_count": 5,
+            "failed_count": 0,
+            "page_ready_ms": {
+              "p50": 1726.4,
+              "p95": 1783.44
+            },
+            "selector_visible_ms": {
+              "p50": 1022.4,
+              "p95": 1109.17
+            },
+            "total_api_duration_ms": {
+              "p50": 841.74,
+              "p95": 1139.28
+            },
+            "total_response_bytes": {
+              "p50": 75332,
+              "p95": 75332
+            },
+            "total_db_queries": {
+              "p50": 76,
+              "p95": 76
+            },
+            "total_db_ms": {
+              "p50": 247.47,
+              "p95": 307.7
+            },
+            "total_server_ms": {
+              "p50": 512.1,
+              "p95": 604.53
+            },
+            "long_task_count": {
+              "p50": 1,
+              "p95": 2
+            },
+            "long_task_total_ms": {
+              "p50": 69,
+              "p95": 114
+            },
+            "long_task_max_ms": {
+              "p50": 64,
+              "p95": 70
+            }
+          }
+        },
+        "endpoints": {
+          "cold": {
+            "transparency_page": {
+              "sample_count": 5,
+              "status_counts": {
+                "200": 5
+              },
+              "wall_ms": {
+                "p50": 131.38,
+                "p95": 180.48
+              },
+              "response_bytes": {
+                "p50": 72196,
+                "p95": 72196
+              },
+              "sql_count": {
+                "p50": 24,
+                "p95": 24
+              },
+              "sql_cursor_ms": {
+                "p50": 68.7,
+                "p95": 82.13
+              },
+              "server_ms": {
+                "p50": 105.72,
+                "p95": 163.6
+              },
+              "server_minus_db_ms": {
+                "p50": 49.04,
+                "p95": 81.47
+              }
+            },
+            "ineligible_soldiers_count": null,
+            "admin_errors_unread_count": {
+              "sample_count": 5,
+              "status_counts": {
+                "503": 5
+              },
+              "wall_ms": {
+                "p50": 88.56,
+                "p95": 126.17
+              },
+              "response_bytes": {
+                "p50": 78,
+                "p95": 78
+              },
+              "sql_count": {
+                "p50": 2,
+                "p95": 2
+              },
+              "sql_cursor_ms": {
+                "p50": 7.1,
+                "p95": 17.51
+              },
+              "server_ms": {
+                "p50": 64.6,
+                "p95": 96.31
+              },
+              "server_minus_db_ms": {
+                "p50": 56.38,
+                "p95": 78.8
+              }
+            }
+          },
+          "warm": {
+            "transparency_page": {
+              "sample_count": 5,
+              "status_counts": {
+                "200": 5
+              },
+              "wall_ms": {
+                "p50": 128.19,
+                "p95": 139.15
+              },
+              "response_bytes": {
+                "p50": 72196,
+                "p95": 72196
+              },
+              "sql_count": {
+                "p50": 24,
+                "p95": 24
+              },
+              "sql_cursor_ms": {
+                "p50": 70.32,
+                "p95": 78.62
+              },
+              "server_ms": {
+                "p50": 110.98,
+                "p95": 126.26
+              },
+              "server_minus_db_ms": {
+                "p50": 39.06,
+                "p95": 52.45
+              }
+            },
+            "ineligible_soldiers_count": null,
+            "admin_errors_unread_count": {
+              "sample_count": 5,
+              "status_counts": {
+                "503": 5
+              },
+              "wall_ms": {
+                "p50": 70.23,
+                "p95": 82
+              },
+              "response_bytes": {
+                "p50": 78,
+                "p95": 78
+              },
+              "sql_count": {
+                "p50": 2,
+                "p95": 2
+              },
+              "sql_cursor_ms": {
+                "p50": 9.9,
+                "p95": 16.44
+              },
+              "server_ms": {
+                "p50": 37.83,
+                "p95": 51.65
+              },
+              "server_minus_db_ms": {
+                "p50": 29.77,
+                "p95": 36.67
+              }
+            }
+          }
+        }
+      },
+      "c5": {
+        "artifact": "transparency-keyset-browser-c5-instrumented-20261005.json",
+        "run_id": "20261005T061742532Z-24488-1e90b31e",
+        "browser": {
+          "engine": "chromium",
+          "version": "148.0.7778.96"
+        },
+        "scenario": "transparency-whole-organization",
+        "concurrency": 5,
+        "samples_per_mode": {
+          "cold": {
+            "sample_count": 25,
+            "ready_count": 25,
+            "failed_count": 0
+          },
+          "warm": {
+            "sample_count": 25,
+            "ready_count": 25,
+            "failed_count": 0
+          }
+        },
+        "modes": {
+          "cold": {
+            "sample_count": 25,
+            "ready_count": 25,
+            "failed_count": 0,
+            "page_ready_ms": {
+              "p50": 13158.68,
+              "p95": 15356.65
+            },
+            "selector_visible_ms": {
+              "p50": 5903.88,
+              "p95": 6424.14
+            },
+            "total_api_duration_ms": {
+              "p50": 16086.95,
+              "p95": 22852.96
+            },
+            "total_response_bytes": {
+              "p50": 75568,
+              "p95": 75568
+            },
+            "total_db_queries": {
+              "p50": 141,
+              "p95": 141
+            },
+            "total_db_ms": {
+              "p50": 5356.26,
+              "p95": 7905.5
+            },
+            "total_server_ms": {
+              "p50": 12470.01,
+              "p95": 15885.19
+            },
+            "long_task_count": {
+              "p50": 4,
+              "p95": 7
+            },
+            "long_task_total_ms": {
+              "p50": 462,
+              "p95": 752
+            },
+            "long_task_max_ms": {
+              "p50": 220,
+              "p95": 331
+            }
+          },
+          "warm": {
+            "sample_count": 25,
+            "ready_count": 25,
+            "failed_count": 0,
+            "page_ready_ms": {
+              "p50": 5349.5,
+              "p95": 10468.03
+            },
+            "selector_visible_ms": {
+              "p50": 4446.21,
+              "p95": 4902.78
+            },
+            "total_api_duration_ms": {
+              "p50": 3699.27,
+              "p95": 12985.18
+            },
+            "total_response_bytes": {
+              "p50": 75332,
+              "p95": 75568
+            },
+            "total_db_queries": {
+              "p50": 76,
+              "p95": 141
+            },
+            "total_db_ms": {
+              "p50": 752.96,
+              "p95": 2452.71
+            },
+            "total_server_ms": {
+              "p50": 2053.99,
+              "p95": 8312.25
+            },
+            "long_task_count": {
+              "p50": 1,
+              "p95": 3
+            },
+            "long_task_total_ms": {
+              "p50": 157,
+              "p95": 354
+            },
+            "long_task_max_ms": {
+              "p50": 122,
+              "p95": 341
+            }
+          }
+        },
+        "endpoints": {
+          "cold": {
+            "transparency_page": {
+              "sample_count": 25,
+              "status_counts": {
+                "200": 25
+              },
+              "wall_ms": {
+                "p50": 998.32,
+                "p95": 1271.48
+              },
+              "response_bytes": {
+                "p50": 72196,
+                "p95": 72196
+              },
+              "sql_count": {
+                "p50": 24,
+                "p95": 24
+              },
+              "sql_cursor_ms": {
+                "p50": 325.18,
+                "p95": 528.96
+              },
+              "server_ms": {
+                "p50": 652.39,
+                "p95": 868
+              },
+              "server_minus_db_ms": {
+                "p50": 293.8,
+                "p95": 548.79
+              }
+            },
+            "ineligible_soldiers_count": {
+              "sample_count": 25,
+              "status_counts": {
+                "200": 25
+              },
+              "wall_ms": {
+                "p50": 5945.53,
+                "p95": 7256.16
+              },
+              "response_bytes": {
+                "p50": 11,
+                "p95": 11
+              },
+              "sql_count": {
+                "p50": 17,
+                "p95": 17
+              },
+              "sql_cursor_ms": {
+                "p50": 3445.07,
+                "p95": 5196.82
+              },
+              "server_ms": {
+                "p50": 5892.18,
+                "p95": 6906.13
+              },
+              "server_minus_db_ms": {
+                "p50": 2238.24,
+                "p95": 3370.62
+              }
+            },
+            "admin_errors_unread_count": {
+              "sample_count": 76,
+              "status_counts": {
+                "503": 76
+              },
+              "wall_ms": {
+                "p50": 841.69,
+                "p95": 2404.7
+              },
+              "response_bytes": {
+                "p50": 78,
+                "p95": 78
+              },
+              "sql_count": {
+                "p50": 2,
+                "p95": 2
+              },
+              "sql_cursor_ms": {
+                "p50": 96.19,
+                "p95": 502.91
+              },
+              "server_ms": {
+                "p50": 557.91,
+                "p95": 1867.82
+              },
+              "server_minus_db_ms": {
+                "p50": 412.68,
+                "p95": 1522.67
+              }
+            }
+          },
+          "warm": {
+            "transparency_page": {
+              "sample_count": 25,
+              "status_counts": {
+                "200": 25
+              },
+              "wall_ms": {
+                "p50": 525.36,
+                "p95": 643.26
+              },
+              "response_bytes": {
+                "p50": 72196,
+                "p95": 72196
+              },
+              "sql_count": {
+                "p50": 24,
+                "p95": 24
+              },
+              "sql_cursor_ms": {
+                "p50": 245.62,
+                "p95": 346.44
+              },
+              "server_ms": {
+                "p50": 392,
+                "p95": 508.31
+              },
+              "server_minus_db_ms": {
+                "p50": 142.38,
+                "p95": 229.58
+              }
+            },
+            "ineligible_soldiers_count": {
+              "sample_count": 6,
+              "status_counts": {
+                "200": 6
+              },
+              "wall_ms": {
+                "p50": 2593.94,
+                "p95": 4267.7
+              },
+              "response_bytes": {
+                "p50": 11,
+                "p95": 11
+              },
+              "sql_count": {
+                "p50": 17,
+                "p95": 17
+              },
+              "sql_cursor_ms": {
+                "p50": 324.4,
+                "p95": 1566.69
+              },
+              "server_ms": {
+                "p50": 2561.96,
+                "p95": 3814.84
+              },
+              "server_minus_db_ms": {
+                "p50": 1881.11,
+                "p95": 2977.86
+              }
+            },
+            "admin_errors_unread_count": {
+              "sample_count": 34,
+              "status_counts": {
+                "503": 33,
+                "failed": 1
+              },
+              "wall_ms": {
+                "p50": 377.27,
+                "p95": 2246.87
+              },
+              "response_bytes": {
+                "p50": 78,
+                "p95": 78
+              },
+              "sql_count": {
+                "p50": 2,
+                "p95": 2
+              },
+              "sql_cursor_ms": {
+                "p50": 23.01,
+                "p95": 232.27
+              },
+              "server_ms": {
+                "p50": 222.33,
+                "p95": 1230.64
+              },
+              "server_minus_db_ms": {
+                "p50": 190,
+                "p95": 948.38
+              }
+            }
+          }
+        }
+      }
+    },
+    "historical_page_ready_comparison_seconds": {
+      "meaning": "Historical one-pair observations from prior report captures; capture conditions are not matched to the current runs.",
+      "original_baseline": {
+        "samples": 1,
+        "cold": 317.4,
+        "warm": 323.1
+      },
+      "prior_uncommitted_candidate": {
+        "samples": 1,
+        "cold": 42.63,
+        "warm": 42.6
+      }
+    },
+    "findings": [
+      "At c1, cold page-ready p95 is 2.260 seconds, slightly above the proposed 2-second target; warm p95 is 1.783 seconds.",
+      "At c5, cold page-ready p95 is 15.357 seconds and warm p95 is 10.468 seconds; the target is missed under this measured concurrency.",
+      "The largest measured c5 cold endpoint among these tracked page requests is GET /api/ranges/ineligible-soldiers/count at 5.946 seconds p50 / 7.256 seconds p95, with 5.197 seconds p95 accumulated SQL cursor time.",
+      "The transparency endpoint returned HTTP 200 for all c1 and c5 cold/warm samples; the c5 cold endpoint p95 was 1.271 seconds, with 529 ms p95 SQL cursor time.",
+      "GET /api/admin/errors/unread-count returned HTTP 503 because LOKI_URL was unset in the isolated profiling stack; this unrelated dependency error is recorded in the raw captures.",
+      "The browser change in page readiness cannot be attributed solely to the read model; this was not a matched experiment that isolates one implementation change."
+    ]
+  },
+  "limitations": [
+    "The API harness used in-process FastAPI TestClient; browser results come from separate Playwright Chromium runs. They are separate measurements and should not be added or conflated.",
+    "Historical page-ready comparisons are one-pair observations with different capture conditions and are descriptive only, not controlled before/after estimates.",
+    "The c5 capture is a local five-client run with 25 samples per mode; it is a contention observation, not a production-capacity percentile.",
+    "The snapshot fallback is one verified cold-miss API sample and has no p50/p95 estimate.",
+    "The standalone API runner has no production request-rate or worker telemetry source, so live fallback frequency and worker refresh lag remain unavailable.",
+    "SQL cursor time excludes row fetching, ORM/Python work, and response serialization; browser endpoint wall time includes a different instrumented request path.",
+    "LOKI_URL was unset in the isolated profiling stack, so /api/admin/errors/unread-count returned HTTP 503; one warm c5 request to that endpoint was aborted.",
+    "Initial /api/settings/public requests returned 401 before refresh and successful 200; no transparency endpoint request failed and all measured pages reached readiness."
+  ]
+}

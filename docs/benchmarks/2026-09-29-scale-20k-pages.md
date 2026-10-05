@@ -699,6 +699,41 @@ The [raw microbenchmark artifact](data/transparency-projection-select-comparison
 The three-column variant's median was 75.4% lower in this local microbenchmark. The repository Testcontainers helper disables `fsync`, `full_page_writes`, and `synchronous_commit`; the data and database are synthetic, and seven samples on one local container are directional. This isolates projection-row read/materialization only. It excludes active Soldier loading, readiness and repairs, burden calculations, hierarchy/exemption reads, filtering, summary and global sorting, snapshot writes, serialization, HTTP, and browser rendering. It is not a route or page latency measurement, and no endpoint improvement is inferred. The regression also checks that projected output remains equal to the legacy output and that the executed statement selects exactly these three fields.
 
 
+## 2026-10-05 transparency keyset read-model API capture
+
+The [raw API artifact](data/transparency-keyset-read-model-20261005.json) records one direct read-model rebuild, five current-model first-page samples, five keyset continuations, one cold snapshot-fallback first-page sample, one PostgreSQL query plan, and linked browser captures. The API run used the isolated `justice_scale_20k_scale` database (PostgreSQL 16.15, `work_mem=4MB`): 20,120 total/active Soldiers, including 20,000 synthetic Soldiers; 1,000,008 duty assignments; 20,120 score projections. The earlier 2026-10-04 snapshot capture had 20,270 Soldiers and 1,002,597 assignments, so those API datasets are close but not identical.
+
+| Operation | Samples | Wall p50/p95 | SQL cursor p50/p95 | SQL statements | Response bytes |
+|---|---:|---:|---:|---:|---:|
+| Read-model build | 1 | 8.391 s / n/a | 5.355 s / n/a | 79 | n/a |
+| Current-model first page | 5 | 82.405 / 97.916 ms | 57.196 / 70.369 ms | 24 | 72,196 |
+| Snapshot fallback first page, cold miss | 1 | 6.422 s / n/a | 3.189 s / n/a | 67 | 72,290 |
+| Keyset continuation | 5 | 74.344 / 113.767 ms | 48.242 / 68.429 ms | 29 | 71,859 |
+
+Every measured API request returned HTTP 200 and 100 items; the full summary population was 20,120. The cold fallback used a one-space search parameter, which the route strips to an empty search, to avoid reusing the snapshot produced by an earlier artifact-serialization failure. Its cache state was verified as a miss before the request, so the measured request follows the snapshot build path with the same effective empty-search semantics and page size as the keyset samples. The fallback is one diagnostic sample, not a p50/p95 estimate.
+
+The keyset first-page query plan chose `ix_transparency_read_model_keyset` and returned the requested 101 rows in 8.835 ms PostgreSQL execution time (0.134 ms planning), with 89 shared-read blocks and 11 shared hits and no temporary I/O. The planner estimated one row for the limited scan and observed 101. The plan supports use of the intended ordering index; it does not establish behavior under concurrent load.
+
+The current-model first page and continuation are within the proposed 500 ms API target in this single-client capture. The cold fallback remains above the proposed two-second first-content target at 6.422 s, though below the 10-second stall threshold in this one sample. The read-model rebuild itself took 8.391 s and ran outside the page request. Compared with the 2026-10-04 snapshot API capture, the current keyset first page was 82.405 ms p50 / 97.916 ms p95 versus cached snapshot pages at 66.90 / 73.47 ms; keyset continuation was 74.344 / 113.767 ms versus saved-snapshot continuation at 56.16 / 62.88 ms. The keyset requests used 24/29 SQL statements versus 18/15, respectively. The faster cold fallback sample (6.422 s versus 11.313 s old p50) is directional only: it has one sample, a slightly smaller dataset, and a different normalized-empty cache binding. These measurements do not show that the keyset cache-hit path is faster than the prior snapshot cache-hit path; repeated per-page authorized summary aggregation is a candidate for follow-up.
+
+### Browser and concurrent-client measurements
+
+Separate instrumented Playwright Chromium captures loaded the transparency route at c1 and c5. The backend profiling processes explicitly set `TRANSPARENCY_READ_MODEL_ENABLED=true`; the deployment default remains false. All measured pages reached readiness: 5/5 cold and warm at c1 and 25/25 cold and warm at c5. Full per-sample data is in the [c1 artifact](data/transparency-keyset-browser-c1-instrumented-20261005.json) and [c5 artifact](data/transparency-keyset-browser-c5-instrumented-20261005.json).
+
+| Concurrency | Mode | Ready | Page-ready p50/p95 | Transparency API p50/p95 | API SQL p95 |
+|---:|---|---:|---:|---:|---:|
+| 1 | Cold | 5/5 | 1.984 / 2.260 s | 131 / 180 ms | 82 ms |
+| 1 | Warm | 5/5 | 1.726 / 1.783 s | 128 / 139 ms | 79 ms |
+| 5 | Cold | 25/25 | 13.159 / 15.357 s | 998 / 1,271 ms | 529 ms |
+| 5 | Warm | 25/25 | 5.350 / 10.468 s | 525 / 643 ms | 346 ms |
+
+At c1 the cold page-ready p95 slightly exceeds the proposed two-second target; warm p95 is below it. At c5, both cold and warm p95 miss that target. The largest tracked cold c5 endpoint was `GET /api/ranges/ineligible-soldiers/count` at 5.946 s p50 / 7.256 s p95, including 5.197 s p95 SQL cursor time. This is the next optimization lead. The transparency endpoint returned HTTP 200 in every c1 and c5 sample.
+
+The original report baseline recorded one transparency pair at 317.4 s cold / 323.1 s warm. The prior uncommitted candidate recorded one pair at 42.63 / 42.60 s. Current c1 page-ready p50 is 1.984 s cold / 1.726 s warm, but these historical measurements differ in setup and sample count. They show direction only; the improvement cannot be attributed solely to the read model. The c5 results also show that the route needs more work under concurrent use.
+
+`/api/admin/errors/unread-count` returned HTTP 503 because `LOKI_URL` was unset in this isolated stack. Initial `/api/settings/public` 401 responses were followed by successful 200s, and one warm c5 admin-error request was aborted. No transparency API requests failed and every page reached readiness. These unrelated statuses are present in the raw artifacts. The API runner still has no live request-frequency or worker telemetry: it made one controlled fallback request, records model publication age at the end of the sample sequence, and does not infer live fallback frequency or worker refresh lag. API `TestClient` timings and browser readiness are distinct measures, not values to add together.
+
+
 ### Task 22 commander score readiness follow-up (2026-10-03)
 
 Commit `0fd9bdb3` changes the healthy `commander_score_totals` projection read to get compact distinct soldier and quarter scopes from PostgreSQL instead of materializing every persisted `(soldier_id, quarter_start)` pair in Python. Exact keys are enumerated and repaired only for unhealthy, dirty, or divergent buckets; the supplied soldier scope remains the only scope used for health checks and marker lookups. Focused projection, freshness, persistence, revalidation, observability, and commander-dashboard tests passed 62/62. The projected-scoring remainder passed 13/13 with one pre-existing Task 21 expectation excluded; that assertion separately failed because it expects a full key enumeration where the current Task 21 path performs none.
