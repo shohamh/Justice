@@ -10,6 +10,7 @@ import time
 import traceback
 import uuid
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import Request
 
@@ -18,6 +19,7 @@ _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
 _SENSITIVE = re.compile(r"password|token|secret|authorization|cookie|refresh|access", re.I)
 _MAX_VALUE = 4000
 _MAX_BODY = 16000
+_URL_FIELDS = frozenset({"url", "browser_url", "filename"})
 
 # Caps how many times the *same* error can be logged in a burst — e.g. a hot
 # loop hitting a broken endpoint, or a broken frontend retry loop — without
@@ -75,6 +77,25 @@ def redact(value: Any, *, depth: int = 0) -> Any:
         return [redact(item, depth=depth + 1) for item in value[:100]]
     if isinstance(value, str):
         return value if len(value) <= _MAX_VALUE else value[:_MAX_VALUE] + "...[truncated]"
+    return value
+
+
+def _strip_url_secrets(value: Any, *, key: str | None = None, depth: int = 0) -> Any:
+    if depth > 5:
+        return "[truncated]"
+    if key in _URL_FIELDS and isinstance(value, str):
+        parts = urlsplit(value)
+        value = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        return value if len(value) <= _MAX_VALUE else value[:_MAX_VALUE] + "...[truncated]"
+    if isinstance(value, dict):
+        return {
+            str(k): _strip_url_secrets(v, key=str(k), depth=depth + 1)
+            for k, v in list(value.items())[:100]
+        }
+    if isinstance(value, list):
+        return [_strip_url_secrets(item, depth=depth + 1) for item in value[:100]]
+    if isinstance(value, str) and len(value) > _MAX_VALUE:
+        return value[:_MAX_VALUE] + "...[truncated]"
     return value
 
 
@@ -189,7 +210,7 @@ def log_frontend_error(payload: dict[str, Any], *, user: Any = None, ip: str | N
     if not allow:
         return
     user_json = _user_json(user)
-    extra = {"request_id": request_id_value, "frontend": redact(payload), "ip": ip}
+    extra = {"request_id": request_id_value, "frontend": redact(_strip_url_secrets(payload)), "ip": ip}
     if user_json is not None:
         extra["user"] = user_json
     logger.error(
