@@ -208,6 +208,20 @@ describe("BugReportsContent", () => {
     expect(screen.getByText(/12345/)).toBeInTheDocument();
   });
 
+  it("renders historic unsafe navigation values as text, never as a link", async () => {
+    vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({
+      items: [{
+        ...SAMPLE_REPORT,
+        nav_history: [{ path: "javascript:alert(1)", timestamp: "2026-07-25T10:00:00Z" }],
+      }],
+      total: 1,
+    });
+    renderWithProviders(<BugReportsContent />);
+    fireEvent.click(await screen.findByTestId("bug-report-row-r1"));
+    const path = await screen.findByText("javascript:alert(1)");
+    expect(path.closest("a")).toBeNull();
+  });
+
   it("revokes screenshot blob URLs on unmount", async () => {
     const reportWithScreenshot = { ...SAMPLE_REPORT, has_screenshot: true };
     vi.mocked(bugReportsApi.listBugReports).mockResolvedValue({ items: [reportWithScreenshot], total: 1 });

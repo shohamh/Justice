@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Circle, Clock, CheckCircle2, XCircle, LucideIcon } from "lucide-react";
@@ -470,9 +469,7 @@ export function BugReportsContent() {
                 <ul className="list-disc pr-5 mb-2 text-xs">
                   {(report.nav_history ?? []).map((h, i) => (
                     <li key={i}>
-                      <Link to={h.path} className="text-indigo-600 hover:text-indigo-800 hover:underline" target="_blank" rel="noopener noreferrer">
-                        {h.path}
-                      </Link>
+                      <span>{h.path}</span>
                       {" — "}{new Date(h.timestamp).toLocaleString("he-IL")}
                     </li>
                   ))}
