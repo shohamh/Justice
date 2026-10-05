@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { AxiosError } from "axios";
 import LoginPage from "./LoginPage";
 import * as authApi from "../api/auth";
@@ -19,6 +19,72 @@ vi.mock("../api/auth");
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(authApi.fetchOidcStatus).mockResolvedValue(false);
+});
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="current-location">{`${location.pathname}${location.search}${location.hash}`}</output>;
+}
+
+async function submitValidLogin(initialEntry: { pathname: string; state?: unknown }) {
+  const originalOrigin = window.location.origin;
+  mockLogin.mockResolvedValueOnce(undefined);
+  render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <LocationProbe />
+      <LoginPage />
+    </MemoryRouter>,
+  );
+  fireEvent.change(screen.getByTestId("personal-number-input"), { target: { value: "123" } });
+  fireEvent.change(screen.getByTestId("password-input"), { target: { value: "password" } });
+  fireEvent.submit(screen.getByTestId("login-form"));
+  await waitFor(() => expect(screen.getByTestId("current-location")).not.toHaveTextContent("/login"));
+  return originalOrigin;
+}
+
+describe("password login return target", () => {
+  it("returns to a saved internal path with its query and hash", async () => {
+    const originalOrigin = await submitValidLogin({
+      pathname: "/login",
+      state: { from: { pathname: "/import/sessions/session-42", search: "?tab=summary", hash: "#details" } },
+    });
+
+    expect(screen.getByTestId("current-location")).toHaveTextContent("/import/sessions/session-42?tab=summary#details");
+    expect(window.location.origin).toBe(originalOrigin);
+  });
+
+  it("falls back to the home page when no return target was saved", async () => {
+    const originalOrigin = await submitValidLogin({ pathname: "/login" });
+
+    expect(screen.getByTestId("current-location")).toHaveTextContent("/");
+    expect(window.location.origin).toBe(originalOrigin);
+  });
+
+  it("keeps the reset-password success banner when router state also carries a return path", async () => {
+    render(
+      <MemoryRouter initialEntries={[{
+        pathname: "/login",
+        state: { resetSuccess: true, from: { pathname: "/profile", search: "?tab=security", hash: "" } },
+      }] }>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("reset_password.success")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["absolute external", "https://attacker.example/steal"],
+    ["protocol-relative", "//attacker.example/steal"],
+    ["backslash path", "/\\attacker.example/steal"],
+    ["control character", "/profile\u0000"],
+    ["non-string", 42],
+  ])("rejects a %s return target", async (_label, target) => {
+    const originalOrigin = await submitValidLogin({ pathname: "/login", state: { from: target } });
+
+    expect(screen.getByTestId("current-location")).toHaveTextContent("/");
+    expect(window.location.origin).toBe(originalOrigin);
+  });
 });
 
 function makeRateLimitError(retryAfterSeconds: string) {

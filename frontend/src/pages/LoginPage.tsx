@@ -5,6 +5,7 @@ import { AxiosError } from "axios";
 
 import { fetchOidcStatus, startSsoLogin } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
+import { safeInternalReturnPath } from "../auth/returnPath";
 import JusticeLogo from "../components/JusticeLogo";
 import PasswordInput from "../components/PasswordInput";
 
@@ -15,7 +16,15 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const resetSuccess = (location.state as { resetSuccess?: boolean } | null)?.resetSuccess;
+  const routeState = location.state;
+  const resetSuccess =
+    routeState && typeof routeState === "object" && "resetSuccess" in routeState
+      ? routeState.resetSuccess === true
+      : false;
+  const returnTo =
+    routeState && typeof routeState === "object" && "from" in routeState
+      ? safeInternalReturnPath(routeState.from)
+      : null;
 
   const [searchParams] = useSearchParams();
   // The callback only ever sends the bare flag; nothing else from the URL is read or shown.
@@ -43,7 +52,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(personalNumber, password, rememberMe);
-      navigate("/", { replace: true });
+      navigate(returnTo ?? "/", { replace: true });
     } catch (err) {
       if (err instanceof AxiosError) {
         if (err.response?.status === 401) {
