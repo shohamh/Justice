@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,8 +19,30 @@ def _lock_session(acquired: bool) -> MagicMock:
     return session
 
 
+def _set_enabled(worker, monkeypatch, enabled: bool) -> None:
+    monkeypatch.setattr(
+        worker, "get_settings",
+        lambda: SimpleNamespace(transparency_read_model_enabled=enabled),
+    )
+
+
+def test_disabled_tick_does_not_open_sessions_or_build(monkeypatch):
+    worker = _worker()
+    _set_enabled(worker, monkeypatch, False)
+    session_scope = MagicMock(side_effect=AssertionError("disabled refresh must not open a session"))
+    rebuild = MagicMock()
+    monkeypatch.setattr(worker, "session_scope", session_scope)
+    monkeypatch.setattr(worker.model, "rebuild_generation", rebuild)
+
+    assert worker._refresh_tick() is False
+
+    session_scope.assert_not_called()
+    rebuild.assert_not_called()
+
+
 def test_stale_generation_is_built_once(monkeypatch):
     worker = _worker()
+    _set_enabled(worker, monkeypatch, True)
     lock_session = _lock_session(True)
     build_session = MagicMock()
     sessions = iter((lock_session, build_session))
@@ -38,6 +61,7 @@ def test_stale_generation_is_built_once(monkeypatch):
 
 def test_tick_skips_build_when_another_tick_holds_advisory_lock(monkeypatch):
     worker = _worker()
+    _set_enabled(worker, monkeypatch, True)
     lock_session = _lock_session(False)
     monkeypatch.setattr(worker, "session_scope", lambda: nullcontext(lock_session))
     rebuild = MagicMock()
@@ -50,6 +74,7 @@ def test_tick_skips_build_when_another_tick_holds_advisory_lock(monkeypatch):
 
 def test_current_generation_is_reused_without_rebuild(monkeypatch):
     worker = _worker()
+    _set_enabled(worker, monkeypatch, True)
     lock_session = _lock_session(True)
     read_session = MagicMock()
     sessions = iter((lock_session, read_session))
@@ -67,6 +92,7 @@ def test_current_generation_is_reused_without_rebuild(monkeypatch):
 
 def test_failed_build_can_be_retried_on_the_next_tick(monkeypatch):
     worker = _worker()
+    _set_enabled(worker, monkeypatch, True)
     sessions = iter((_lock_session(True), MagicMock(), _lock_session(True), MagicMock()))
     monkeypatch.setattr(worker, "session_scope", lambda: nullcontext(next(sessions)))
     monkeypatch.setattr(worker.model, "capture_source_state", lambda session: (19, "snapshot"))

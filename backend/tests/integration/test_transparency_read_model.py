@@ -279,8 +279,15 @@ def test_summary_empty_and_single_row_null_rules(admin_session):
 
 
 def test_worker_tick_publishes_generation_then_reuses_it(admin_session, monkeypatch):
+    from types import SimpleNamespace
+
     from app import transparency_read_model_worker as worker
     from app.services import scoring
+
+    monkeypatch.setattr(
+        worker, "get_settings",
+        lambda: SimpleNamespace(transparency_read_model_enabled=True),
+    )
 
     create_soldier(admin_session, personal_number="rm-worker")
     canonical = scoring.transparency_rows(admin_session, viewer=None)
@@ -308,8 +315,14 @@ def test_worker_tick_publishes_generation_then_reuses_it(admin_session, monkeypa
 def test_overlapping_worker_tick_cannot_duplicate_build_after_builder_commit(monkeypatch):
     import threading
     from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
 
     from app import transparency_read_model_worker as worker
+
+    monkeypatch.setattr(
+        worker, "get_settings",
+        lambda: SimpleNamespace(transparency_read_model_enabled=True),
+    )
 
     started = threading.Event()
     finish = threading.Event()

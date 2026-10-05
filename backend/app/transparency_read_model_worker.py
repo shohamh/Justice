@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from app.db.session import session_scope
 from app.services import transparency_read_model as model
+from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,9 @@ def _refresh_tick() -> bool:
     commits internally. Keeping the lock transaction open on a separate
     session ensures that those commits cannot release the single-flight lock.
     """
+    if not get_settings().transparency_read_model_enabled:
+        return False
+
     started = perf_counter()
     generation_id: str | None = None
     source_generation: int | None = None

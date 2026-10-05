@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,7 +35,6 @@ from app.routes import approvals_export as approvals_export_routes
 from app.routes import assignments as assignment_routes
 from app.routes import audit_logs as audit_log_routes
 from app.routes import auth as auth_routes
-from app.routes import oidc as oidc_routes
 from app.routes import bug_reports as bug_report_routes
 from app.routes import calendar as calendar_routes
 from app.routes import calendar_holidays as calendar_holidays_routes
@@ -68,6 +67,7 @@ from app.routes import my_requests as my_request_routes
 from app.routes import nav_counts as nav_count_routes
 from app.routes import no_show as no_show_routes
 from app.routes import notifications as notification_routes
+from app.routes import oidc as oidc_routes
 from app.routes import potential as potential_routes
 from app.routes import public_settings as public_settings_routes
 from app.routes import range_locations as range_locations_routes
@@ -214,21 +214,22 @@ async def lifespan(app: FastAPI):
     hr_sync_task = asyncio.create_task(run_hr_sync_worker())
     qualification_expiry_task = asyncio.create_task(run_qualification_expiry_worker())
     score_projection_revalidation_task = asyncio.create_task(run_score_projection_revalidation_worker())
-    transparency_read_model_task = asyncio.create_task(run_transparency_read_model_worker())
+    transparency_read_model_task = None
+    if get_settings().transparency_read_model_enabled:
+        transparency_read_model_task = asyncio.create_task(run_transparency_read_model_worker())
     yield
-    tasks = (
+    tasks = [
         email_task, swap_expiry_task, range_reminder_task, range_attendance_task,
         duty_eligibility_task, rank_advancement_task, hr_sync_task,
         qualification_expiry_task, score_projection_revalidation_task,
-        transparency_read_model_task,
-    )
+    ]
+    if transparency_read_model_task is not None:
+        tasks.append(transparency_read_model_task)
     for task in tasks:
         task.cancel()
     for task in tasks:
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
     logger.info("=== CLEAN SHUTDOWN ===")
 
 
