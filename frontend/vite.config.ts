@@ -7,9 +7,6 @@ export default defineConfig({
   resolve: {
     alias: { "@": path.resolve(import.meta.dirname, "src") },
   },
-  optimizeDeps: {
-    include: ["mermaid"],
-  },
   server: {
     port: 5173,
     host: "0.0.0.0",
