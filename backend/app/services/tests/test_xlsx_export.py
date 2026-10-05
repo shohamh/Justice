@@ -1,7 +1,7 @@
 from io import BytesIO
 
 import pytest
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from pydantic import ValidationError
 
 from app.services.xlsx_export import (
@@ -12,6 +12,7 @@ from app.services.xlsx_export import (
     WorksheetMatrix,
     build_matrix_workbook,
     validate_export_filename,
+    write_matrix_sheet,
 )
 
 
@@ -21,7 +22,7 @@ def _read_matrix(data: bytes):
     return workbook, worksheet
 
 
-def _matrix(sheet_name: str, headers: list[str], rows: list[list[object]]) -> WorksheetMatrix:
+def _matrix(sheet_name: str, headers: list[object], rows: list[list[object]]) -> WorksheetMatrix:
     return WorksheetMatrix(sheet_name=sheet_name, headers=headers, rows=rows)
 
 
@@ -40,6 +41,36 @@ def test_round_trips_hebrew_headers_and_supported_scalar_cells():
         ("נועה", 4, True, None),
         (None, 2.5, False, None),
     ]
+
+
+def test_round_trips_supported_scalar_headers():
+    matrix = WorksheetMatrix(
+        sheet_name="Typed headers",
+        headers=["Name", 7, None, True],
+        rows=[["Ada", 8, None, False]],
+    )
+
+    workbook, worksheet = _read_matrix(build_matrix_workbook([matrix]))
+
+    assert list(worksheet.values) == [("Name", 7, None, True), ("Ada", 8, None, False)]
+    workbook.close()
+
+
+@pytest.mark.parametrize(
+    ("header", "error_type", "message"),
+    [
+        (float("nan"), ValueError, "finite"),
+        (float("inf"), ValueError, "finite"),
+        ("bad\x00text", ValueError, "XML"),
+        ("x" * (MAX_EXPORT_CELL_TEXT + 1), ValueError, "length"),
+        (object(), ValidationError, "Input should be"),
+    ],
+    ids=["nan", "infinity", "illegal-xml", "too-long", "unsupported"],
+)
+def test_rejects_invalid_header_cells(header, error_type, message):
+    with pytest.raises(error_type, match=message):
+        matrix = WorksheetMatrix(sheet_name="Data", headers=[header], rows=[])
+        build_matrix_workbook([matrix])
 
 
 def test_accepts_a_worksheet_with_no_data_rows():
@@ -143,8 +174,6 @@ def test_numeric_looking_string_remains_a_string_cell():
 
 def test_rejects_non_string_headers_and_unsupported_cells():
     with pytest.raises(ValidationError):
-        WorksheetMatrix(sheet_name="Data", headers=[1], rows=[])
-    with pytest.raises(ValidationError):
         _matrix("Data", ["value"], [[object()]])
 
 
@@ -153,6 +182,20 @@ def test_rejects_row_limit_plus_one():
 
     with pytest.raises(ValueError, match="row limit"):
         build_matrix_workbook([matrix])
+
+
+def test_row_limit_applies_per_sheet_when_workbook_total_exceeds_limit():
+    matrices = [
+        _matrix("First", ["v"], [[0] for _ in range(13_000)]),
+        _matrix("Second", ["v"], [[0] for _ in range(13_000)]),
+    ]
+
+    workbook, _ = _read_matrix(build_matrix_workbook(matrices))
+
+    assert workbook.sheetnames == ["First", "Second"]
+    assert workbook["First"].max_row == 13_001
+    assert workbook["Second"].max_row == 13_001
+    workbook.close()
 
 
 def test_rejects_column_limit_plus_one():
@@ -178,6 +221,8 @@ def test_rejects_aggregate_cell_limit_plus_one():
     "filename",
     [
         "",
+        ".xlsx",
+        " .xlsx",
         "../report.xlsx",
         "folder\\report.xlsx",
         "bad\nname.xlsx",
@@ -197,3 +242,14 @@ def test_returns_safe_ascii_xlsx_filename(filename: str):
     assert result.isascii()
     assert result.endswith(".xlsx")
     assert all(character.isalnum() or character in "._- " for character in result)
+
+
+def test_write_matrix_sheet_rejects_case_insensitive_collision():
+    workbook = Workbook()
+    workbook.active.title = "Existing"
+
+    with pytest.raises(ValueError, match="unique"):
+        write_matrix_sheet(workbook, _matrix("existing", ["h"], []))
+
+    assert workbook.sheetnames == ["Existing"]
+    workbook.close()

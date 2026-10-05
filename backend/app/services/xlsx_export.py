@@ -29,7 +29,7 @@ class WorksheetMatrix(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     sheet_name: str
-    headers: list[str]
+    headers: list[Cell]
     rows: list[list[Cell]]
 
 
@@ -55,7 +55,6 @@ def _validate_matrices(matrices: list[WorksheetMatrix]) -> None:
 
     total_cells = 0
     titles: set[str] = set()
-    total_rows = 0
     for matrix in matrices:
         title = matrix.sheet_name
         if not isinstance(title, str) or not 1 <= len(title) <= 31:
@@ -77,9 +76,6 @@ def _validate_matrices(matrices: list[WorksheetMatrix]) -> None:
         row_count = len(matrix.rows)
         if row_count > MAX_EXPORT_ROWS:
             raise ValueError(f"Worksheet row limit is {MAX_EXPORT_ROWS}")
-        total_rows += row_count
-        if total_rows > MAX_EXPORT_ROWS:
-            raise ValueError(f"Workbook row limit is {MAX_EXPORT_ROWS}")
         for row in matrix.rows:
             if len(row) != columns:
                 raise ValueError("Every data row must match the header width")
@@ -88,31 +84,28 @@ def _validate_matrices(matrices: list[WorksheetMatrix]) -> None:
         if total_cells > MAX_EXPORT_CELLS:
             raise ValueError(f"Workbook cell limit is {MAX_EXPORT_CELLS}")
 
-        for text in [
-            *matrix.headers,
-            *(cell for row in matrix.rows for cell in row if isinstance(cell, str)),
-        ]:
-            if len(text) > MAX_EXPORT_CELL_TEXT:
-                raise ValueError(f"Cell text exceeds length limit of {MAX_EXPORT_CELL_TEXT}")
-            if not _is_legal_xml_text(text):
-                raise ValueError("Cell text contains a character that is illegal in XML")
-
-        for row in matrix.rows:
-            for cell in row:
-                if cell is None or type(cell) in (str, int, bool):
-                    continue
-                if type(cell) is float:
-                    if not math.isfinite(cell):
-                        raise ValueError("Numeric cell values must be finite")
-                    continue
-                raise ValueError(f"Unsupported cell type: {type(cell).__name__}")
+        for cell in [*matrix.headers, *(cell for row in matrix.rows for cell in row)]:
+            if cell is None or type(cell) in (int, bool):
+                continue
+            if type(cell) is str:
+                if len(cell) > MAX_EXPORT_CELL_TEXT:
+                    raise ValueError(f"Cell text exceeds length limit of {MAX_EXPORT_CELL_TEXT}")
+                if not _is_legal_xml_text(cell):
+                    raise ValueError("Cell text contains a character that is illegal in XML")
+                continue
+            if type(cell) is float:
+                if not math.isfinite(cell):
+                    raise ValueError("Numeric cell values must be finite")
+                continue
+            raise ValueError(f"Unsupported cell type: {type(cell).__name__}")
 
 
 def _write_validated_matrix_sheet(workbook: Workbook, matrix: WorksheetMatrix) -> Worksheet:
     worksheet = workbook.create_sheet(title=matrix.sheet_name)
     for column, value in enumerate(matrix.headers, start=1):
         cell = worksheet.cell(row=1, column=column, value=value)
-        cell.data_type = "s"
+        if isinstance(value, str):
+            cell.data_type = "s"
 
     for row_number, row_values in enumerate(matrix.rows, start=2):
         for column, value in enumerate(row_values, start=1):
@@ -125,6 +118,8 @@ def _write_validated_matrix_sheet(workbook: Workbook, matrix: WorksheetMatrix) -
 def write_matrix_sheet(workbook: Workbook, matrix: WorksheetMatrix) -> Worksheet:
     """Append one validated matrix as a worksheet to an existing workbook."""
     _validate_matrices([matrix])
+    if matrix.sheet_name.casefold() in {name.casefold() for name in workbook.sheetnames}:
+        raise ValueError("Worksheet titles must be unique")
     return _write_validated_matrix_sheet(workbook, matrix)
 
 
@@ -155,6 +150,8 @@ def validate_export_filename(filename: str) -> str:
         raise ValueError("Export filename must end with .xlsx")
 
     stem = filename[:-5]
+    if not stem.strip():
+        raise ValueError("Export filename must have a nonempty name")
     safe_stem = _INVALID_FILENAME_CHARS.sub("_", stem).strip(" ._")
     if safe_stem in ("", ".", ".."):
         safe_stem = "export"
