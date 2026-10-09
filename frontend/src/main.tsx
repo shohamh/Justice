@@ -11,10 +11,12 @@ import { AlgorithmSeenProvider } from "./contexts/AlgorithmSeenContext";
 import { NavigationHistoryProvider } from "./hooks/useNavigationHistory";
 import { UnsavedChangesProvider } from "./contexts/UnsavedChangesContext";
 import { ModalStackProvider } from "./contexts/ModalStackContext";
+import { installChunkLoadRecovery } from "./chunkLoadRecovery";
 import { installGlobalErrorReporting } from "./errorReporting";
 import { shouldRetryQuery } from "./api/queryRetry";
 
 installGlobalErrorReporting();
+installChunkLoadRecovery();
 
 const queryClient = new QueryClient({
   defaultOptions: {

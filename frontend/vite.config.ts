@@ -19,18 +19,18 @@ export default defineConfig({
           groups: [
             // Vite's dynamic-import preload helper would otherwise be hosted inside
             // whichever heavy group chunk loads first (making the entry import it).
-            { name: "preload-helper", test: /vite[\/]preload-helper/, priority: 40 },
+            { name: "preload-helper", test: /vite[\\/]preload-helper/, priority: 40 },
             // Keep React core (and small utils shared across heavy libs) out of the heavy-library chunks so the entry never has to
             // statically download e.g. pdfjs just to get React.
-            { name: "react-vendor", test: /node_modules[\/](react|react-dom|scheduler|clsx|tiny-invariant|warning)[\/]/, priority: 30 },
-            { name: "mermaid", test: /node_modules[\/]mermaid[\/]/, priority: 20 },
-            { name: "react-pdf", test: /node_modules[\/](react-pdf|pdfjs-dist)[\/]/, priority: 20 },
-            { name: "recharts", test: /node_modules[\/](recharts|d3-[^\/]+|victory-vendor)[\/]/, priority: 20 },
-            { name: "fullcalendar", test: /node_modules[\/]@fullcalendar[\/]/, priority: 20 },
-            { name: "katex", test: /node_modules[\/](katex|react-katex)[\/]/, priority: 20 },
+            { name: "react-vendor", test: /node_modules[\\/](react|react-dom|scheduler|clsx|tiny-invariant|warning)[\\/]/, priority: 30 },
+            { name: "mermaid", test: /node_modules[\\/]mermaid[\\/]/, priority: 20 },
+            { name: "react-pdf", test: /node_modules[\\/](react-pdf|pdfjs-dist)[\\/]/, priority: 20 },
+            { name: "recharts", test: /node_modules[\\/](recharts|d3-[^\\/]+|victory-vendor)[\\/]/, priority: 20 },
+            { name: "fullcalendar", test: /node_modules[\\/]@fullcalendar[\\/]/, priority: 20 },
+            { name: "katex", test: /node_modules[\\/](katex|react-katex)[\\/]/, priority: 20 },
             {
               name: "markdown",
-              test: /node_modules[\/](react-markdown|remark[^\/]*|rehype[^\/]*|unified|mdast[^\/]*|hast[^\/]*|micromark[^\/]*|unist[^\/]*|vfile[^\/]*)[\/]/,
+              test: /node_modules[\\/](react-markdown|remark[^\\/]*|rehype[^\\/]*|unified|mdast[^\\/]*|hast[^\\/]*|micromark[^\\/]*|unist[^\\/]*|vfile[^\\/]*)[\\/]/,
               priority: 20,
             },
           ],

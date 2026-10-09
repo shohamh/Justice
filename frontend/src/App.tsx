@@ -1,4 +1,4 @@
-﻿import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import type { ReactElement } from "react";
 
@@ -85,63 +85,63 @@ export default function App() {
           <SoldierModalProvider>
             <BugReportModalProvider>
               <Suspense fallback={<PageLoading />}>
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                <Route path="/reset-password" element={<ResetPasswordPage />} />
-                <Route path="/verify-email" element={<VerifyEmailPage />} />
-                <Route path="/action" element={<ActionPage />} />
-                <Route element={<ProtectedRoute />}>
-                  <Route path="/change-password" element={<ChangePasswordPage />} />
-                  <Route path="/setup/telegram" element={<TelegramSetupPage />} />
-                  <Route path="/" element={<AppGate><HomePage /></AppGate>} />
-                  <Route path="/team" element={<AppGate><TeamHierarchyPage /></AppGate>} />
-                  <Route path="/transparency" element={<AppGate><TransparencyPage /></AppGate>} />
-                  <Route path="/my-duties" element={<AppGate><MyDutiesPage /></AppGate>} />
-                  <Route path="/my-requests" element={<AppGate><MyRequestsPage /></AppGate>} />
-                  <Route path="/approvals" element={<AppGate><ApprovalsPage /></AppGate>} />
-                  <Route path="/unit-calendar" element={<AppGate><UnitCalendarPage /></AppGate>} />
-                  <Route path="/swaps" element={<AppGate><SwapsPage /></AppGate>} />
-                  <Route path="/profile" element={<AppGate><ProfilePage /></AppGate>} />
-                  <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
-                  <Route path="/announcements" element={<AppGate><AnnouncementsPage /></AppGate>} />
-                  {/* Planning pages */}
-                  <Route path="/planning/shifts" element={<AppGate><ShiftsManagementPage /></AppGate>} />
-                  <Route path="/planning/assignment" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/planning/config" element={<AppGate><ConfigPage /></AppGate>} />
-                  <Route path="/planning/score-adjustments" element={<AppGate><ScoreAdjustmentPage /></AppGate>} />
-                  <Route path="/planning/export" element={<AppGate><ExportPage /></AppGate>} />
-                  <Route path="/planning/potential" element={<AppGate><PotentialPage /></AppGate>} />
-                  {/* Admin */}
-                  <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
-                  {hakpazaEnabled && (
-                    <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
-                  )}
-                  {/* Keep the route registered while public settings load. The
-                      planning menu can become available before the settings
-                      hook in this component resolves; a conditional route in
-                      that window falls through to the authenticated catch-all
-                      and sends the user home. */}
-                  <Route path="/ranges" element={<AppGate><RangesPage /></AppGate>} />
-                  <Route path="/import" element={<AppGate><ImportSessionsListPage /></AppGate>} />
-                  <Route path="/import/upload" element={<AppGate><ImportUploadPage /></AppGate>} />
-                  <Route path="/import/sessions/:id" element={<AppGate><ImportSessionReviewPage /></AppGate>} />
-                  {/* Redirects from old routes */}
-                  <Route path="/duty-management" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/algorithm" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/duty-config" element={<Navigate to="/planning/config" replace />} />
-                  <Route path="/shifts" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/shift-templates" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/planning/templates" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/admin/system-settings" element={<Navigate to="/admin/settings?tab=0" replace />} />
-                  <Route path="/admin/invite-codes" element={<Navigate to="/admin/settings?tab=1" replace />} />
-                  {/* Safety net: an unmatched authenticated URL (stale bookmark,
-                      typo, or a redirect target that raced a settings load)
-                      should land somewhere real instead of a blank Outlet. */}
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Route>
-              </Routes>
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
+                  <Route path="/verify-email" element={<VerifyEmailPage />} />
+                  <Route path="/action" element={<ActionPage />} />
+                  <Route element={<ProtectedRoute />}>
+                    <Route path="/change-password" element={<ChangePasswordPage />} />
+                    <Route path="/setup/telegram" element={<TelegramSetupPage />} />
+                    <Route path="/" element={<AppGate><HomePage /></AppGate>} />
+                    <Route path="/team" element={<AppGate><TeamHierarchyPage /></AppGate>} />
+                    <Route path="/transparency" element={<AppGate><TransparencyPage /></AppGate>} />
+                    <Route path="/my-duties" element={<AppGate><MyDutiesPage /></AppGate>} />
+                    <Route path="/my-requests" element={<AppGate><MyRequestsPage /></AppGate>} />
+                    <Route path="/approvals" element={<AppGate><ApprovalsPage /></AppGate>} />
+                    <Route path="/unit-calendar" element={<AppGate><UnitCalendarPage /></AppGate>} />
+                    <Route path="/swaps" element={<AppGate><SwapsPage /></AppGate>} />
+                    <Route path="/profile" element={<AppGate><ProfilePage /></AppGate>} />
+                    <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
+                    <Route path="/announcements" element={<AppGate><AnnouncementsPage /></AppGate>} />
+                    {/* Planning pages */}
+                    <Route path="/planning/shifts" element={<AppGate><ShiftsManagementPage /></AppGate>} />
+                    <Route path="/planning/assignment" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/planning/config" element={<AppGate><ConfigPage /></AppGate>} />
+                    <Route path="/planning/score-adjustments" element={<AppGate><ScoreAdjustmentPage /></AppGate>} />
+                    <Route path="/planning/export" element={<AppGate><ExportPage /></AppGate>} />
+                    <Route path="/planning/potential" element={<AppGate><PotentialPage /></AppGate>} />
+                    {/* Admin */}
+                    <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
+                    {hakpazaEnabled && (
+                      <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
+                    )}
+                    {/* Keep the route registered while public settings load. The
+                        planning menu can become available before the settings
+                        hook in this component resolves; a conditional route in
+                        that window falls through to the authenticated catch-all
+                        and sends the user home. */}
+                    <Route path="/ranges" element={<AppGate><RangesPage /></AppGate>} />
+                    <Route path="/import" element={<AppGate><ImportSessionsListPage /></AppGate>} />
+                    <Route path="/import/upload" element={<AppGate><ImportUploadPage /></AppGate>} />
+                    <Route path="/import/sessions/:id" element={<AppGate><ImportSessionReviewPage /></AppGate>} />
+                    {/* Redirects from old routes */}
+                    <Route path="/duty-management" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/algorithm" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/duty-config" element={<Navigate to="/planning/config" replace />} />
+                    <Route path="/shifts" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/shift-templates" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/planning/templates" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/admin/system-settings" element={<Navigate to="/admin/settings?tab=0" replace />} />
+                    <Route path="/admin/invite-codes" element={<Navigate to="/admin/settings?tab=1" replace />} />
+                    {/* Safety net: an unmatched authenticated URL (stale bookmark,
+                        typo, or a redirect target that raced a settings load)
+                        should land somewhere real instead of a blank Outlet. */}
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Route>
+                </Routes>
               </Suspense>
             </BugReportModalProvider>
           </SoldierModalProvider>
@@ -150,4 +150,3 @@ export default function App() {
     </ErrorBoundary>
   );
 }
-
