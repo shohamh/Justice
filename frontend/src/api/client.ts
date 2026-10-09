@@ -26,6 +26,23 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
+/**
+ * The refresh alone gets a deadline (the shared instance deliberately has none:
+ * exports and uploads may legitimately run long). While the access token is null,
+ * every non-auth request waits on the in-flight refresh, so a hung refresh would
+ * otherwise freeze the whole app.
+ */
+export const REFRESH_TIMEOUT_MS = 15_000;
+
+/**
+ * The refresh got no answer within REFRESH_TIMEOUT_MS. Not an auth failure: the
+ * server never said the session is invalid, so the 401 handler does not expire it.
+ */
+export class RefreshTimeoutError extends Error {}
+
+const isTimeout = (e: unknown) =>
+  axios.isAxiosError(e) && !e.response && (e.code === AxiosError.ECONNABORTED || e.code === AxiosError.ETIMEDOUT);
+
 let refreshing: Promise<string> | null = null;
 
 /**
@@ -36,7 +53,7 @@ let refreshing: Promise<string> | null = null;
 export function refreshAccessToken(): Promise<string> {
   if (!refreshing) {
     const startedAt = tokenEpoch;
-    refreshing = api.post<{ access_token: string }>("/auth/refresh").then((r) => {
+    refreshing = api.post<{ access_token: string }>("/auth/refresh", undefined, { timeout: REFRESH_TIMEOUT_MS }).then((r) => {
       // Logout/login replaced the token while this was in flight: the answer belongs
       // to the previous cookie owner and must not become the current session's token.
       if (tokenEpoch !== startedAt) throw new StaleRefreshError();
@@ -45,6 +62,7 @@ export function refreshAccessToken(): Promise<string> {
     }).catch((e) => {
       // A failure answered after the token was replaced is not about the current session either.
       if (tokenEpoch !== startedAt) throw new StaleRefreshError();
+      if (isTimeout(e)) throw new RefreshTimeoutError("refresh timed out", { cause: e });
       throw e;
     }).finally(() => {
       refreshing = null;
@@ -83,8 +101,10 @@ api.interceptors.response.use(
         await refreshAccessToken();
         return api.request(originalRequest);
       } catch (e) {
-        // A stale refresh says nothing about the current session.
-        if (e instanceof StaleRefreshError) throw error;
+        // A stale refresh says nothing about the current session, and a timed-out
+        // one got no answer at all: keep the session (the next 401 retries). Other
+        // failures, including a plain network error, still expire it as before.
+        if (e instanceof StaleRefreshError || e instanceof RefreshTimeoutError) throw error;
         setAccessToken(null);
         window.dispatchEvent(new Event("auth:session-expired"));
         throw error;

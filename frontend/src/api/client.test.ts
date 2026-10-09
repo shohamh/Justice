@@ -1,4 +1,4 @@
-import type { AxiosAdapter, InternalAxiosRequestConfig } from "axios";
+import { AxiosError, type AxiosAdapter, type InternalAxiosRequestConfig } from "axios";
 
 vi.mock("../errorReporting", () => ({
   newRequestId: () => "req-id",
@@ -23,6 +23,7 @@ async function loadClient() {
   vi.resetModules();
   const client: Client = await import("./client");
   const sent: Sent[] = [];
+  const refreshTimeouts: (number | undefined)[] = [];
   let releaseRefresh: (status: number) => void = () => {};
   const adapter: AxiosAdapter = (config: InternalAxiosRequestConfig) => {
     const url = config.url ?? "";
@@ -40,16 +41,24 @@ async function loadClient() {
       return Promise.resolve(response);
     };
     if (url === "/auth/refresh") {
+      refreshTimeouts.push(config.timeout);
       return new Promise((resolve, reject) => {
         releaseRefresh = (status) => {
           respond(status, status === 200 ? { access_token: "fresh-token" } : {}).then(resolve, reject);
         };
+        // Like axios' own xhr/http adapters: a request with `timeout` set rejects
+        // with ECONNABORTED and no response once it elapses.
+        if (config.timeout) {
+          setTimeout(() => {
+            reject(new AxiosError(`timeout of ${config.timeout}ms exceeded`, AxiosError.ECONNABORTED, config));
+          }, config.timeout);
+        }
       });
     }
     return authorization ? respond(200, { ok: true }) : respond(401, {});
   };
   client.api.defaults.adapter = adapter;
-  return { client, sent, release: (status: number) => releaseRefresh(status) };
+  return { client, sent, refreshTimeouts, release: (status: number) => releaseRefresh(status) };
 }
 
 const flush = async () => {
@@ -161,6 +170,101 @@ describe("api client token refresh", () => {
     await expect(settings).rejects.toMatchObject({ response: { status: 401 } });
     expect(client.getAccessToken()).toBe("user-b");
     expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("auth:session-expired", expired);
+  });
+});
+
+describe("api client refresh timeout", () => {
+  beforeEach(() => {
+    vi.stubGlobal("window", new EventTarget());
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("puts a timeout on /auth/refresh only, not on the shared instance", async () => {
+    const { client, refreshTimeouts } = await loadClient();
+    void client.refreshAccessToken().catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refreshTimeouts).toEqual([client.REFRESH_TIMEOUT_MS]);
+    expect(client.REFRESH_TIMEOUT_MS).toBe(15_000);
+    expect(client.api.defaults.timeout ?? 0).toBe(0);
+    await vi.advanceTimersByTimeAsync(client.REFRESH_TIMEOUT_MS);
+  });
+
+  it("rejects a never-settling refresh after the timeout and clears the in-flight refresh", async () => {
+    const { client, sent } = await loadClient();
+    const refresh = client.refreshAccessToken();
+    const settled = expect(refresh).rejects.toBeInstanceOf(client.RefreshTimeoutError);
+
+    await vi.advanceTimersByTimeAsync(client.REFRESH_TIMEOUT_MS - 1);
+    // Still the same single flight just before the deadline.
+    expect(client.refreshAccessToken()).toBe(refresh);
+    await vi.advanceTimersByTimeAsync(1);
+    await settled;
+
+    // `refreshing` was cleared: the next call starts a new request.
+    const again = client.refreshAccessToken();
+    expect(again).not.toBe(refresh);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.filter((s) => s.url === "/auth/refresh")).toHaveLength(2);
+    void again.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(client.REFRESH_TIMEOUT_MS);
+  });
+
+  it("releases a request waiting on a timed-out refresh without expiring the session", async () => {
+    const { client, sent } = await loadClient();
+    const expired = vi.fn();
+    window.addEventListener("auth:session-expired", expired);
+
+    const restore = client.refreshAccessToken();
+    const restoreSettled = expect(restore).rejects.toBeInstanceOf(client.RefreshTimeoutError);
+    const settings = client.api.get("/settings/public");
+    const settingsSettled = expect(settings).rejects.toMatchObject({ response: { status: 401 } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.filter((s) => s.url === "/settings/public")).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(client.REFRESH_TIMEOUT_MS);
+    await restoreSettled;
+    // Released: it went out (no token, so 401) and its 401 started a second refresh.
+    expect(sent.filter((s) => s.url === "/settings/public")).toHaveLength(1);
+    expect(sent.filter((s) => s.url === "/auth/refresh")).toHaveLength(2);
+
+    // That refresh times out too: the request fails with its own 401, but a
+    // timeout is not the server rejecting the session, so it is not expired.
+    await vi.advanceTimersByTimeAsync(client.REFRESH_TIMEOUT_MS);
+    await settingsSettled;
+    expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("auth:session-expired", expired);
+  });
+
+  it("keeps the current token when a 401-triggered refresh times out", async () => {
+    const { client, release } = await loadClient();
+    const expired = vi.fn();
+    window.addEventListener("auth:session-expired", expired);
+    client.setAccessToken("old-token");
+
+    // Stale access token -> server 401s it. Simulate by forcing a 401 for this URL.
+    client.api.defaults.adapter = ((orig) => (config: InternalAxiosRequestConfig) => {
+      if (config.url === "/me") {
+        return Promise.reject(Object.assign(new Error("status 401"), {
+          isAxiosError: true,
+          config,
+          response: { data: {}, status: 401, statusText: "401", headers: {}, config },
+        }));
+      }
+      return (orig as AxiosAdapter)(config);
+    })(client.api.defaults.adapter);
+
+    const me = client.api.get("/me");
+    const meSettled = expect(me).rejects.toMatchObject({ response: { status: 401 } });
+    await vi.advanceTimersByTimeAsync(client.REFRESH_TIMEOUT_MS);
+    await meSettled;
+    expect(expired).not.toHaveBeenCalled();
+    expect(client.getAccessToken()).toBe("old-token");
+    release(200); // late answer to the timed-out request is ignored by axios
     window.removeEventListener("auth:session-expired", expired);
   });
 });

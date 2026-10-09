@@ -2,7 +2,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 
 import { changePassword as apiChangePassword, fetchMe, login as apiLogin, logout as apiLogout, Me } from "../api/auth";
-import { refreshAccessToken, setAccessToken, StaleRefreshError } from "../api/client";
+import { RefreshTimeoutError, refreshAccessToken, setAccessToken, StaleRefreshError } from "../api/client";
 
 export interface AuthContextValue {
   user: Me | null;
@@ -30,6 +30,7 @@ const RESTORE_RETRY_DELAY_MS = 400;
  * answer (401/403 etc.) means "no session"; a transient failure (network error, proxy
  * 5xx/429 while the backend is slow or restarting) is retried briefly instead of
  * silently logging the user out and bouncing them to /login on a full page reload.
+ * A refresh timeout is not retried (see below).
  */
 async function restoreSession(): Promise<Me | null> {
   for (let attempt = 1; ; attempt++) {
@@ -42,6 +43,9 @@ async function restoreSession(): Promise<Me | null> {
     } catch (err) {
       // Login/logout replaced the token mid-restore; the generation check discards this result.
       if (err instanceof StaleRefreshError) return null;
+      // The refresh already waited REFRESH_TIMEOUT_MS with no answer; retrying would
+      // keep the app on its loading screen for a minute. Fall into "not logged in".
+      if (err instanceof RefreshTimeoutError) return null;
       const status = (err as { response?: { status?: number } })?.response?.status;
       const transient = status === undefined || status >= 500 || status === 429;
       if (!transient || attempt >= RESTORE_MAX_ATTEMPTS) return null;

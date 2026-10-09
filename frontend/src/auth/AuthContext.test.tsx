@@ -1,6 +1,7 @@
 import { render, screen, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth, type AuthContextValue } from "./AuthContext";
+import { RefreshTimeoutError } from "../api/client";
 
 const mockRefresh = vi.fn();
 const mockFetchMe = vi.fn();
@@ -10,6 +11,7 @@ vi.mock("../api/client", () => ({
     Promise.resolve(mockRefresh("/auth/refresh")).then((r: { data: { access_token: string } }) => r.data.access_token),
   setAccessToken: vi.fn(),
   StaleRefreshError: class StaleRefreshError extends Error {},
+  RefreshTimeoutError: class RefreshTimeoutError extends Error {},
 }));
 const mockLogout = vi.fn();
 const mockLogin = vi.fn();
@@ -115,6 +117,15 @@ describe("AuthContext — restoring the session on mount", () => {
 
   it("treats a 401 from refresh as 'no session' straight away (no retries)", async () => {
     mockRefresh.mockRejectedValue({ response: { status: 401 } });
+
+    await mountAndSettle();
+
+    expect(screen.getByTestId("session").textContent).toBe("out");
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls into 'not logged in' after a refresh timeout instead of retrying (no long hang)", async () => {
+    mockRefresh.mockRejectedValue(new RefreshTimeoutError("refresh timed out"));
 
     await mountAndSettle();
 
