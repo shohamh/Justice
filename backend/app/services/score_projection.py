@@ -9,7 +9,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Protocol
 
-from sqlalchemy import and_, func, null, or_, select, text, tuple_
+from sqlalchemy import Select, and_, func, null, or_, select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from app.services.sql_arrays import uuid_any
@@ -825,8 +825,14 @@ def commander_alert_warning_scores(
     *,
     soldiers: Sequence[SoldierScoreRef],
     as_of: date,
+    soldier_id_scope: Select[Any] | None = None,
 ) -> dict[uuid.UUID, Decimal]:
     """Return normalized below-threshold alert scores using the configured read path.
+
+    ``soldier_id_scope``, when given, is a ``SELECT`` of exactly the ids of
+    ``soldiers``. The SQL sieve then filters with it instead of binding every id
+    as an array parameter three times, which costs tens of milliseconds per
+    array for an organization-wide scope.
 
     The disabled-rollout path can safely sieve on raw all-time totals: after the
     existing six-place score quantization, only soldiers strictly below
@@ -860,6 +866,13 @@ def commander_alert_warning_scores(
                 warning_scores[soldier.id] = normalized_score
         return warning_scores
 
+    # correlate(None): the scope selects from soldiers too, and must stay a
+    # self-contained subquery inside the outer SELECT ... FROM soldiers.
+    scope = soldier_id_scope.correlate(None) if soldier_id_scope is not None else None
+
+    def in_scope(column: Any, column_sql: str) -> Any:
+        return column.in_(scope) if scope is not None else uuid_any(column_sql, soldier_ids)
+
     duty_scores = (
         select(
             DutyAssignment.soldier_id.label("soldier_id"),
@@ -870,7 +883,7 @@ def commander_alert_warning_scores(
         .join(DutyType, DutyType.id == DutyAssignment.duty_type_id)
         .where(
             DutyAssignment.status == "published",
-            uuid_any("duty_assignments.soldier_id", soldier_ids),
+            in_scope(DutyAssignment.soldier_id, "duty_assignments.soldier_id"),
         )
         .group_by(DutyAssignment.soldier_id)
         .subquery()
@@ -880,7 +893,7 @@ def commander_alert_warning_scores(
             ScoreAdjustment.soldier_id.label("soldier_id"),
             func.sum(ScoreAdjustment.delta).label("adjustment_score"),
         )
-        .where(uuid_any("score_adjustments.soldier_id", soldier_ids))
+        .where(in_scope(ScoreAdjustment.soldier_id, "score_adjustments.soldier_id"))
         .group_by(ScoreAdjustment.soldier_id)
         .subquery()
     )
@@ -895,7 +908,7 @@ def commander_alert_warning_scores(
         .outerjoin(duty_scores, duty_scores.c.soldier_id == Soldier.id)
         .outerjoin(adjustment_scores, adjustment_scores.c.soldier_id == Soldier.id)
         .where(
-            uuid_any("soldiers.id", soldier_ids),
+            in_scope(Soldier.id, "soldiers.id"),
             raw_score < Decimal("-3.0") * active_days,
         )
     ).all()

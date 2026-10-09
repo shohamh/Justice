@@ -4,8 +4,9 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 from statistics import mean, median, stdev
+from typing import Any
 
-from sqlalchemy import case, func, select
+from sqlalchemy import Select, case, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -59,16 +60,30 @@ def _active_global_exemption_soldier_ids(
 
 
 def _soon_expiring_exemptions(
-    session: Session, soldier_ids: set[uuid.UUID], *, start: date, end: date
+    session: Session,
+    soldier_ids: set[uuid.UUID],
+    *,
+    start: date,
+    end: date,
+    soldier_id_scope: Select[Any] | None = None,
 ) -> list[tuple[uuid.UUID, date, str]]:
-    """(soldier_id, end_date, exemption_type_name) for exemptions expiring in [start, end], in one query."""
+    """(soldier_id, end_date, exemption_type_name) for exemptions expiring in [start, end], in one query.
+
+    ``soldier_id_scope``, when given, is a ``SELECT`` of exactly ``soldier_ids``
+    and replaces the id array parameter (see ``commander_alert_warning_scores``).
+    """
     if not soldier_ids:
         return []
+    soldier_filter = (
+        SoldierExemption.soldier_id.in_(soldier_id_scope)
+        if soldier_id_scope is not None
+        else uuid_any("soldier_exemptions.soldier_id", soldier_ids)
+    )
     rows = session.execute(
         select(SoldierExemption.soldier_id, SoldierExemption.end_date, ExemptionType.name)
         .join(ExemptionType, ExemptionType.id == SoldierExemption.exemption_type_id)
         .where(
-            uuid_any("soldier_exemptions.soldier_id", soldier_ids),
+            soldier_filter,
             SoldierExemption.revoked_at.is_(None),
             SoldierExemption.end_date.isnot(None),
             SoldierExemption.end_date <= end,
@@ -379,18 +394,25 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
 def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
     # Column rows, not ORM entities: building ~20k Soldier entities for an
     # organization-wide scope cost ~0.4 s of the request on its own.
+    in_subtree = (Soldier.hierarchy_node_id.in_(subtree_ids), Soldier.left_at.is_(None))
     soldiers = session.execute(
-        select(Soldier.id, Soldier.full_name, Soldier.enrolled_at)
-        .where(Soldier.hierarchy_node_id.in_(subtree_ids), Soldier.left_at.is_(None))
+        select(Soldier.id, Soldier.full_name, Soldier.enrolled_at).where(*in_subtree)
     ).all()
+    # The same soldiers as a subquery: the follow-up reads filter with it instead
+    # of binding all (up to ~20k) ids as array parameters, ~50-90 ms each.
+    soldier_id_scope = select(Soldier.id).where(*in_subtree)
     today = date.today()
     next_week = today + timedelta(days=7)
 
-    warning_scores = commander_alert_warning_scores(session, soldiers=soldiers, as_of=today)
+    warning_scores = commander_alert_warning_scores(
+        session, soldiers=soldiers, as_of=today, soldier_id_scope=soldier_id_scope
+    )
 
     soldier_ids = {s.id for s in soldiers}
     name_by_id = {s.id: s.full_name for s in soldiers}
-    expiring = _soon_expiring_exemptions(session, soldier_ids, start=today, end=next_week)
+    expiring = _soon_expiring_exemptions(
+        session, soldier_ids, start=today, end=next_week, soldier_id_scope=soldier_id_scope
+    )
 
     alerts_list: list[dict] = []
 

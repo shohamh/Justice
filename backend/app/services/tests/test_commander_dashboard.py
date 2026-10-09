@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import event
+from sqlalchemy import event, select
 
 from app.db.models import (
     DutyLocation,
@@ -474,6 +474,49 @@ def test_alerts_candidate_sieve_excludes_out_of_scope_and_inactive_soldiers(admi
     assert {alert["soldier_id"] for alert in result if alert["severity"] == "warning"} == {
         in_scope.id
     }
+
+
+def test_alerts_scope_subquery_matches_id_array_path_and_binds_no_id_arrays(admin_session):
+    """The alerts reads filter by a soldier-scope subquery instead of binding every
+    soldier id as an array; both forms must select the same soldiers."""
+    from app.services.commander_dashboard import _soon_expiring_exemptions
+
+    node = create_node(admin_session, level="unit", name="alerts_scope_parity_test")
+    other_node = create_node(admin_session, level="unit", name="alerts_scope_parity_other")
+    today = date.today()
+    below = create_soldier(admin_session, personal_number="alerts-parity-below", hierarchy_node_id=node.id)
+    expiring = create_soldier(admin_session, personal_number="alerts-parity-expiring", hierarchy_node_id=node.id)
+    outside = create_soldier(admin_session, personal_number="alerts-parity-out", hierarchy_node_id=other_node.id)
+    inactive = create_soldier(admin_session, personal_number="alerts-parity-inactive", hierarchy_node_id=node.id)
+    inactive.left_at = today
+    for soldier in (below, outside, inactive):
+        _add_score_adjustment(admin_session, soldier.id, "-100.00")
+    for soldier in (expiring, outside, inactive):
+        _grant_exemption(admin_session, soldier.id, end_date=today + timedelta(days=2))
+    admin_session.commit()
+
+    in_scope_rows = [below, expiring]
+    soldier_ids = {soldier.id for soldier in in_scope_rows}
+    scope = select(Soldier.id).where(Soldier.hierarchy_node_id.in_([node.id]), Soldier.left_at.is_(None))
+    assert score_projection.commander_alert_warning_scores(
+        admin_session, soldiers=in_scope_rows, as_of=today, soldier_id_scope=scope
+    ) == score_projection.commander_alert_warning_scores(
+        admin_session, soldiers=in_scope_rows, as_of=today
+    )
+    window = {"start": today, "end": today + timedelta(days=7)}
+    assert sorted(
+        _soon_expiring_exemptions(admin_session, soldier_ids, soldier_id_scope=scope, **window)
+    ) == sorted(_soon_expiring_exemptions(admin_session, soldier_ids, **window))
+
+    result, statements = _capture_selects(
+        admin_session, lambda: alerts(admin_session, subtree_ids=[node.id])
+    )
+
+    assert {(alert["soldier_id"], alert["severity"]) for alert in result} == {
+        (below.id, "warning"),
+        (expiring.id, "info"),
+    }
+    assert not any("uuid[]" in statement for statement in statements)
 
 
 def test_alerts_expiring_exemption_is_returned_without_a_score_warning(admin_session):
