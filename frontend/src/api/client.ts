@@ -9,9 +9,16 @@ export const api = axios.create({
 });
 
 let accessToken: string | null = null;
+// Bumped on every token change; a refresh that started under an older epoch belongs
+// to a previous session (logout/login happened meanwhile) and must be discarded.
+let tokenEpoch = 0;
+
+/** A refresh answered after the access token was replaced (logout / another login). */
+export class StaleRefreshError extends Error {}
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
+  tokenEpoch += 1;
   setErrorReportingToken(token);
 }
 
@@ -28,7 +35,11 @@ let refreshing: Promise<string> | null = null;
  */
 export function refreshAccessToken(): Promise<string> {
   if (!refreshing) {
+    const startedAt = tokenEpoch;
     refreshing = api.post<{ access_token: string }>("/auth/refresh").then((r) => {
+      // Logout/login replaced the token while this was in flight: the answer belongs
+      // to the previous cookie owner and must not become the current session's token.
+      if (tokenEpoch !== startedAt) throw new StaleRefreshError();
       setAccessToken(r.data.access_token);
       return r.data.access_token;
     }).finally(() => {
@@ -67,7 +78,9 @@ api.interceptors.response.use(
       try {
         await refreshAccessToken();
         return api.request(originalRequest);
-      } catch {
+      } catch (e) {
+        // A stale refresh says nothing about the current session.
+        if (e instanceof StaleRefreshError) throw error;
         setAccessToken(null);
         window.dispatchEvent(new Event("auth:session-expired"));
         throw error;

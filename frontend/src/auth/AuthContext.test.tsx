@@ -9,6 +9,7 @@ vi.mock("../api/client", () => ({
   refreshAccessToken: () =>
     Promise.resolve(mockRefresh("/auth/refresh")).then((r: { data: { access_token: string } }) => r.data.access_token),
   setAccessToken: vi.fn(),
+  StaleRefreshError: class StaleRefreshError extends Error {},
 }));
 const mockLogout = vi.fn();
 const mockLogin = vi.fn();
@@ -176,6 +177,21 @@ describe("AuthContext — query cache is scoped to one identity", () => {
     await act(async () => { await auth.login("222", "pw"); });
     expect(auth.user?.id).toBe("2");
     expect(queryClient.getQueryData(CACHE_KEY)).toBeUndefined();
+  });
+
+  it("keeps cached query data on the first restore (no user -> user)", async () => {
+    mockRefresh.mockResolvedValue({ data: { access_token: "t" } });
+    mockFetchMe.mockResolvedValue({ id: "1" });
+    queryClient = new QueryClient();
+    queryClient.setQueryData(CACHE_KEY, { count: 7 });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider><Capture /></AuthProvider>
+      </QueryClientProvider>,
+    );
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(auth.user?.id).toBe("1");
+    expect(queryClient.getQueryData(CACHE_KEY)).toEqual({ count: 7 });
   });
 
   it("keeps cached query data when the same user is refreshed", async () => {

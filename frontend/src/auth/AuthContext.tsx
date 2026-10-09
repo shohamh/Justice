@@ -2,7 +2,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 
 import { changePassword as apiChangePassword, fetchMe, login as apiLogin, logout as apiLogout, Me } from "../api/auth";
-import { refreshAccessToken, setAccessToken } from "../api/client";
+import { refreshAccessToken, setAccessToken, StaleRefreshError } from "../api/client";
 
 export interface AuthContextValue {
   user: Me | null;
@@ -40,6 +40,8 @@ async function restoreSession(): Promise<Me | null> {
       await refreshAccessToken();
       return await fetchMe();
     } catch (err) {
+      // Login/logout replaced the token mid-restore; the generation check discards this result.
+      if (err instanceof StaleRefreshError) return null;
       const status = (err as { response?: { status?: number } })?.response?.status;
       const transient = status === undefined || status >= 500 || status === 429;
       if (!transient || attempt >= RESTORE_MAX_ATTEMPTS) return null;

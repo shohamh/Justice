@@ -113,4 +113,38 @@ describe("api client token refresh", () => {
     expect(expired).toHaveBeenCalledTimes(1);
     window.removeEventListener("auth:session-expired", expired);
   });
+
+  it("discards a refresh that resolves after another user's token was installed", async () => {
+    const { client, release } = await loadClient();
+    const expired = vi.fn();
+    window.addEventListener("auth:session-expired", expired);
+
+    const refresh = client.refreshAccessToken();
+    const settled = expect(refresh).rejects.toBeInstanceOf(client.StaleRefreshError);
+    await flush();
+    client.setAccessToken("user-b");
+    release(200);
+
+    await settled;
+    expect(client.getAccessToken()).toBe("user-b");
+    expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("auth:session-expired", expired);
+  });
+
+  it("does not reinstall a token or expire the session when logout happens during a 401-triggered refresh", async () => {
+    const { client, release } = await loadClient();
+    const expired = vi.fn();
+    window.addEventListener("auth:session-expired", expired);
+
+    const settings = client.api.get("/settings/public");
+    // Let the unauthenticated request 401 and start its refresh.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    client.setAccessToken(null);
+    release(200);
+
+    await expect(settings).rejects.toMatchObject({ response: { status: 401 } });
+    expect(client.getAccessToken()).toBeNull();
+    expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("auth:session-expired", expired);
+  });
 });
