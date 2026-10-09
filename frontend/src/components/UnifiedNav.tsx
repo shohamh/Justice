@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -88,9 +88,12 @@ export default function UnifiedNav() {
   const navReadsEnabled = settledNavRequestKey === navRequestKey;
   const { seenIds, seedSeenIds } = useSeenJobs();
   const navCountsQuery = useQuery({
-    queryKey: queryKeys.navCounts(navScopeKey, hakpazaEnabled, location.pathname),
+    // The route is deliberately not part of the key: the settle gate re-opens on
+    // every navigation, and staleTime decides whether that triggers a refetch.
+    queryKey: queryKeys.navCounts(navScopeKey, hakpazaEnabled),
     queryFn: getNavCounts,
     enabled: navReadsEnabled && Boolean(user),
+    staleTime: 15_000,
     retry: false,
   });
   const adminIneligibleCountQuery = useAdminIneligibleSoldierCount({
@@ -102,6 +105,7 @@ export default function UnifiedNav() {
     queryKey: [...queryKeys.ineligibleSoldierCount(), "planning", navScopeKey],
     queryFn: () => getIneligibleSoldierCount(),
     enabled: user?.role !== "admin" && navReadsEnabled && canPlan && mitvachimEnabled,
+    staleTime: 60_000,
     retry: false,
   });
   const ineligibleCountQuery = user?.role === "admin"
@@ -130,7 +134,6 @@ export default function UnifiedNav() {
   ]);
   const [commanderSheetOpen, setCommanderSheetOpen] = useState(false);
   const [planningSheetOpen, setPlanningSheetOpen] = useState(false);
-  const previousPathname = useRef(location.pathname);
 
   // Open the gate at the deadline even if another query never settles.
   useEffect(() => {
@@ -149,37 +152,23 @@ export default function UnifiedNav() {
     return () => window.clearTimeout(timer);
   }, [inFlightQueries, navReadsEnabled, navRequestKey, queryClient]);
 
-  useEffect(() => {
-    if (!canPlan || !navReadsEnabled) return;
-    let active = true;
-
-    async function fetchAlgorithmBadge() {
-      try {
-        const result = await listJobs(50);
-        const items = Array.isArray(result?.items) ? result.items : [];
-        if (!active) return;
-        setAlgorithmBadgeData({ scopeKey: navScopeKey, jobs: items });
-        seedSeenIds(items);
-      } catch {
-        // ignore
-      }
-    }
-
-    void fetchAlgorithmBadge();
-
-    const interval = setInterval(() => void fetchAlgorithmBadge(), 30_000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [canPlan, navReadsEnabled, navScopeKey, location.pathname, seedSeenIds]);
+  // Same key and fetcher as ShiftsPage, so both share one request.
+  const algorithmJobsQuery = useQuery({
+    queryKey: queryKeys.algorithmJobs(50, 0),
+    queryFn: () => listJobs(50, 0),
+    enabled: canPlan && navReadsEnabled,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
 
   useEffect(() => {
-    if (!canPlan || !mitvachimEnabled) return;
-    if (previousPathname.current === location.pathname) return;
-    previousPathname.current = location.pathname;
-    void queryClient.invalidateQueries({ queryKey: queryKeys.ineligibleSoldierCount() });
-  }, [canPlan, location.pathname, mitvachimEnabled, queryClient]);
+    if (!algorithmJobsQuery.data) return;
+    const items = Array.isArray(algorithmJobsQuery.data.items) ? algorithmJobsQuery.data.items : [];
+    setAlgorithmBadgeData({ scopeKey: navScopeKey, jobs: items });
+    seedSeenIds(items);
+  }, [algorithmJobsQuery.data, navScopeKey, seedSeenIds]);
 
   useEffect(() => {
     const vv = (window as Window & { visualViewport?: VisualViewport }).visualViewport;

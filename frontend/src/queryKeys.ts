@@ -29,8 +29,8 @@ export const queryKeys = {
   pendingConstraintsCount: () => ["constraints", "pendingCount"] as const,
   pendingExemptionsCount: () => ["exemptions", "pendingCount"] as const,
   pendingFieldUpdatesCount: () => ["soldiers", "pendingFieldUpdatesCount"] as const,
-  navCounts: (scopeKey: string, hakpazaEnabled: boolean, pathname: string) =>
-    ["navigation", "counts", scopeKey, hakpazaEnabled, pathname] as const,
+  navCounts: (scopeKey: string, hakpazaEnabled: boolean) =>
+    ["navigation", "counts", scopeKey, hakpazaEnabled] as const,
   myConstraints: () => ["constraints", "mine"] as const,
   remainingConstraintDays: () => ["constraints", "remaining"] as const,
   myExemptionRequests: () => ["exemptionRequests", "mine"] as const,
