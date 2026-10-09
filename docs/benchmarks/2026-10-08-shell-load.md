@@ -89,3 +89,20 @@ Warm home-dashboard is dominated by the pending-count endpoints (command-dashboa
 
 Reading: `me` and `notifications/unread-count` spend about 300 ms outside the handler (roughly 350 ms wall for 27-47 ms of server work at c1), which points at the browser, proxy or network path rather than the database. `nav/counts` and `ineligible-soldiers/count` are server-bound; the latter is not database-bound at c1 (106 ms of 928 ms), so about 800 ms is application time in the handler, and at c5 it degrades to 3.8 s.
 `GET /api/admin/errors/unread-count` answers 503 on this setup (Loki unset), so it has no 200 timings; its wall time is still 0.7-1.4 s per call in the top-endpoint lists above.
+
+## Ineligible count phases (Task 4), 2026-10-09
+
+Measured in-process with `python -m app.scripts.profile_ineligible_count` (read-only transaction, 5 repetitions, medians) against `justice_scale_fcp_scale` (20,116 soldiers with a hierarchy node, 1,000,008 assignments, 7 active weapon duty types). Admin scope (`roots=None`); scoped runs (largest branch, 65 soldiers; largest group, 25; a synthetic team, 50) stay under 20 ms throughout. Each row is one commit.
+
+| Phase (admin scope, ms) | Baseline | Row 1: column-only load | Row 2: one check per soldier profile |
+|---|---|---|---|
+| 1 load soldiers | 434 (77%) | 82 (31%) | 90 (67%) |
+| 2 structural eligibility | 108 (19%) | 163 (61%) | 20 (15%) |
+| 3 qualifications | 5 | 5 | 5 |
+| 4 future weapon duties | 4 | 4 | 4 |
+| 5 duty eligibility | 15 | 15 | 16 |
+| `count_ineligible_soldiers` end to end | 577 | 278 | 156 |
+
+Decision gate: phase 1 was 77% of the baseline, so row 1 applied first. Loading rows instead of entities made phase 2 slower, because by-name attribute access on a SQLAlchemy `Row` costs more than on an entity. That left phase 2 at 61%, so row 2 applied next: group soldiers by the nine fields `_is_eligible` reads (44 distinct profiles at 20k) and build the group key positionally. The end-to-end median went from 577 to 156 ms (3.7x), under the 250 ms target. No cache was added. The count still matches `len(list_ineligible_soldiers(...))` on the scale database for every scope (admin 1 = 1, branch 1 = 1, group 0 = 0, team 0 = 0).
+
+Sanity check against the baseline: the in-process 577 ms sits below the 928 ms server median at c1, because the server number also includes auth, `_resolve_roots` and contention with the other shell requests of the same page load.
