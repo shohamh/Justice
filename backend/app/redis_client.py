@@ -15,12 +15,17 @@ import redis
 
 from app.settings import get_settings
 
-# Every caller issues short commands (GET/SET/EXISTS/DEL/pipelines/PING; no
-# BLPOP, pub/sub or other long blocking reads), so a 1s bound per socket
-# operation is ample. Without it a hung (not refused) Redis would block the
-# request thread indefinitely -- refresh, login and logout included. A timeout
-# raises redis.TimeoutError (a RedisError), which the callers already handle
-# (e.g. app.auth.refresh_revocation fails open).
+# Every get_redis() caller issues short commands (GET/SET/EXISTS/DEL/pipelines/
+# PING; no BLPOP, pub/sub or other long blocking reads), so a 1s bound per
+# socket operation is ample. Without it a hung (not refused) Redis would block
+# the calling thread indefinitely. With it, a stall raises redis.TimeoutError
+# (a RedisError):
+# - refresh-token revocation (app.auth.refresh_revocation) catches it and fails
+#   open, so refresh/login/logout keep working;
+# - the long-lived job cancel-flag poller (algorithm_bridge) logs and retries;
+# - other request-path callers surface it as a 500.
+# NOT covered: the slowapi rate limiter (app.rate_limit) opens its own storage
+# connection from REDIS_URL, so login rate limiting has no such bound.
 SOCKET_TIMEOUT_SECONDS = 1
 SOCKET_CONNECT_TIMEOUT_SECONDS = 1
 
