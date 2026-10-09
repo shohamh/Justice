@@ -522,15 +522,7 @@ def eligibility_groups(
 ) -> list[dict]:
     """Lightweight view of fairness_components() for scoping auto-assign selection —
     same connected components, without the per-soldier detail."""
-    full = svc.fairness_components(session)
-    return [
-        {
-            "duty_type_ids": c["duty_type_ids"],
-            "duty_type_names": c["duty_type_names"],
-            "soldier_count": c["soldier_count"],
-        }
-        for c in full["components"]
-    ]
+    return svc.eligibility_groups(session)
 
 
 @router.get("/soldiers/{soldier_id}/burden-share-breakdown", response_model=BurdenShareBreakdownOut)
