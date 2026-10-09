@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -19,7 +19,7 @@ import {
 } from "../../api/bugReports";
 import { translateApiError } from "../../utils/translateApiError";
 import BugReportCommentsPanel from "../../components/BugReportCommentsPanel";
-import DocumentPreviewModal from "../../components/DocumentPreviewModal";
+const DocumentPreviewModal = lazy(() => import("../../components/DocumentPreviewModal"));
 import { usePagePagination } from "../../hooks/usePagePagination";
 import { DataTable, ColDef } from "../../components/DataTable";
 import { createTemporaryBlobUrl, revokeBlobUrl } from "../../utils/downloadFile";
@@ -525,12 +525,14 @@ export function BugReportsContent() {
       )}
 
       {previewImage && (
-        <DocumentPreviewModal
-          fileUrl={previewImage.url}
-          fileName={previewImage.name}
-          contentType="image/png"
-          onClose={() => setPreviewImage(null)}
-        />
+        <Suspense fallback={null}>
+          <DocumentPreviewModal
+            fileUrl={previewImage.url}
+            fileName={previewImage.name}
+            contentType="image/png"
+            onClose={() => setPreviewImage(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

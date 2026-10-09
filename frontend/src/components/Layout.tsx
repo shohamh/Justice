@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CircleUser, Settings, HelpCircle, Sun, Moon, Monitor, LogOut } from "lucide-react";
@@ -6,7 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
 import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
-import HelpModal from "./HelpModal";
+const HelpModal = lazy(() => import("./HelpModal"));
 import HeaderSearch from "./HeaderSearch";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { useErrorLogSourceConfigured } from "../hooks/useErrorLogSource";
@@ -51,7 +51,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
     <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
       <UnifiedNav />
       <BugReportTrigger />
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} hakpazaEnabled={hakpazaEnabled} initialTab={helpTab} />}
+      {helpOpen && <Suspense fallback={null}><HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} hakpazaEnabled={hakpazaEnabled} initialTab={helpTab} /></Suspense>}
       <header className="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
         <div className="px-2 py-2 sm:px-4 sm:py-3 flex items-center justify-between gap-1">
           {/* Left side (DOM order): profile icon + optional gear icon + theme toggle.

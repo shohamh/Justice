@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+﻿import { Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense } from "react";
 import type { ReactElement } from "react";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
@@ -8,36 +9,37 @@ import { BugReportModalProvider } from "./contexts/BugReportModalContext";
 import { usePublicSettings } from "./hooks/usePublicSettings";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
-import ApprovalsPage from "./pages/ApprovalsPage";
+import PageLoading from "./components/PageLoading";
+const ApprovalsPage = lazy(() => import("./pages/ApprovalsPage"));
 import ChangePasswordPage from "./pages/ChangePasswordPage";
-import HomePage from "./pages/HomePage";
+const HomePage = lazy(() => import("./pages/HomePage"));
 import LoginPage from "./pages/LoginPage";
-import MyDutiesPage from "./pages/MyDutiesPage";
-import MyRequestsPage from "./pages/MyRequestsPage";
-import NotificationsPage from "./pages/NotificationsPage";
-import AnnouncementsPage from "./pages/AnnouncementsPage";
-import ProfilePage from "./pages/ProfilePage";
-import TeamHierarchyPage from "./pages/TeamHierarchyPage";
-import SwapsPage from "./pages/SwapsPage";
-import TransparencyPage from "./pages/TransparencyPage";
-import UnitCalendarPage from "./pages/UnitCalendarPage";
-import RegisterPage from "./pages/RegisterPage";
-import ForgotPasswordPage from "./pages/ForgotPasswordPage";
-import ResetPasswordPage from "./pages/ResetPasswordPage";
-import VerifyEmailPage from "./pages/VerifyEmailPage";
-import TelegramSetupPage from "./pages/TelegramSetupPage";
-import ShiftsManagementPage from "./pages/planning/ShiftsManagementPage";
-import ConfigPage from "./pages/planning/ConfigPage";
-import ScoreAdjustmentPage from "./pages/planning/ScoreAdjustmentPage";
-import ExportPage from "./pages/planning/ExportPage";
-import PotentialPage from "./pages/planning/PotentialPage";
-import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
-import HakpazaPage from "./pages/HakpazaPage";
-import ImportSessionsListPage from "./pages/ImportSessionsListPage";
-import ImportUploadPage from "./pages/ImportUploadPage";
-import ImportSessionReviewPage from "./pages/ImportSessionReviewPage";
-import ActionPage from "./pages/ActionPage";
-import RangesPage from "./pages/RangesPage";
+const MyDutiesPage = lazy(() => import("./pages/MyDutiesPage"));
+const MyRequestsPage = lazy(() => import("./pages/MyRequestsPage"));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
+const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const TeamHierarchyPage = lazy(() => import("./pages/TeamHierarchyPage"));
+const SwapsPage = lazy(() => import("./pages/SwapsPage"));
+const TransparencyPage = lazy(() => import("./pages/TransparencyPage"));
+const UnitCalendarPage = lazy(() => import("./pages/UnitCalendarPage"));
+const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage"));
+const TelegramSetupPage = lazy(() => import("./pages/TelegramSetupPage"));
+const ShiftsManagementPage = lazy(() => import("./pages/planning/ShiftsManagementPage"));
+const ConfigPage = lazy(() => import("./pages/planning/ConfigPage"));
+const ScoreAdjustmentPage = lazy(() => import("./pages/planning/ScoreAdjustmentPage"));
+const ExportPage = lazy(() => import("./pages/planning/ExportPage"));
+const PotentialPage = lazy(() => import("./pages/planning/PotentialPage"));
+const AdminSettingsPage = lazy(() => import("./pages/admin/AdminSettingsPage"));
+const HakpazaPage = lazy(() => import("./pages/HakpazaPage"));
+const ImportSessionsListPage = lazy(() => import("./pages/ImportSessionsListPage"));
+const ImportUploadPage = lazy(() => import("./pages/ImportUploadPage"));
+const ImportSessionReviewPage = lazy(() => import("./pages/ImportSessionReviewPage"));
+const ActionPage = lazy(() => import("./pages/ActionPage"));
+const RangesPage = lazy(() => import("./pages/RangesPage"));
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
   const { mustChangePassword } = useAuth();
@@ -82,6 +84,7 @@ export default function App() {
         <ThemeProvider>
           <SoldierModalProvider>
             <BugReportModalProvider>
+              <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
@@ -139,6 +142,7 @@ export default function App() {
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
               </Routes>
+              </Suspense>
             </BugReportModalProvider>
           </SoldierModalProvider>
         </ThemeProvider>
@@ -146,3 +150,4 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+

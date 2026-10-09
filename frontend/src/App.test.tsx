@@ -75,42 +75,44 @@ function renderApp(path: string) {
 }
 
 describe("App - forced callup gating", () => {
-  it("mounts the hakpaza route when forced_callup.enabled is not false", () => {
+  it("mounts the hakpaza route when forced_callup.enabled is not false", async () => {
     mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": true });
     render(
       <MemoryRouter initialEntries={["/commander/hakpaza"]}>
         <App />
       </MemoryRouter>
     );
-    expect(screen.getByTestId("hakpaza-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("hakpaza-page")).toBeInTheDocument();
   });
 
-  it("does not mount the hakpaza route when forced_callup.enabled is false", () => {
+  it("does not mount the hakpaza route when forced_callup.enabled is false", async () => {
     mockUsePublicSettings.mockReturnValue({ "forced_callup.enabled": false });
     render(
       <MemoryRouter initialEntries={["/commander/hakpaza"]}>
         <App />
       </MemoryRouter>
     );
+    // Unmatched route redirects to the (lazy) home page.
+    expect(await screen.findByTestId("home-page")).toBeInTheDocument();
     expect(screen.queryByTestId("hakpaza-page")).not.toBeInTheDocument();
   });
 });
 
 describe("App - ranges routing", () => {
-  it("keeps the ranges route available while public settings are loading", () => {
+  it("keeps the ranges route available while public settings are loading", async () => {
     mockUsePublicSettings.mockReturnValue(null);
     renderApp("/ranges");
 
-    expect(screen.getByTestId("ranges-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("ranges-page")).toBeInTheDocument();
   });
 });
 
 describe("App - retired command dashboard route", () => {
-  it("does not register the old command dashboard path", () => {
+  it("does not register the old command dashboard path", async () => {
     mockUsePublicSettings.mockReturnValue({});
     renderApp("/command-dashboard");
 
-    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("home-page")).toBeInTheDocument();
   });
 });
 
@@ -133,7 +135,7 @@ describe("TelegramGate routing", () => {
     expect(await screen.findByText("חיבור טלגרם")).toBeInTheDocument();
   });
 
-  it("does not redirect away from home while settings are still loading, even if telegramRequired is true", () => {
+  it("does not redirect away from home while settings are still loading, even if telegramRequired is true", async () => {
     mockUseAuth.mockReturnValue({
       loggedIn: true,
       authLoading: false,
@@ -146,7 +148,7 @@ describe("TelegramGate routing", () => {
     // TelegramGate must wait for settings to load before redirecting, so the
     // gated child route (HomePage, stubbed above) stays mounted instead of
     // bouncing to /setup/telegram.
-    expect(screen.getByTestId("home-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("home-page")).toBeInTheDocument();
     expect(screen.queryByText("חיבור טלגרם")).not.toBeInTheDocument();
   });
 });

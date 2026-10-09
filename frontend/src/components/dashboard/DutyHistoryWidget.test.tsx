@@ -112,7 +112,7 @@ describe("DutyHistoryWidget", () => {
     expect(screen.queryByText(/פירוט חישוב חלק בנטל/)).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByText("הצג פירוט חישוב"));
-    expect(screen.getByText(/פירוט חישוב חלק בנטל — דני כהן/)).toBeInTheDocument();
+    expect(await screen.findByText(/פירוט חישוב חלק בנטל — דני כהן/)).toBeInTheDocument();
   });
 
   it("shows the hovered group's percentage and position", async () => {

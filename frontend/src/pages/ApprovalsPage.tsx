@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
 import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
-import DocumentPreviewModal from "../components/DocumentPreviewModal";
+const DocumentPreviewModal = lazy(() => import("../components/DocumentPreviewModal"));
 import { revokeBlobUrl, sanitizeFilename } from "../utils/downloadFile";
 import DirectCommanderApproval, { DirectCommanderApprovalRow, groupByKind, isSideSatisfied } from "../components/DirectCommanderApproval";
 import SwapApprovalColumns, { requesterColumn, candidateColumn } from "../components/SwapApprovalColumns";
@@ -1143,15 +1143,17 @@ export default function ApprovalsPage() {
         />
       )}
       {previewFile && (
-        <DocumentPreviewModal
-          fileUrl={previewFile.url}
-          fileName={previewFile.name}
-          contentType={previewFile.contentType}
-          onClose={() => {
-            URL.revokeObjectURL(previewFile.url);
-            setPreviewFile(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <DocumentPreviewModal
+            fileUrl={previewFile.url}
+            fileName={previewFile.name}
+            contentType={previewFile.contentType}
+            onClose={() => {
+              URL.revokeObjectURL(previewFile.url);
+              setPreviewFile(null);
+            }}
+          />
+        </Suspense>
       )}
     </Layout>
   );

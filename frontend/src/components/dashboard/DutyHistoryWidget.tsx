@@ -1,12 +1,13 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
-import { BlockMath } from "react-katex";
 import { EffectiveDuty } from "../../api/assignments";
 import { BurdenShare, BurdenShareBreakdown } from "../../api/scoring";
 import { formatDutyRange, todayIso } from "../../utils/formatDate";
-import BurdenShareBreakdownModal from "../BurdenShareBreakdownModal";
+const BurdenShareBreakdownModal = lazy(() => import("../BurdenShareBreakdownModal"));
 import BurdenShareTrendChart from "./BurdenShareTrendChart";
-import HelpModal from "../HelpModal";
+// react-katex only renders inside a hover tooltip; keep it out of the Home chunk.
+const BlockMath = lazy(() => import("react-katex").then((m) => ({ default: m.BlockMath })));
+const HelpModal = lazy(() => import("../HelpModal"));
 
 interface Props {
   duties: EffectiveDuty[];
@@ -51,7 +52,7 @@ export default function DutyHistoryWidget({
   const normTooltip = useMemo(() => (
     <div className="space-y-3" dir="rtl">
       <p>חלק בנטל מחושב לפי הניקוד ליום שלך ביחס לממוצע היחידה.</p>
-      <BlockMath math="\text{חלק בנטל} = \dfrac{\text{ניקוד ליום שלך}}{\text{ממוצע ניקוד ליום ביחידה}}" />
+      <Suspense fallback={null}><BlockMath math="\text{חלק בנטל} = \dfrac{\text{ניקוד ליום שלך}}{\text{ממוצע ניקוד ליום ביחידה}}" /></Suspense>
       <p className="text-xs text-gray-500 dark:text-gray-400">ניקוד 1.0 = בדיוק כמו הממוצע. מעל 1.0 = עשית יותר מהממוצע. מתחת 1.0 = עשית פחות.</p>
     </div>
   ), []);
@@ -102,7 +103,7 @@ export default function DutyHistoryWidget({
           </div>
         </div>
       </div>
-      {activeDaysHelpOpen && <HelpModal onClose={() => setActiveDaysHelpOpen(false)} initialTab="active_days" />}
+      {activeDaysHelpOpen && <Suspense fallback={null}><HelpModal onClose={() => setActiveDaysHelpOpen(false)} initialTab="active_days" /></Suspense>}
 
       {/* חלק בנטל — comparison group context, distribution, trend, breakdown */}
       {burdenShare && (
@@ -220,11 +221,13 @@ export default function DutyHistoryWidget({
 
       {/* Burden-share breakdown modal */}
       {breakdownModalOpen && burdenShareBreakdown && (
-        <BurdenShareBreakdownModal
-          soldierName={soldierName ?? ""}
-          breakdown={burdenShareBreakdown}
-          onClose={() => setBreakdownModalOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <BurdenShareBreakdownModal
+            soldierName={soldierName ?? ""}
+            breakdown={burdenShareBreakdown}
+            onClose={() => setBreakdownModalOpen(false)}
+          />
+        </Suspense>
       )}
     </section>
   );
