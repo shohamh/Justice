@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as hierarchyApi from "../api/hierarchy";
 import LazyHierarchyTree from "./LazyHierarchyTree";
@@ -39,7 +39,57 @@ beforeEach(() => {
   });
 });
 
+function renderTree() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <LazyHierarchyTree
+        scopeKey="viewer-scope"
+        roleOrder={[]}
+        canManageLevelTypes={false}
+        onChanged={vi.fn()}
+        onSelectedNodeChange={vi.fn()}
+        onOpenPortfolio={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+}
+
+function setVisibility(state: DocumentVisibilityState) {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+}
+
+afterEach(() => {
+  // Drop the instance override so jsdom's own getter applies again.
+  delete (document as unknown as Record<string, unknown>).visibilityState;
+});
+
 describe("LazyHierarchyTree", () => {
+  it("does not refetch branches when the page becomes hidden (e.g. navigating away)", async () => {
+    renderTree();
+    expect(await screen.findByText("Soldier Leaf")).toBeInTheDocument();
+    expect(hierarchyApi.fetchHierarchyBranchPage).toHaveBeenCalledTimes(1);
+
+    setVisibility("hidden");
+    fireEvent(document, new Event("visibilitychange"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(hierarchyApi.fetchHierarchyBranchPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("still refetches branches when the page becomes visible again", async () => {
+    renderTree();
+    expect(await screen.findByText("Soldier Leaf")).toBeInTheDocument();
+    expect(hierarchyApi.fetchHierarchyBranchPage).toHaveBeenCalledTimes(1);
+
+    setVisibility("visible");
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() => expect(hierarchyApi.fetchHierarchyBranchPage).toHaveBeenCalledTimes(2));
+  });
+
   it("does not offer expansion for a soldier-containing leaf and still opens its roster", async () => {
     const onSelectedNodeChange = vi.fn();
     const queryClient = new QueryClient({
