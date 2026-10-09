@@ -256,3 +256,93 @@ Cheap shell calls got much cheaper on the wall clock at c1: `GET /api/me` 362 ->
 - Local single-machine measurement: production build served by `vite preview` over loopback against a profile server (with timing headers) and a local Postgres, one capture pair, with other applications running and about 2.7 GB of free memory. It is not a production-capacity result; values are comparable only with the baseline taken on the same setup and carry run-to-run noise, especially at c5.
 - Every new browser connection to `localhost:5174` waits about 300 ms before its request starts (found in Task 6). It is a measurement artifact that inflates wall times in both the baseline and these runs; it does not exist in production.
 - The `ineligible-soldiers/count` target (1.0 s) was missed by about 0.5 s at c5; the remaining server time is 1.1 s, of which about 0.8 s is database time. Further work would need a different read path or a cache with an invalidation rule, which the plan reserved for when a pure query optimization was not enough.
+
+## FCP investigation (throttled), 2026-10-09
+
+Question: can first contentful paint improve further? The Task 7 numbers above were taken over loopback without network or CPU throttling, which hides transfer and parse costs, so this section measures with throttling.
+
+### Method
+
+- Harness: Playwright Chromium (headless, 1366x768), a script outside the repo. For every run, scenario and build: a new browser context (cold cache), one navigation measured as **cold**, then a second navigation in the same context measured as **warm** (hashed assets come from the HTTP cache, `index.html` is revalidated). Per measurement: FCP (`PerformancePaintTiming`), the last LCP entry after network idle (45 s cap), navigation timing, every resource timing entry (`transferSize`, encoded/decoded size, `renderBlockingStatus`, `Content-Encoding` from the response headers), the DOM present when the FCP entry was delivered (data-testids, text, whether Heebo had loaded), and the first DOM appearance of `login-form`, `sidebar` (the app shell) and the page marker (`personal-data-panel` on Home, `transparency-page`) through a MutationObserver.
+- Throttling (CDP, measured loads only): **fast 4G** = 9 Mbps down / 1.5 Mbps up / 150 ms latency, CPU 4x; **slow 4G** = 1.6 Mbps / 0.75 Mbps / 300 ms, CPU 4x (`Network.emulateNetworkConditions`, `Emulation.setCPUThrottlingRate`). DevTools-style throttling adds latency per request; DNS, TCP and TLS setup are not emulated, so new connections (in particular the one to `fonts.googleapis.com`) are cheaper here than on a real network.
+- Scenarios: logged-out first visit to `/login`; returning user (valid refresh cookie) loading `/` and `/transparency`. One unthrottled login per profile (the profiler's procedure: wait for network idle before submitting); every returning-user context starts from a copy of that storage state.
+- Compression and caching: `vite preview` does not compress, so the builds were served by a small Node server that copies what `deploy/nginx.conf` does: gzip level 1 (nginx's default `gzip_comp_level`) for HTML, CSS, JS and JSON including the proxied `/api` responses, `Cache-Control: max-age=31536000, public, immutable` for `*.js|css|woff2|png|svg|ico`, only ETag/Last-Modified for `index.html`, SPA fallback, `/api` proxied to the profile server. HTTP/1.1 like production (nginx has no `http2`), plain HTTP (no TLS), base URL `127.0.0.1` (avoids the ~300 ms `localhost` connection stall described in Task 6). The response headers confirmed `Content-Encoding: gzip` on every same-origin script, stylesheet and API response.
+- Backend and data: `app.scripts.profile_scale_server` on 8100, `justice_scale_fcp_scale` (20,120 soldiers verified), Redis, `LOKI_URL` unset, `TRANSPARENCY_READ_MODEL_ENABLED=true`, user 1000001.
+- Runs: 7 measured runs per cell plus one discarded warm-up run; builds interleaved within each run (A, B, C, A, B, C ...) so drift affects all builds alike; strictly sequential; no build or vitest during a capture. p95 of 7 samples is the 7th value (the maximum).
+- Builds: **before** = `d2283607` (branch head when this investigation started), **after** = `6d12dd49`, **e6ef3dd7** = the commit before the lazy-routes commit `2d3ab5cc` (built from a temporary worktree, removed afterwards). Experiment builds are described under "Ideas evaluated".
+- Raw data: `docs/benchmarks/data/fcp-throttled-20261008.json` (`final`: the matched run below, with each load's resource waterfall up to the shell marker; `experiments`: per-measurement metrics of the three exploratory captures, without waterfalls).
+
+### What first contentful paint is
+
+- `/login` (logged out): the login form (`login-form`, logo, inputs), in the fallback font: Heebo had not loaded at FCP in any cold run.
+- `/` and `/transparency` (returning user) on the code-split builds: the text "טוען..." (`page-loading`), the `Suspense` fallback. `ProtectedRoute` renders nothing while the session is restored, then the lazy page suspends and the fallback paints. The shell (`sidebar`) and page appear 0.8-3 s later. On `e6ef3dd7` (no route splitting) FCP is the full shell and page, because nothing suspends. **FCP measures different things on the two code bases; the shell-visible time is the comparable metric.**
+
+Critical path of a cold returning-user load (fast 4G, Home, `before`, medians, ms from navigation start): HTML 174; the entry, its 18 modulepreloaded chunks and 2 stylesheets download in parallel until 1014; the entry stylesheet's `@import` of the Google Fonts CSS starts only after `index.css` has arrived and ends at 939; module execution and the first React render until 1201, when `POST /api/auth/refresh` starts; refresh done 1379; `GET /api/me` done 1565; the route chunk graph (Home: about 25 chunks including recharts and fullcalendar) 1589-2386; FCP (loading text) 1804; shell 2554. Slow 4G has the same shape: JS 2699, refresh 2883-3214, me 3556, FCP 3772, shell 6119.
+
+### Results: before vs after vs e6ef3dd7 (ms, p50 / p95, 7 runs)
+
+Cold cache:
+
+| Profile | Page | FCP before | FCP after | FCP e6ef3dd7 | Shell (or login form) visible: before | after | e6ef3dd7 |
+|---|---|---|---|---|---|---|---|
+| fast 4G | /login | 1260 / 1344 | 1232 / 1604 | 2428 / 2452 | 1157 | 1127 | 2298 |
+| fast 4G | / | 1804 / 2184 | 1708 / 1860 | 2948 / 3096 | 2554 | 2544 | 2844 |
+| fast 4G | /transparency | 1780 / 1808 | 1724 / 1752 | 3108 / 3320 | 2581 | 2609 | 2829 |
+| slow 4G | /login | 2964 / 2968 | 2404 / 2628 | 8212 / 8324 | 2854 | 2307 | 8057 |
+| slow 4G | / | 3772 / 4088 | 3292 / 4420 | 9008 / 9148 | 6119 | 5623 | 8893 |
+| slow 4G | /transparency | 3812 / 3924 | 3304 / 3360 | 9272 / 9408 | 6468 | 6390 | 9021 |
+
+Warm cache (second visit, same context):
+
+| Profile | Page | FCP before | FCP after | FCP e6ef3dd7 |
+|---|---|---|---|---|
+| fast 4G | /login | 176 / 236 | 168 / 180 | 268 / 320 |
+| fast 4G | / | 964 / 1024 | 960 / 1076 | 848 / 940 |
+| fast 4G | /transparency | 836 / 988 | 876 / 932 | 856 / 912 |
+| slow 4G | /login | 204 / 248 | 192 / 256 | 304 / 400 |
+| slow 4G | / | 1208 / 1288 | 1196 / 1332 | 1112 / 1188 |
+| slow 4G | /transparency | 1188 / 1240 | 1140 / 1200 | 1108 / 1184 |
+
+Transferred before FCP (cold, gzip, medians): before 368-379 kB, after 280-292 kB, e6ef3dd7 1,271-1,274 kB.
+
+Reading:
+
+- **What route-level splitting bought, under throttling.** Logged-out `/login`: FCP 2428 -> 1260 ms on fast 4G and 8212 -> 2964 ms on slow 4G (a 1.27 MB gzip entry against 0.37 MB). Returning users: the comparable shell-visible time improved by 0.25-0.3 s on fast 4G (Home 2844 -> 2554, Transparency 2829 -> 2581) and 2.55-2.8 s on slow 4G (8893 -> 6119, 9021 -> 6468). The 1.1-1.3 s FCP gain on fast 4G in the FCP column is mostly a change of what is painted (a loading text instead of the page), not of when the page shows. Warm-cache loads did not gain: e6ef3dd7 is equal or up to ~115 ms faster on `/` and `/transparency`, because the split build still loads the route chunks (from cache) after the session restore before it paints the page.
+- **This task (before -> after).** Cold FCP is lower on slow 4G by 480-560 ms on every page, with non-overlapping ranges on `/login` (2936-2968 vs 2380-2628) and `/transparency` (3768-3924 vs 3208-3360); Home's after p95 is one 4420 ms outlier, its other six runs are 3208-3388 (before: 3724-4088). On fast 4G the change is 28-96 ms and the ranges overlap (one 1604 ms login run after; Transparency 1736-1808 vs 1692-1752), so it is not distinguishable from noise there. Shell visible: slow 4G Home 6119 -> 5623 ms, Transparency 6468 -> 6390 ms; fast 4G unchanged. Warm cache: unchanged within noise.
+
+### Improvement implemented
+
+`6d12dd49` perf(frontend): keep the katex chunk out of the entry's static imports. `main.tsx` imports `katex/dist/katex.min.css` for the whole app, and the `katex` chunk group in `vite.config.ts` matched that CSS module too, so the entry statically imported the whole katex chunk (264.8 kB raw JS: katex, react-katex, prop-types) and `index.html` modulepreloaded it on every page, the login page included. The group now matches only `.js/.mjs/.cjs`; the stylesheet stays global (merged into the entry CSS, 79 -> 108 kB raw) and katex JS loads with the lazy pages and modals that render formulas. Assets referenced by `index.html`: 1,122 kB raw / 378 kB gzip-1 -> 858 kB raw / 287 kB gzip-1. No behaviour change. Test: `frontend/src/buildChunks.test.ts` asserts that the group does not capture the stylesheet and still captures katex and react-katex JS.
+
+### Ideas evaluated and not implemented
+
+Each was built from `6d12dd49` plus the change and measured against it with the same harness (7 runs, interleaved; exploratory captures 2 and 3 in the data file). Cold FCP p50, `6d12dd49` -> variant, in that capture.
+
+| Idea | fast 4G FCP (login / home / transparency) | slow 4G FCP | Other effect | Verdict |
+|---|---|---|---|---|
+| Google Fonts as `<link rel=stylesheet>` + `preconnect` in `index.html` instead of the CSS `@import` | 1176 -> 1172 / 1732 -> 1700 / 1772 -> 1696 | 2436 -> 2412 / 3312 -> 3292 / 3264 -> 3284 | render-blocking CSS ends 936 -> 579 ms (fast) and 1940 -> 1448 ms (slow) | Not implemented: FCP change within noise under emulation (the JS, not the CSS, is the long pole). Recommended anyway (recommendation 1): emulation does not model the new-origin connection. |
+| Start the current route's chunk at startup (`import()` in `main.tsx`, experiment hack) | 1176 -> 1192 / 1732 -> 2236 / 1772 -> 2492 | 2436 -> 2416 / 3312 -> 4664 / 3264 -> 4700 | Shell earlier: fast Home 2636 -> 2102, Transparency 2686 -> 2262; slow 5533 -> 4585, 6380 -> 5271. But `refresh`/`me` queue behind ~25 chunk requests on six HTTP/1.1 connections (slow 4G Home `me` done 3003 -> 4338) | Rejected: FCP 0.5-1.4 s worse. The shell gain is real; see recommendation 2. |
+| `ProtectedRoute` renders `PageLoading` during the session restore instead of `null` | 1176 -> 1216 / 1732 -> 1152 / 1772 -> 1144 | 2436 -> 2408 / 3312 -> 2344 / 3264 -> 2344 | Shell unchanged; warm FCP ~0.85-1.2 s -> 0.24-0.35 s | Not implemented: only paints the loading text earlier (the metric moves, the page does not), and it is a visible change that needs a product decision (recommendation 3). |
+| Load `UnifiedSoldierModal` on demand in `SoldierModalProvider` (in parallel with the soldier request, behind the existing "opening" overlay) | 1256 -> 1128 / 1688 -> 1672 / 1708 -> 1704 | 2400 -> 2252 / 3288 -> 3172 / 3320 -> 3104 | Entry 428 -> 290 kB raw, eager gzip 287 -> 222 kB. But Home shell **later**: fast 2493 -> 3009, slow 5546 -> 6050 ms (the modules it took out of the entry are needed by Home and now load after the session restore, in more chunks) | Rejected: FCP gain 0-220 ms, overlapping noise on fast 4G, and Home time-to-shell regresses by 0.5 s. |
+| Plus: shared dialogs import `EventDetailModal` directly instead of through the `components/planning` barrel (the barrel pulls `PlanningTable` -> `DataTable` -> `@tanstack/table-core` into the entry) | 1128 -> 1128 / 1672 -> 1676 / 1704 -> 1664 | 2252 -> 2216 / 3172 -> 3200 / 3104 -> 3152 | Entry 290 -> 221 kB raw; Home shell later again (slow 6050 -> 6505) | Rejected: no FCP change beyond noise. Without the modal change it removes almost nothing (eager gzip 287 -> 287 kB), because `UnifiedSoldierModal` imports the same modules. |
+
+Also checked:
+
+- Entry composition (`6d12dd49`, source-map attribution, raw output bytes): i18next 63 kB plus about 60 kB of output without source mapping, consistent with the inlined `he.json` (116 kB source; it is the UI language and must be parsed before the first render, and `en.json` is 2.4 kB, so lazy-loading locales would save nothing); `UnifiedSoldierModal` and its panels about 80 kB; `@tanstack/table-core` 49 kB; `react-calendar` 30 kB; the App, Login and ChangePassword pages; `BugReportModal`. React and react-dom are in the separate 140 kB `react-vendor` chunk; lucide icons are tree-shaken (<1 kB). Rolldown's `experimental.chunkOptimization.mergeCommonChunks: false` did not change the entry: these modules are reached statically from the app-level providers (`SoldierModalProvider`, `BugReportModalProvider`).
+- Modulepreload hints: Vite already emits `modulepreload` for every static dependency of the entry, and they download in parallel with it; there is no entry-to-dependency waterfall to fix.
+- Render-blocking resources: `index.css` and, through its `@import`, the Google Fonts CSS. No third-party scripts. The theme script in `index.html` is inline and small.
+- Cache headers (`deploy/nginx.conf`): hashed assets get `expires 1y` plus `Cache-Control: public, immutable` (correct). `index.html` gets no Cache-Control, so browsers may reuse it heuristically for a while after a deploy. gzip is on at level 1 for JS/CSS/JSON (HTML always); no brotli, no `gzip_static`.
+
+### Recommendations (not implemented)
+
+1. **Self-host Heebo** (woff2 in `public/fonts`, `@font-face` with `font-display: swap`, ideally Hebrew and Latin subsets) and drop the `fonts.googleapis.com` `@import`. After the katex fix the font stylesheet chain (index.css -> Google CSS) ends close to the JS on fast 4G (render-blocking end 896 vs JS end 919 ms), and module scripts do not run before pending stylesheets have loaded; on a real network the new-origin DNS+TCP+TLS adds two to three round trips this harness does not emulate. If the deployment network cannot reach Google, rendering waits until that connection fails. Minimum version: move the stylesheet to a `<link>` with `preconnect` in `index.html` (measured above: render-blocking end 360-490 ms earlier, FCP within noise).
+2. **Fetch the current route's chunk in parallel with `/api/me`, not before `/api/auth/refresh`.** The measured startup preload brought the shell 0.4-1.1 s earlier but delayed the session restore, because the restore requests queued behind the chunk requests (HTTP/1.1, six connections). Starting the route import once the refresh has returned, or enabling HTTP/2 in nginx, should keep most of the shell gain without delaying auth; it needs its own measurement. With such a prefetch, the `UnifiedSoldierModal`/barrel entry reductions above would probably stop regressing Home and become worth re-measuring.
+3. **Product decision: paint during the session restore.** Rendering the existing loading indicator (or an app-shell skeleton) while `/api/auth/refresh` and `/api/me` run moves FCP from ~1.7 to ~1.15 s (fast 4G) and from ~3.3 to ~2.35 s (slow 4G), but does not show any content sooner.
+4. **nginx** (deployment config, not changed): `listen 443 ssl http2;` (removes the six-connection queue behind recommendation 2 and the Task 6 request queueing); `Cache-Control: no-cache` on `index.html` so a deploy is picked up on the next visit; a higher `gzip_comp_level` (5-6) or pre-compressed assets (`gzip_static`, brotli) would shave further bytes off the 287 kB.
+
+### Caveats
+
+- One machine (developer workstation, other applications running, about 2.5 GB free RAM), emulated network and CPU over loopback, headless Chromium, plain HTTP/1.1 without TLS, a Node server imitating nginx rather than nginx itself. Not a production RUM result.
+- DevTools-style throttling applies latency per request and does not model TCP slow start, DNS, TLS or the connection setup to Google Fonts; the Google Fonts requests went over the real internet with the throttling on top.
+- 7 runs per cell; p95 is the maximum of 7 and is sensitive to single outliers (for example Home slow 4G `after` 4420 ms, Login fast 4G `after` 1604 ms). The exploratory captures were separate sessions, so compare variants only with the `6d12dd49` column of the same capture.
+- FCP on the code-split builds is a loading text for returning users; use the shell-visible times for user-perceived speed.
