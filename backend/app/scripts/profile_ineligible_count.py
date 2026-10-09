@@ -56,11 +56,13 @@ def _phases(session: Session, roots: set[uuid.UUID] | None, as_of: date) -> dict
         timings[name] = (perf_counter() - start) * 1000
         return result
 
-    statement = select(Soldier).join(HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id)
+    statement = select(*svc._COUNT_SOLDIER_COLUMNS).join(
+        HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id
+    )
     scope_clause = svc._scope_clause(roots)
     if scope_clause is not None:
         statement = statement.where(scope_clause)
-    soldiers = timed("1 load soldiers", lambda: session.execute(statement).scalars().all())
+    soldiers = timed("1 load soldiers", lambda: list(session.execute(statement).all()))
     rows["soldiers"] = len(soldiers)
     weapon_ids = timed(
         "2 structural eligibility",

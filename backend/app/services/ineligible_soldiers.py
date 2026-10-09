@@ -4,6 +4,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -314,6 +315,24 @@ def _ineligible_candidates(
     )
 
 
+# Every Soldier attribute the count path reads: ``_is_eligible`` (structural
+# requirements) plus the profile range dates used by
+# ``_valid_qualifications_by_soldier``. Loading these columns as plain rows
+# instead of full ORM entities is most of the count's cost at scale.
+_COUNT_SOLDIER_COLUMNS = (
+    Soldier.id,
+    Soldier.gender,
+    Soldier.rank,
+    Soldier.mandatory_end_date,
+    Soldier.is_officer,
+    Soldier.bahad1_graduate,
+    Soldier.has_military_driving_license,
+    Soldier.military_driving_license_expiry,
+    Soldier.last_mitvahim_date,
+    Soldier.last_alal_date,
+)
+
+
 def count_ineligible_soldiers(
     session: Session,
     *,
@@ -321,13 +340,14 @@ def count_ineligible_soldiers(
     as_of: date,
 ) -> int:
     """Count the same scoped eligibility results without loading list-only range details."""
-    statement = select(Soldier).join(
+    statement = select(*_COUNT_SOLDIER_COLUMNS).join(
         HierarchyNode, Soldier.hierarchy_node_id == HierarchyNode.id
     )
     scope_clause = _scope_clause(roots)
     if scope_clause is not None:
         statement = statement.where(scope_clause)
-    scoped_soldiers = session.execute(statement).scalars().all()
+    # Lightweight rows exposing the same attribute names the helpers read.
+    scoped_soldiers: list[Any] = list(session.execute(statement).all())
     weapon_eligible_ids = _weapon_eligible_soldier_ids(
         session, soldiers=scoped_soldiers, as_of=as_of
     )
