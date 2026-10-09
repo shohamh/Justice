@@ -2,7 +2,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 
 import { changePassword as apiChangePassword, fetchMe, login as apiLogin, logout as apiLogout, Me } from "../api/auth";
-import { api, setAccessToken } from "../api/client";
+import { refreshAccessToken, setAccessToken } from "../api/client";
 
 export interface AuthContextValue {
   user: Me | null;
@@ -34,8 +34,10 @@ const RESTORE_RETRY_DELAY_MS = 400;
 async function restoreSession(): Promise<Me | null> {
   for (let attempt = 1; ; attempt++) {
     try {
-      const r = await api.post<{ access_token: string }>("/auth/refresh");
-      setAccessToken(r.data.access_token);
+      // Shared with the 401 handler in the API client, so requests that start
+      // while the session is being restored wait for this refresh instead of
+      // starting their own.
+      await refreshAccessToken();
       return await fetchMe();
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;

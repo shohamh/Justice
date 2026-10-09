@@ -6,7 +6,8 @@ const mockRefresh = vi.fn();
 const mockFetchMe = vi.fn();
 
 vi.mock("../api/client", () => ({
-  api: { post: (...args: unknown[]) => mockRefresh(...args) },
+  refreshAccessToken: () =>
+    Promise.resolve(mockRefresh("/auth/refresh")).then((r: { data: { access_token: string } }) => r.data.access_token),
   setAccessToken: vi.fn(),
 }));
 const mockLogout = vi.fn();
