@@ -24,6 +24,7 @@ from app.db.models import (
 from app.services.eligibility import DutyTypeRequirements, _is_eligible
 from app.services.range_eligibility_projection import DutyEligibilityFact, project_duty_eligibility
 from app.services.ranges import _validity_days
+from app.services.single_flight import SingleFlight
 
 
 @dataclass(frozen=True)
@@ -411,6 +412,29 @@ def count_ineligible_soldiers(
     return without_current_qualification + sum(
         any(not duty_eligibility[soldier_id, duty.assignment_id].eligible for duty in duties)
         for soldier_id, duties in future_duties.items()
+    )
+
+
+_count_flight: SingleFlight[int] = SingleFlight()
+
+
+def count_ineligible_soldiers_coalesced(
+    session: Session,
+    *,
+    roots: set[uuid.UUID] | None,
+    as_of: date,
+) -> int:
+    """``count_ineligible_soldiers``, sharing one computation between concurrent
+    callers with the same scope and date.
+
+    Every shell load asks for this count at once (5 simultaneous admin loads
+    ran 5 identical CPU-bound counts that serialized on the GIL). The key holds
+    the caller's scope roots, so callers with different scopes never share a
+    result, and nothing is kept after the computation ends.
+    """
+    key = (None if roots is None else frozenset(roots), as_of)
+    return _count_flight.do(
+        key, lambda: count_ineligible_soldiers(session, roots=roots, as_of=as_of)
     )
 
 
