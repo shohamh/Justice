@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { installChunkLoadRecovery } from "./chunkLoadRecovery";
 
-function fakeWindow(storage: Storage | "throws") {
+function fakeWindow(storage: Storage | "throws", hist: "memory" | "throws" = "memory") {
+  let state: unknown = null;
   const listeners: Record<string, ((e: Event) => void)[]> = {};
   const reload = vi.fn();
   const win = {
@@ -12,6 +13,13 @@ function fakeWindow(storage: Storage | "throws") {
     get sessionStorage(): Storage {
       if (storage === "throws") throw new Error("denied");
       return storage;
+    },
+    get history() {
+      if (hist === "throws") throw new Error("denied");
+      return {
+        get state() { return state; },
+        replaceState: (s: unknown) => { state = s; },
+      };
     },
   } as unknown as Window;
   const fire = () => {
@@ -59,6 +67,22 @@ describe("installChunkLoadRecovery", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("uses history.state as the guard when storage throws: two events, one reload", () => {
+    const { win, reload, fire } = fakeWindow("throws");
+    installChunkLoadRecovery(win);
+    fire();
+    fire();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reload or prevent the error when no guard storage is usable", () => {
+    const { win, reload, fire } = fakeWindow("throws", "throws");
+    installChunkLoadRecovery(win);
+    const event = fire();
+    expect(reload).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
   it("still reloads once without crashing when storage throws", () => {
