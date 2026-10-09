@@ -34,7 +34,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
     refetchIntervalInBackground: false,
     retry: false,
   });
-  const bugUnread = useQuery({ queryKey: ["admin-bug-reports-unread"], queryFn: getAdminBugReportUnreadCount, enabled: isAdmin, refetchInterval: 30000 });
+  const bugUnread = useQuery({ queryKey: ["admin-bug-reports-unread"], queryFn: getAdminBugReportUnreadCount, enabled: isAdmin, refetchInterval: 30000, refetchIntervalInBackground: false });
   const adminUnread = (errorUnread.data ?? 0) + (bugUnread.data ?? 0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTab, setHelpTab] = useState<string | undefined>(undefined);

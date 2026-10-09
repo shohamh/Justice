@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import NotificationBell from "./NotificationBell";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
 import * as notificationsApi from "../api/notifications";
@@ -137,6 +137,60 @@ describe("NotificationBell unread count error", () => {
 
     const errorBadge = await screen.findByTestId("notification-count-error");
     expect(errorBadge).toHaveAttribute("aria-label", "notifications.count_error");
+  });
+});
+
+describe("NotificationBell unread count polling", () => {
+  afterEach(() => {
+    focusManager.setFocused(undefined);
+    vi.useRealTimers();
+  });
+
+  it("requests the unread count once on mount", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({ items: [], total: 0 });
+    renderBell();
+    expect(await screen.findByText("2")).toBeInTheDocument();
+    expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1);
+  });
+
+  it("polls every 30 s while the tab is visible", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({ items: [], total: 0 });
+    renderBell();
+    await waitFor(() => expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1));
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
+
+    expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not poll while the tab is hidden", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({ items: [], total: 0 });
+    renderBell();
+    await waitFor(() => expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1));
+
+    focusManager.setFocused(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(65_000); });
+
+    expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1);
+  });
+
+  it("decrements the badge locally when a notification is marked read", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{ ...baseNotification, id: "n1", title: "Announcement", type: "announcement" }],
+      total: 1,
+    });
+    vi.mocked(notificationsApi.markRead).mockResolvedValue({ ...baseNotification, id: "n1", title: "Announcement", type: "announcement", is_read: true });
+    renderBell();
+    expect(await screen.findByText("2")).toBeInTheDocument();
+    (await screen.findByTestId("notification-bell")).click();
+    await screen.findByText("Announcement");
+
+    screen.getByLabelText("notifications.mark_read").click();
+
+    expect(await screen.findByText("1")).toBeInTheDocument();
+    expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1);
   });
 });
 

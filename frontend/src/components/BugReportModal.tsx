@@ -53,6 +53,7 @@ export default function BugReportModal({
     queryKey: queryKeys.myBugReportsUnseenCount(),
     queryFn: getMyBugReportsUnseenCount,
     refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   });
   const unseenCount = unseenQuery.data?.count ?? 0;
 
