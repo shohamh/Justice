@@ -147,4 +147,20 @@ describe("api client token refresh", () => {
     expect(expired).not.toHaveBeenCalled();
     window.removeEventListener("auth:session-expired", expired);
   });
+  it("does not expire a newly signed-in session when a refresh from the previous session fails", async () => {
+    const { client, release } = await loadClient();
+    const expired = vi.fn();
+    window.addEventListener("auth:session-expired", expired);
+
+    const settings = client.api.get("/settings/public");
+    // Let the unauthenticated request 401 and start its refresh.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    client.setAccessToken("user-b");
+    release(401);
+
+    await expect(settings).rejects.toMatchObject({ response: { status: 401 } });
+    expect(client.getAccessToken()).toBe("user-b");
+    expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("auth:session-expired", expired);
+  });
 });

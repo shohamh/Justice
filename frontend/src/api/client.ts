@@ -42,6 +42,10 @@ export function refreshAccessToken(): Promise<string> {
       if (tokenEpoch !== startedAt) throw new StaleRefreshError();
       setAccessToken(r.data.access_token);
       return r.data.access_token;
+    }).catch((e) => {
+      // A failure answered after the token was replaced is not about the current session either.
+      if (tokenEpoch !== startedAt) throw new StaleRefreshError();
+      throw e;
     }).finally(() => {
       refreshing = null;
     });
