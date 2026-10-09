@@ -159,103 +159,154 @@ Not fixed:
 - The Home command calendar loads the scope window (`node_id`) and then the personal window (`soldier_id`) one after the other. Running them in parallel would take ~350 ms off the end of the page. They are not duplicates, so this is left for a separate change.
 - Measurement artifact: on this machine every new browser connection to `localhost:5174` waits ~300 ms before its request starts (Playwright `requestStart` ~300 ms on fresh connections, 0 on reused ones), consistent with an IPv6-then-IPv4 fallback for `localhost` against a server bound to 127.0.0.1. It adds to all wall times in these captures and does not exist in production.
 
-## After (Task 7), 2026-10-09
+## After (final, Task 7b), 2026-10-09
 
-Matched re-run of the Task 1 matrix on the final code.
+Matched re-run of the Task 1 matrix on the final code. This is the official "after". It repeats the earlier capture (Task 7, `shell-load-after-*-20261008.json`, code `46d6d67c`, called "intermediate" below) because three code commits landed after that capture: `16d902a4` (logging label for deliberate 5xx responses), `d2283607` (the Team page no longer refetches hierarchy branches on a hidden page) and `6d12dd49` (the katex chunk is no longer a static import of the entry).
 
 ### Setup
 
-- Code measured: `46d6d67c`. Application code is identical to `305c805b`; the commits on top only add documentation and the `t6-final` artifact.
-- Same procedure, database (`justice_scale_fcp_scale`, 20,120 soldiers, 1,000,008 assignments verified before the run), Redis, profile server on 8100 (`LOKI_URL` unset, `TRANSPARENCY_READ_MODEL_ENABLED=true`), production build served by `vite preview` on 5174, user 1000001, `localhost:5174` as base URL. A discarded 1-run warm-up of every scenario (c1, then c5) preceded the measured runs; no vitest or build ran during a capture. c1 then c5, strictly sequential, 5 runs each.
-- Entry chunk `assets/index-DEVk5xgm.js` = 428.60 kB raw (428,598 bytes), 113.46 kB gzip (baseline 3,989.42 kB / 1,099.94 kB gzip). `fullcalendar`, `recharts`, `react-pdf`, `katex` and `markdown` are separate chunks, next to one chunk per page.
-- Artifacts: `docs/benchmarks/data/shell-load-after-c1-20261008.json` (70 measurements) and `shell-load-after-c5-20261008.json` (350 measurements); every measurement reached readiness, exit code 0. They contain no password or database URL strings. Compare with `node frontend/scripts/summarize-scale-pages.mjs <after> <before>`.
-- Single capture pair, no re-runs. Free memory was about 2.7 GB of 16 GB when the run started; other applications were running as in the baseline (Docker Desktop with the other project containers, Firefox, WhatsApp, Claude desktop, Windows Defender).
+- Code measured: `2d5b9682` (application code identical to `6d12dd49`; the commit on top only adds documentation).
+- Same procedure, database (`justice_scale_fcp_scale`, 20,120 soldiers and 1,000,008 assignments verified before the run), Redis, profile server on 8100 (`LOKI_URL` unset, `TRANSPARENCY_READ_MODEL_ENABLED=true`), fresh production build served by `vite preview` on 5174 (`VITE_BACKEND_URL=http://127.0.0.1:8100`), user 1000001, `localhost:5174` as base URL. A discarded 1-run warm-up of every scenario (c1, then c5) preceded the measured runs; no vitest or build ran during a capture. c1 then c5, strictly sequential, 5 runs each.
+- Entry chunk `assets/index-D2VlxfxZ.js` = 428.54 kB raw (428,539 bytes), 112.96 kB gzip (zlib default level; baseline 3,989.42 kB raw / 1,099.94 kB gzip; intermediate 428.60 kB / 113.46 kB). The 19 assets referenced by `index.html` (entry, 17 modulepreloaded chunks, 1 stylesheet) are 857.7 kB raw and 244.2 kB gzip at zlib level 6; the same asset set measured at gzip level 1 in the FCP investigation (`6d12dd49`, same frontend code) is 287 kB. The intermediate build still had the 264.8 kB katex chunk among the entry's static imports.
+- Artifacts: `docs/benchmarks/data/shell-load-final-c1-20261009.json` (70 measurements) and `shell-load-final-c5-20261009.json` (350 measurements); every measurement reached readiness, exit code 0, no console or page errors. They contain no password or database URL strings. Compare with `node frontend/scripts/summarize-scale-pages.mjs <final> <baseline>`.
+- Single capture pair, no re-runs. Free memory was about 1.9-2.0 GB of 16 GB at the start of the captures (the intermediate capture started with about 2.7 GB). Running at the same time: Docker Desktop with the other project containers (one of them, `runtime-statelessness-observability-backend-1`, was in a restart loop), Firefox, WhatsApp, Claude desktop, Windows Defender.
 
 ### Success criteria
 
-| Criterion | Baseline | Target | Measured | Result |
-|---|---|---|---|---|
-| `GET /api/admin/errors/unread-count` requests, Loki unset | 134 (c1), 836 (c5) | 0 | 0 (c1), 0 (c5) | Met |
-| Entry JS chunk, raw | 3,989 kB | <= 1.6 MB, heavy libraries in lazy chunks | 428.6 kB (113.5 kB gzip); heavy libraries in separate chunks | Met |
-| Requests per cold page load | home 39, calendar team 23, calendar org 18-19, hierarchy 16-17, hr-sync 20, soldier detail 20-21, transparency 10 | no endpoint more than once per page load, except genuine refetches | home 32, calendar team 18, calendar org 14, hierarchy 12, hr-sync 16, soldier detail 16, transparency 10. Remaining pairs: Home `ranges` x2 and `calendar/shifts` x2; Calendar team `hierarchy/branches`, `ranges`, `calendar/shifts` x2; Soldier detail `soldiers/roster` x2 (all analysed in the Task 6 section as different queries or profiler steps); warm Hierarchy one aborted `hierarchy/branches` of the previous page | Met, with those documented exceptions |
-| `ineligible-soldiers/count` c5 cold p50 (end to end) | 4144 ms wall, 3780 ms server (c1: 1219 / 901) | <= 1.0 s | 1481 ms wall, 1146 ms server (c1: 601 / 282) | **Missed** |
-| FCP c5 cold p50, each page | 1512-1592 ms | <= 2.0 s | 1040-1168 ms (all pages together 1124 ms) | Met (already met at baseline) |
-| Page-ready p95, every page, c1 and c5 | c1 cold 2.3-6.6 s, c5 cold 7.8-14.3 s | not worse than baseline | c5: no page worse (all 14 scenario/modes lower or equal). c1: 4 of 14 worse: Transparency cold 2266 -> 2536, Transparency warm 1352 -> 2218, Hierarchy warm 1842 -> 2658, HR sync warm 2065 -> 2501 ms | **Missed** (c1) |
+"Intermediate" is the earlier capture of nearly the same code; the difference between it and "final" shows the run-to-run variation to keep in mind when reading any single cell. Call-level medians in this section were recomputed with one script for all three captures, so the baseline c1 ineligible figure (1224 / 909 ms) differs by a few milliseconds from the rounding used in the baseline section (1219 / 901).
 
-Counts: 4 met, 2 missed.
+| Criterion | Baseline | Target | Intermediate | Final (official) | Result |
+|---|---|---|---|---|---|
+| `GET /api/admin/errors/unread-count` requests, Loki unset | 134 (c1), 836 (c5) | 0 | 0 / 0 | 0 (c1), 0 (c5). Responses with status >= 400 of any endpoint: baseline 199 / 1141, final 0 / 0 | Met |
+| Entry JS chunk, raw | 3,989 kB | <= 1.6 MB, heavy libraries in lazy chunks | 428.6 kB | 428.5 kB (113.0 kB gzip); heavy libraries in separate chunks | Met |
+| Requests per cold page load (Home / Calendar team / Calendar org / Hierarchy / HR sync / Soldier detail / Transparency) | 39 / 23 / 18-19 / 16-17 / 20 / 20-21 / 10 | no endpoint more than once per page load, except genuine refetches | 32 / 18 / 14 / 12 / 16 / 16 / 10 | 32 / 18 / 14 / 12 / 16 / 16 / 10. Remaining pairs: Home `ranges` x2 and `calendar/shifts` x2; Calendar team `hierarchy/branches`, `ranges`, `calendar/shifts` x2; Soldier detail `soldiers/roster` x2 (all analysed in the Task 6 section as different queries or profiler steps). Warm Hierarchy 13 -> 12: the aborted `hierarchy/branches` of the previous page is gone (`d2283607`) | Met, with those documented exceptions |
+| `ineligible-soldiers/count` c5 cold p50 (end to end) | 4144 ms wall, 3780 ms server (c1: 1224 / 909) | <= 1.0 s | 1481 / 1146 ms (c1: 601 / 282) | **1396 ms wall, 1070 ms server** (c1: 623 / 317) | **Missed** (0.4 s over the target; 3.0x faster than baseline) |
+| FCP c5 cold p50, each page | 1512-1592 ms | <= 2.0 s | 1040-1168 ms | 1032-1144 ms (all pages together 1064 ms) | Met (already met at baseline) |
+| Page-ready p95, every page and mode, c1 and c5 | c1 cold 2.3-6.6 s, c5 cold 7.8-14.3 s | not worse than baseline | c1: 4 of 14 worse; c5: none | c1: 4 of 14 worse (Transparency cold 2266 -> 2662, Transparency warm 1352 -> 2197, Hierarchy warm 1842 -> 2695, HR sync warm 2065 -> 2422 ms). c5: none worse | **Missed** (c1) |
 
-Ineligible count in more detail (cold, 200 responses, wall / server p50): c1 1219 / 901 -> 601 / 282 ms, c5 4144 / 3780 -> 1481 / 1146 ms; warm c5 4556 / 3703 -> 1345 / 1011 ms. The in-process figure from Task 4 (156 ms) does not carry over to the page load: at c5 five browsers hit one backend with other shell reads running, and the server time is 1.1 s. At c5 the database part is 783-846 ms of it (17 queries, same as before, 2490-2602 ms at baseline).
+Counts: 4 met, 2 missed (the same two as in the intermediate capture). Other numbers asked for:
 
-FCP: the target was met at baseline (the 3.4-3.8 s seen earlier was Vite dev-server overhead, see the Setup section above). After the changes, cold FCP p50 is lower on every page at both concurrencies (c1 1272 -> 864 ms across pages, c5 1536 -> 1124 ms; per page 340-480 ms lower) and the c5 p95 values are lower or equal, so the cold reduction is larger than the baseline's own run-to-run spread, but it is one capture pair on one machine and this experiment does not isolate its cause (the entry chunk shrank, which is consistent with it). Warm FCP is lower on the other pages and higher on Transparency (c1 436 -> 772, c5 508 -> 840 ms) and slightly on Home at c1 (712 -> 772 ms).
+- Ineligible count, end to end, c5 cold p50: 1396 ms wall, 1070 ms server (782 ms of it database time, 17 queries, as before; baseline 2602 ms database). Warm c5: 1345 ms wall, 988 ms server (baseline 4556 / 3703).
+- Error-log requests: 0 in both artifacts (`GET /api/admin/errors/unread-count`), and no response with status 400 or above anywhere in the final captures.
+- Eager assets (referenced by `index.html`): 857.7 kB raw, 244.2 kB gzip (zlib level 6); entry 428.5 kB raw, 113.0 kB gzip.
+- Requests per page load: cold as in the table above. Warm is the same except Hierarchy (12; baseline 13) and Soldier detail, which is an in-app modal (3 requests; baseline 4).
 
-### Per-page results (ms, baseline -> after)
+### FCP
+
+The target (<= 2.0 s) was already met at baseline on the production build over loopback (c5 cold p50 1512-1592 ms; the 3.4-3.8 s seen earlier was Vite dev-server overhead, see the baseline Setup). In the final run cold FCP p50 is lower than baseline on every page: pooled over all pages c1 1272 -> 868 ms and c5 1536 -> 1064 ms (per page c1 828-1024 against 1216-1296, c5 1032-1144 against 1512-1592), and the c5 cold p95 is lower on every page as well (1132-1500 against 1544-1896). The intermediate capture shows the same size of gain (c1 864 ms, c5 1124 ms), so the gain is larger than the run-to-run difference between captures. This experiment does not isolate its cause (the entry chunk shrank, which is consistent with it). The target was met before the work, so this is a secondary improvement and not a criterion result.
+
+Warm FCP is lower than baseline on every page except Transparency, at both concurrencies: Transparency warm 436 -> 760 ms (c1) and 508 -> 848 ms (c5), the same as in the intermediate capture. The Home warm c1 increase seen in the intermediate capture (712 -> 772 ms) did not persist (712 -> 432 ms), which suggests it was noise.
+
+Loopback without throttling is not what a user sees. The throttled FCP investigation below gives the realistic numbers: on fast 4G (9 Mbps, 150 ms, CPU x4) cold FCP is about 1.2 s for `/login` and 1.7 s for `/` and `/transparency`; on slow 4G (1.6 Mbps, 300 ms) it is 2.4 s for `/login` and 3.3 s for `/` and `/transparency`, so a 2.0 s target would be missed for the post-login pages on slow 4G. That section also explains why the FCP of the code-split build is the loading text, not the page.
+
+### Per-page results (ms, baseline -> final (intermediate))
+
+Each cell reads `baseline -> final (intermediate)`.
 
 c1, cold:
 
 | Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
 |---|---|---|---|---|---|
-| Home | 5917 -> 5020 | 6068 -> 5064 | 1272 -> 856 | 1316 -> 956 | 39 -> 32 |
-| Calendar (synthetic team) | 6302 -> 5113 | 6569 -> 5277 | 1292 -> 848 | 1316 -> 1252 | 23 -> 18 |
-| Calendar (whole org) | 4243 -> 3287 | 4413 -> 3342 | 1268 -> 912 | 1316 -> 956 | 18 -> 14 |
-| Hierarchy/Team | 4357 -> 2757 | 4487 -> 2893 | 1288 -> 836 | 1328 -> 952 | 16 -> 12 |
-| HR sync review | 4154 -> 3008 | 4346 -> 3506 | 1216 -> 828 | 1364 -> 1244 | 20 -> 16 |
-| Soldier detail | 5739 -> 4170 | 6521 -> 4284 | 1256 -> 884 | 1412 -> 1012 | 20 -> 16 |
-| Transparency | 2214 -> 2523 | 2266 -> 2536 | 1296 -> 944 | 1312 -> 952 | 10 -> 10 |
+| Home | 5917 -> 4994 (5020) | 6068 -> 5261 (5064) | 1272 -> 884 (856) | 1316 -> 1208 (956) | 39 -> 32 (32) |
+| Calendar (synthetic team) | 6302 -> 4785 (5113) | 6569 -> 5391 (5277) | 1292 -> 852 (848) | 1316 -> 928 (1252) | 23 -> 18 (18) |
+| Calendar (whole org) | 4243 -> 3049 (3287) | 4413 -> 3587 (3342) | 1268 -> 828 (912) | 1316 -> 1184 (956) | 18 -> 14 (14) |
+| Hierarchy/Team | 4357 -> 2946 (2757) | 4487 -> 3139 (2893) | 1288 -> 1024 (836) | 1328 -> 1172 (952) | 16 -> 12 (12) |
+| HR sync review | 4154 -> 3077 (3008) | 4346 -> 3404 (3506) | 1216 -> 880 (828) | 1364 -> 1200 (1244) | 20 -> 16 (16) |
+| Soldier detail | 5739 -> 4229 (4170) | 6521 -> 4477 (4284) | 1256 -> 840 (884) | 1412 -> 1060 (1012) | 20 -> 16 (16) |
+| Transparency | 2214 -> 2496 (2523) | 2266 -> 2662 (2536) | 1296 -> 900 (944) | 1312 -> 1028 (952) | 10 -> 10 (10) |
 
 c1, warm:
 
 | Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
 |---|---|---|---|---|---|
-| Home | 5902 -> 4112 | 6174 -> 4661 | 712 -> 772 | 756 -> 792 | 39 -> 32 |
-| Calendar (synthetic team) | 5905 -> 4210 | 6212 -> 4233 | 708 -> 428 | 736 -> 436 | 23 -> 18 |
-| Calendar (whole org) | 3711 -> 2379 | 3727 -> 2461 | 528 -> 440 | 584 -> 508 | 18 -> 14 |
-| Hierarchy/Team | 1829 -> 2396 | 1842 -> 2658 | 836 -> 460 | 840 -> 724 | 13 -> 13 |
-| HR sync review | 2035 -> 2437 | 2065 -> 2501 | 724 -> 412 | 748 -> 468 | 16 -> 16 |
-| Soldier detail (in-app modal) | 1550 -> 1356 | 1604 -> 1480 | - | - | 4 -> 3 |
-| Transparency | 1346 -> 2116 | 1352 -> 2218 | 436 -> 772 | 440 -> 776 | 10 -> 10 |
+| Home | 5902 -> 4150 (4112) | 6174 -> 4417 (4661) | 712 -> 432 (772) | 756 -> 760 (792) | 39 -> 32 (32) |
+| Calendar (synthetic team) | 5905 -> 4410 (4210) | 6212 -> 4578 (4233) | 708 -> 428 (428) | 736 -> 464 (436) | 23 -> 18 (18) |
+| Calendar (whole org) | 3711 -> 2388 (2379) | 3727 -> 2397 (2461) | 528 -> 432 (440) | 584 -> 508 (508) | 18 -> 14 (14) |
+| Hierarchy/Team | 1829 -> 2355 (2396) | 1842 -> 2695 (2658) | 836 -> 444 (460) | 840 -> 488 (724) | 13 -> 12 (13) |
+| HR sync review | 2035 -> 2349 (2437) | 2065 -> 2422 (2501) | 724 -> 452 (412) | 748 -> 464 (468) | 16 -> 16 (16) |
+| Soldier detail (in-app modal) | 1550 -> 1360 (1356) | 1604 -> 1500 (1480) | - | - | 4 -> 3 (3) |
+| Transparency | 1346 -> 2169 (2116) | 1352 -> 2197 (2218) | 436 -> 760 (772) | 440 -> 776 (776) | 10 -> 10 (10) |
 
 c5, cold:
 
 | Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
 |---|---|---|---|---|---|
-| Home | 14116 -> 7731 | 14259 -> 7918 | 1556 -> 1124 | 1612 -> 1180 | 39 -> 32 |
-| Calendar (synthetic team) | 10920 -> 6872 | 11475 -> 7166 | 1564 -> 1120 | 1896 -> 1248 | 23 -> 18 |
-| Calendar (whole org) | 8168 -> 4607 | 9199 -> 4753 | 1516 -> 1140 | 1628 -> 1248 | 19 -> 14 |
-| Hierarchy/Team | 7589 -> 4015 | 8018 -> 4160 | 1592 -> 1120 | 1696 -> 1216 | 17 -> 12 |
-| HR sync review | 7288 -> 4196 | 8390 -> 4471 | 1532 -> 1040 | 1800 -> 1532 | 20 -> 16 |
-| Soldier detail | 9569 -> 6187 | 10046 -> 6660 | 1512 -> 1072 | 1544 -> 1152 | 21 -> 16 |
-| Transparency | 2677 -> 3691 | 7790 -> 3921 | 1584 -> 1168 | 1652 -> 1576 | 10 -> 10 |
+| Home | 14116 -> 7887 (7731) | 14259 -> 8077 (7918) | 1556 -> 1076 (1124) | 1612 -> 1320 (1180) | 39 -> 32 (32) |
+| Calendar (synthetic team) | 10920 -> 6932 (6872) | 11475 -> 7107 (7166) | 1564 -> 1096 (1120) | 1896 -> 1204 (1248) | 23 -> 18 (18) |
+| Calendar (whole org) | 8168 -> 4561 (4607) | 9199 -> 4700 (4753) | 1516 -> 1064 (1140) | 1628 -> 1276 (1248) | 19 -> 14 (14) |
+| Hierarchy/Team | 7589 -> 3963 (4015) | 8018 -> 4167 (4160) | 1592 -> 1144 (1120) | 1696 -> 1212 (1216) | 17 -> 12 (12) |
+| HR sync review | 7288 -> 4083 (4196) | 8390 -> 4202 (4471) | 1532 -> 1060 (1040) | 1800 -> 1132 (1532) | 20 -> 16 (16) |
+| Soldier detail | 9569 -> 6224 (6187) | 10046 -> 6908 (6660) | 1512 -> 1032 (1072) | 1544 -> 1500 (1152) | 21 -> 16 (16) |
+| Transparency | 2677 -> 3592 (3691) | 7790 -> 3725 (3921) | 1584 -> 1056 (1168) | 1652 -> 1148 (1576) | 10 -> 10 (10) |
 
 c5, warm:
 
 | Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
 |---|---|---|---|---|---|
-| Home | 13714 -> 7248 | 14144 -> 7470 | 1052 -> 908 | 1116 -> 952 | 39 -> 32 |
-| Calendar (synthetic team) | 10050 -> 6070 | 11477 -> 6487 | 732 -> 560 | 1124 -> 616 | 23 -> 18 |
-| Calendar (whole org) | 7733 -> 4133 | 9704 -> 4383 | 1048 -> 600 | 1156 -> 648 | 19 -> 14 |
-| Hierarchy/Team | 2164 -> 3211 | 6639 -> 3538 | 860 -> 644 | 1240 -> 704 | 13 -> 13 |
-| HR sync review | 3701 -> 3525 | 6159 -> 3599 | 748 -> 584 | 1140 -> 648 | 20 -> 16 |
-| Soldier detail (in-app modal) | 2512 -> 2547 | 2839 -> 2760 | - | - | 4 -> 3 |
-| Transparency | 1618 -> 3218 | 5202 -> 3347 | 508 -> 840 | 4244 -> 880 | 10 -> 10 |
+| Home | 13714 -> 7370 (7248) | 14144 -> 7740 (7470) | 1052 -> 888 (908) | 1116 -> 944 (952) | 39 -> 32 (32) |
+| Calendar (synthetic team) | 10050 -> 6042 (6070) | 11477 -> 6242 (6487) | 732 -> 564 (560) | 1124 -> 592 (616) | 23 -> 18 (18) |
+| Calendar (whole org) | 7733 -> 3696 (4133) | 9704 -> 4353 (4383) | 1048 -> 612 (600) | 1156 -> 748 (648) | 19 -> 14 (14) |
+| Hierarchy/Team | 2164 -> 3361 (3211) | 6639 -> 3470 (3538) | 860 -> 564 (644) | 1240 -> 616 (704) | 13 -> 12 (13) |
+| HR sync review | 3701 -> 3466 (3525) | 6159 -> 3827 (3599) | 748 -> 552 (584) | 1140 -> 592 (648) | 20 -> 16 (16) |
+| Soldier detail (in-app modal) | 2512 -> 2443 (2547) | 2839 -> 2693 (2760) | - | - | 4 -> 3 (3) |
+| Transparency | 1618 -> 3171 (3218) | 5202 -> 3210 (3347) | 508 -> 848 (840) | 4244 -> 900 (880) | 10 -> 10 (10) |
 
-### What got worse
+### What got worse, and what did not change
 
-Page-ready p50 is higher after on: Transparency (c1 cold 2214 -> 2523, c1 warm 1346 -> 2116, c5 cold 2677 -> 3691, c5 warm 1618 -> 3218 ms), Hierarchy warm (c1 1829 -> 2396, c5 2164 -> 3211 ms) and HR sync warm at c1 (2035 -> 2437 ms). Soldier detail warm at c5 is flat (2512 -> 2547 ms). Every other page and mode is lower, (Home cold 15% lower at c1 and 45% at c5; the cold Calendar, Hierarchy, HR sync and Soldier detail pages 19-37% at c1 and 35-47% at c5). Several baseline c5 p95 values were inflated by outliers (Transparency cold 7790, Hierarchy warm 6639, Transparency warm 5202 ms), so the c5 p95 improvements on those pages come from removing the outliers while the p50 got worse.
+Targets missed (both repeat the intermediate capture):
 
-What the data shows: "page ready" is the later of the page marker and a quiet period without API traffic. On the pages that got worse, the time at which the page's own marker becomes visible did not rise as much as the quiet time (Transparency c1 cold: marker 1659 -> 957 ms, quiet 2209 -> 2520 ms; c1 warm: marker 909 -> 1212 ms, quiet 1343 -> 2112 ms). The request lists differ: in the baseline Transparency window (10 requests) there was no `nav/counts`, `ineligible-soldiers/count` or `algorithm/jobs` call; in the after window they are present, started at about 280-330 ms and taking 1.1-1.2 s each at c5, and they end after the Transparency read itself. The navigation reads in `UnifiedNav` are gated on other queries settling (`navReadsEnabled`); the likely explanation is that, with the error-log calls and their retries gone, the gate now opens early enough for these three reads to land inside the measured window, where before they started after the page had been declared quiet. That is a hypothesis from the request timeline and the source, not tested by a separate experiment. If it is right, part of the cost moved into the measurement window rather than appeared. It does not explain the later marker on warm Transparency (c1 909 -> 1212 ms, c5 946 -> 1282 ms), which stays unexplained.
+1. `ineligible-soldiers/count` at c5 cold: 1396 ms wall / 1070 ms server against <= 1.0 s. It improved from 4144 / 3780 ms, but the target is missed by about 0.4 s. At c1 it is 623 / 317 ms.
+2. Page-ready p95 not worse than baseline: missed at c1 on four scenario/modes (numbers in the success table).
 
-Other measured regressions:
+Page-ready p50 or p95 higher than baseline in the final capture (ms, baseline -> final (intermediate)):
 
-- `GET /api/nav/counts` at c5 got slower per call: 564 -> 1380 ms wall, 228 -> 1061 ms server (c1 improved: 1031 -> 454 wall, 713 -> 276 server). The after run completes this call in all 325 page loads (baseline: 253 of 325), and it now runs concurrently with the ineligible count and the page's own reads under 5 browsers. The cause is not isolated; it is the next lead for shell cost at c5.
-- Warm FCP on Transparency and (c1) Home, above.
+| Scenario / mode | p50 | p95 |
+|---|---|---|
+| c1 cold Transparency | 2214 -> 2496 (2523) | 2266 -> 2662 (2536) |
+| c1 warm Transparency | 1346 -> 2169 (2116) | 1352 -> 2197 (2218) |
+| c1 warm Hierarchy | 1829 -> 2355 (2396) | 1842 -> 2695 (2658) |
+| c1 warm HR sync | 2035 -> 2349 (2437) | 2065 -> 2422 (2501) |
+| c5 cold Transparency | 2677 -> 3592 (3691) | better (7790 -> 3725) |
+| c5 warm Transparency | 1618 -> 3171 (3218) | better (5202 -> 3210) |
+| c5 warm Hierarchy | 2164 -> 3361 (3211) | better (6639 -> 3470) |
 
-Cheap shell calls got much cheaper on the wall clock at c1: `GET /api/me` 362 -> 47 ms, `notifications/unread-count` 346 -> 26 ms (server time 47 -> 36 and 27 -> 16 ms). The server share is small, so most of the baseline wall time of those calls was outside the handler; with fewer concurrent requests per page this is consistent with fewer new connections hitting the ~300 ms `localhost` connection stall described under the Task 6 section, but that was not tested.
+All other scenario/modes are lower than baseline at both percentiles; c5 p95 is not worse anywhere. Several baseline c5 p95 values were inflated by outliers (Transparency cold 7790, Hierarchy warm 6639, Transparency warm 5202 ms), so the c5 p95 improvements on those pages come from removing outliers while the p50 got worse. HR sync warm at c5 is no longer worse (3701 -> 3466 ms; 3525 in the intermediate capture) and Soldier detail warm c5 is slightly better (2512 -> 2443 ms). The largest gains are the c5 cold pages: Home 14116 -> 7887, Calendar team 10920 -> 6932, Calendar org 8168 -> 4561, Hierarchy 7589 -> 3963, HR sync 7288 -> 4083, Soldier detail 9569 -> 6224 ms.
+
+Run-to-run variation between the two captures of nearly the same code (ready p50, 14 scenario/modes per concurrency): c1 -7.2% to +6.8% (median absolute difference about 2%), c5 -10.6% to +4.7% (median about 1.7%). The four c1 regressions (+13%, +61%, +29%, +15% on p50 against baseline) are larger than that and appeared in both captures at the same size, so they are not explained by run-to-run noise. All earlier c1 regressions persisted (Transparency cold and warm, Hierarchy warm, HR sync warm).
+
+### The earlier hypothesis for the c1 regressions: what the artifacts can and cannot show
+
+The hypothesis from the intermediate capture: the shell's navigation reads (`nav/counts`, `ineligible-soldiers/count`, `algorithm/jobs`) now start early enough to land inside the measured window of the affected pages, so "page ready" (the later of the page marker and the end of API traffic) waits for them. The profiler artifacts record, per API call, only the wall duration and the server and database time; there is no start offset or end time relative to navigation, and `phaseTimings` is empty for these scenarios. So the start offsets quoted earlier (about 280-330 ms) cannot be checked from the artifacts, and the hypothesis cannot be proven or refuted with existing data. What the artifacts do show, c1, medians of 5 runs (calls in window, then wall / server ms):
+
+| Scenario / mode | Capture | Marker visible | API quiet (= ready) | `nav/counts` | `ineligible count` | `algorithm/jobs` |
+|---|---|---|---|---|---|---|
+| Transparency cold | baseline | 1659 | 2209 | 0 of 5 | 0 of 5 | 0 of 5 |
+| | intermediate | 957 | 2520 | 5 of 5, 280 / 276 | 5 of 5, 284 / 280 | 5 of 5, 337 / 27 |
+| | final | 927 | 2492 | 5 of 5, 287 / 281 | 5 of 5, 282 / 276 | 5 of 5, 356 / 38 |
+| Transparency warm | baseline | 909 | 1343 | 0 of 5 | 0 of 5 | 0 of 5 |
+| | intermediate | 1212 | 2112 | 5 of 5, 299 / 293 | 5 of 5, 295 / 290 | 5 of 5, 334 / 24 |
+| | final | 1210 | 2165 | 5 of 5, 301 / 295 | 5 of 5, 295 / 287 | 5 of 5, 349 / 29 |
+| Hierarchy warm | baseline | 1268 | 1825 | 0 of 5 | 0 of 5 | 0 of 5 |
+| | intermediate | 481 | 2391 | 5 of 5, 599 / 281 | 5 of 5, 595 / 277 | 5 of 5, 575 / 256 |
+| | final | 903 | 2349 | 5 of 5, 616 / 296 | 5 of 5, 603 / 282 | 5 of 5, 577 / 259 |
+| HR sync warm | baseline | 831 | 2029 | 0 of 5 | 0 of 5 | 0 of 5 |
+| | intermediate | 899 | 2433 | 5 of 5, 659 / 337 | 5 of 5, 654 / 331 | 5 of 5, 444 / 115 |
+| | final | 902 | 2344 | 5 of 5, 576 / 266 | 5 of 5, 574 / 262 | 5 of 5, 409 / 89 |
+
+- Consistent with the hypothesis: in the baseline the three calls are absent from the measured window of all four scenario/modes (0 of 5 in every case), in both later captures they are in all of them, and the added quiet time (final minus baseline: Transparency cold +283 ms, Transparency warm +822, Hierarchy warm +524, HR sync warm +315 ms) is of the same order as the wall time of these calls (about 280-620 ms). The page marker is earlier in two of the four cells (Transparency cold 1659 -> 927 ms, Hierarchy warm 1268 -> 903 ms), so there the added time is waiting for API quiet, not the page rendering later.
+- Not explained by it: Transparency warm adds 822 ms, more than the 300-350 ms of any one of the three calls, and its marker is also later (909 -> 1210 ms); HR sync warm marker is later by 71 ms. Whether the baseline calls were outside the window because they started before it opened or after readiness was declared cannot be seen without start offsets.
+- Conclusion: the window composition changed in the way described and the added time is of the right size, but the cause is still a hypothesis. Testing it needs per-request start offsets (for example a start-time field in the profiler's `apiResponses`), which is a profiler change and was not made here.
+
+Persisting follow-up, `GET /api/nav/counts` at c5 is slower per call than at baseline. Cold wall / server p50: baseline 560 / 226 ms (153 of 175 loads completed it in the window), intermediate 1421 / 1116, final 1350 / 1038 ms (all 175). Warm: 764 / 291 -> 1288 / 961 ms. At c1 it improved (cold 1062 / 743 -> 611 / 306 ms). It now runs concurrently with the ineligible count and the page's own reads under 5 browsers; the cause is not isolated and it is the next lead for shell cost at c5. The ineligible count behaves the same way at c5 (1396 ms wall, 1070 ms server, see the success table).
+
+Cheap shell calls got much cheaper on the wall clock: `GET /api/me` cold p50 c1 366 -> 35 ms and c5 446 -> 119 ms, `notifications/unread-count` c1 361 -> 24 ms and c5 498 -> 113 ms (server time: c1 35 -> 16 ms, c5 135 -> 70 ms). The server share is small, so most of the baseline wall time of those calls was outside the handler; with fewer concurrent requests per page this is consistent with fewer new connections hitting the ~300 ms `localhost` connection stall, but that was not tested.
 
 ### Caveats
 
-- Local single-machine measurement: production build served by `vite preview` over loopback against a profile server (with timing headers) and a local Postgres, one capture pair, with other applications running and about 2.7 GB of free memory. It is not a production-capacity result; values are comparable only with the baseline taken on the same setup and carry run-to-run noise, especially at c5.
-- Every new browser connection to `localhost:5174` waits about 300 ms before its request starts (found in Task 6). It is a measurement artifact that inflates wall times in both the baseline and these runs; it does not exist in production.
-- The `ineligible-soldiers/count` target (1.0 s) was missed by about 0.5 s at c5; the remaining server time is 1.1 s, of which about 0.8 s is database time. Further work would need a different read path or a cache with an invalidation rule, which the plan reserved for when a pure query optimization was not enough.
+- Local single-machine measurement: production build served by `vite preview` over loopback against a profile server (with timing headers) and a local Postgres, one capture pair per code state, with other applications running and about 2 GB of free memory. It is not a production-capacity result; values are comparable only with the baseline taken on the same setup and carry run-to-run noise (the two captures of nearly the same code differ by up to about 10% on a cell, and a p95 of 5 runs is the maximum).
+- Every new browser connection to `localhost:5174` waits about 300 ms before its request starts (found in Task 6). It is a measurement artifact that inflates wall times in the baseline and in these runs; it does not exist in production.
+- The `ineligible-soldiers/count` target (1.0 s) was missed by about 0.4 s at c5; the remaining server time is 1.07 s, of which about 0.8 s is database time. Further work would need a different read path or a cache with an invalidation rule, which the plan reserved for when a pure query optimization was not enough.
+- The intermediate capture ran on `46d6d67c` (application code `305c805b`); its raw data are kept in `shell-load-after-*-20261008.json`.
 
 ## FCP investigation (throttled), 2026-10-09
 
