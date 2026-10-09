@@ -25,22 +25,24 @@ describe("self-hosted Heebo", () => {
     expect(indexHtml).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
   });
 
-  it("declares Hebrew and Latin subsets for every weight the Google stylesheet provided", () => {
+  it("declares every subset the Google stylesheet provided, for every weight it provided", () => {
     const faces = heeboFaces();
+    const subsets = { hebrew: "U+0590-05FF", math: "U+1D400-1D7FF", symbols: "U+2800-28FF", "latin-ext": "U+0100-02BA", latin: "U+0000-00FF" };
     for (const weight of ["300", "400", "500", "700"]) {
       const forWeight = faces.filter((face) => face.weight === weight);
-      expect(forWeight.map((face) => face.src).sort()).toEqual([
-        "/fonts/Heebo-v28-hebrew.woff2",
-        "/fonts/Heebo-v28-latin.woff2",
-      ]);
-      expect(forWeight.find((face) => face.src.endsWith("hebrew.woff2"))!.range).toContain("U+0590-05FF");
-      expect(forWeight.find((face) => face.src.endsWith("latin.woff2"))!.range).toContain("U+0000-00FF");
+      expect(forWeight.map((face) => face.src).sort()).toEqual(
+        Object.keys(subsets).map((subset) => `/fonts/Heebo-v28-${subset}.woff2`).sort(),
+      );
+      for (const [subset, range] of Object.entries(subsets)) {
+        expect(forWeight.find((face) => face.src.endsWith(`-${subset}.woff2`))!.range).toContain(range);
+      }
     }
     expect(globalsCss.match(/@font-face\s*{[^}]*Heebo[^}]*}/g)!.every((b) => /font-display:\s*swap/.test(b))).toBe(true);
   });
 
   it("ships real woff2 files with the OFL licence next to them", () => {
-    for (const file of ["Heebo-v28-hebrew.woff2", "Heebo-v28-latin.woff2"]) {
+    for (const subset of ["hebrew", "math", "symbols", "latin-ext", "latin"]) {
+      const file = `Heebo-v28-${subset}.woff2`;
       expect(read(`public/fonts/${file}`).subarray(0, 4).toString("latin1")).toBe("wOF2");
     }
     expect(read("public/fonts/Heebo-OFL.txt").toString("utf8")).toContain("SIL OPEN FONT LICENSE Version 1.1");
