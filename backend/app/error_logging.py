@@ -137,7 +137,13 @@ def _user_json(user: Any) -> dict[str, str] | None:
             return None
 
 
-def log_backend_exception(request: Request, exc: BaseException, data: dict[str, Any]) -> None:
+def log_backend_exception(
+    request: Request,
+    exc: BaseException,
+    data: dict[str, Any],
+    *,
+    message: str = "Unhandled HTTP 500",
+) -> None:
     logger = logging.getLogger("backend.errors")
     request_id_value = getattr(request.state, "request_id", "unknown")
     user = _user_json(getattr(request.state, "user", None))
@@ -156,7 +162,7 @@ def log_backend_exception(request: Request, exc: BaseException, data: dict[str, 
         if user is not None:
             rollup_extra["user"] = user
         logger.error(
-            "Unhandled HTTP 500 (rate-limit rollup)",
+            f"{message} (rate-limit rollup)",
             extra=rollup_extra,
         )
     if not allow:
@@ -165,7 +171,7 @@ def log_backend_exception(request: Request, exc: BaseException, data: dict[str, 
     if user is not None:
         extra["user"] = user
     logger.error(
-        "Unhandled HTTP 500",
+        message,
         extra=extra,
     )
 

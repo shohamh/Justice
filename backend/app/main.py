@@ -142,10 +142,11 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
                     "headers": redact(headers),
                     "body": None,
                 }
+            # Label it with the real status: this is a deliberate >=500 answer
+            # (e.g. a 503), not a crash, and must not read as "Unhandled HTTP 500".
+            status_message = f"HTTP {response.status_code} response"
             log_backend_exception(
-                request,
-                RuntimeError(f"HTTP {response.status_code} response"),
-                data,
+                request, RuntimeError(status_message), data, message=status_message,
             )
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
         return response
