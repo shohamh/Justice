@@ -27,7 +27,10 @@ export default defineConfig({
             { name: "react-pdf", test: /node_modules[\\/](react-pdf|pdfjs-dist)[\\/]/, priority: 20 },
             { name: "recharts", test: /node_modules[\\/](recharts|d3-[^\\/]+|victory-vendor)[\\/]/, priority: 20 },
             { name: "fullcalendar", test: /node_modules[\\/]@fullcalendar[\\/]/, priority: 20 },
-            { name: "katex", test: /node_modules[\\/](katex|react-katex)[\\/]/, priority: 20 },
+            // JS only: main.tsx imports katex's stylesheet globally, and a CSS module
+            // in this group would make the entry statically import the whole katex
+            // chunk (~265 kB) just to reach the stylesheet.
+            { name: "katex", test: /node_modules[\\/](katex|react-katex)[\\/].*\.[cm]?js$/, priority: 20 },
             {
               name: "markdown",
               test: /node_modules[\\/](react-markdown|remark[^\\/]*|rehype[^\\/]*|unified|mdast[^\\/]*|hast[^\\/]*|micromark[^\\/]*|unist[^\\/]*|vfile[^\\/]*)[\\/]/,
