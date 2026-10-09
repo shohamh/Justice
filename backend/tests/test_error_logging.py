@@ -251,3 +251,35 @@ def test_uvicorn_access_log_redacts_oidc_callback_query():
     )
     flt.filter(other)
     assert "q=abc" in other.getMessage()
+
+
+def test_returned_5xx_response_is_logged_with_its_real_status_not_as_unhandled_500(monkeypatch):
+    """A route that deliberately answers 503 (e.g. the admin errors inbox with
+    LOKI_URL unset) is still reported, but must not be labelled "Unhandled
+    HTTP 500": in a plain-text log the message is all an operator sees, and a
+    mislabelled 503 reads as a crash."""
+    from fastapi import HTTPException
+
+    from app.main import create_app
+
+    _setup_rate_limit_test(monkeypatch)
+    handler, logger = _capture("backend.errors")
+    try:
+        app = create_app()
+
+        @app.get("/test-deliberate-503")
+        async def deliberate_503():
+            raise HTTPException(status_code=503, detail="store unavailable")
+
+        @app.get("/test-crash")
+        async def crash():
+            raise RuntimeError("boom")
+
+        client = TestClient(app, raise_server_exceptions=False)
+        assert client.get("/test-deliberate-503").status_code == 503
+        assert client.get("/test-crash").status_code == 500
+
+        messages = [record.getMessage() for record in handler.records]
+        assert messages == ["HTTP 503 response", "Unhandled HTTP 500"]
+    finally:
+        logger.removeHandler(handler)

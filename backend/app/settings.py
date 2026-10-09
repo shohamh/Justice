@@ -126,6 +126,7 @@ class Settings(StorageSettings):
     oidc_rate_limit: str = Field(default="20/minute", alias="OIDC_RATE_LIMIT")
 
     exchange_calendar_enabled: bool = Field(default=False, alias="EXCHANGE_CALENDAR_ENABLED")
+    transparency_read_model_enabled: bool = Field(default=False, alias="TRANSPARENCY_READ_MODEL_ENABLED")
     exchange_ews_url: str = Field(default="", alias="EXCHANGE_EWS_URL")
     exchange_mailbox: str = Field(default="", alias="EXCHANGE_MAILBOX")
     exchange_username: str = Field(default="", alias="EXCHANGE_USERNAME")

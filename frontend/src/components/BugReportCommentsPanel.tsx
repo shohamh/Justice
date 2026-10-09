@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "../queryKeys";
@@ -10,7 +10,7 @@ import {
   BugReportComment,
 } from "../api/bugReports";
 import { translateApiError } from "../utils/translateApiError";
-import DocumentPreviewModal from "./DocumentPreviewModal";
+const DocumentPreviewModal = lazy(() => import("./DocumentPreviewModal"));
 import { createTemporaryBlobUrl, downloadBlob, revokeBlobUrl, sanitizeFilename } from "../utils/downloadFile";
 
 export interface BugReportCommentsPanelProps {
@@ -282,15 +282,17 @@ export default function BugReportCommentsPanel({ reportId }: BugReportCommentsPa
       </div>
 
       {previewImage && (
-        <DocumentPreviewModal
-          fileUrl={previewImage.url}
-          fileName={previewImage.name}
-          contentType={previewImage.contentType}
-          onClose={() => {
-            revokeBlobUrl(previewImage.url);
-            setPreviewImage(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <DocumentPreviewModal
+            fileUrl={previewImage.url}
+            fileName={previewImage.name}
+            contentType={previewImage.contentType}
+            onClose={() => {
+              revokeBlobUrl(previewImage.url);
+              setPreviewImage(null);
+            }}
+          />
+        </Suspense>
       )}
     </>
   );

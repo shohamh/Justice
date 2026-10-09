@@ -1,5 +1,6 @@
 import { act, render as testingLibraryRender, screen, fireEvent, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
+import { queryKeys } from "../queryKeys";
 import UnifiedNav, { aggregateBadgeCounts } from "./UnifiedNav";
 
 const mockLocation = vi.hoisted(() => ({ pathname: "/" }));
@@ -235,14 +236,78 @@ describe("UnifiedNav — commander role", () => {
     expect(hakpaza.getPendingHakpazaCount).not.toHaveBeenCalled();
   });
 
-  test("refreshes aggregate counts after the route-settle gate on pathname changes", async () => {
-    const view = render(<UnifiedNav />);
-    await waitFor(() => expect(mockGetNavCounts).toHaveBeenCalledTimes(1));
+  test("refreshes aggregate counts on a route change once the cached counts are stale", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2027-01-01T00:00:00Z") });
+    try {
+      const view = render(<UnifiedNav />);
+      await waitFor(() => expect(mockGetNavCounts).toHaveBeenCalledTimes(1));
 
-    mockLocation.pathname = "/approvals";
-    view.rerender(<UnifiedNav />);
+      vi.setSystemTime(new Date("2027-01-01T00:00:16Z"));
+      mockLocation.pathname = "/approvals";
+      view.rerender(<UnifiedNav />);
 
-    await waitFor(() => expect(mockGetNavCounts).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(mockGetNavCounts).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("UnifiedNav route changes do not refetch fresh reads", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockUseAuth.mockReturnValue({ user: { id: "dm-1", role: "duty_manager", is_commander: false, is_duty_manager: true } });
+    mockUsePublicSettings.mockReturnValue({ "mitvachim.enabled": true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("navigating between routes within 15 s reads nav counts, ineligible count and algorithm jobs once", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(<UnifiedNav />, queryClient);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    expect(mockGetNavCounts).toHaveBeenCalledTimes(1);
+    expect(mockGetIneligibleSoldierCount).toHaveBeenCalledTimes(1);
+    expect(mockListJobs).toHaveBeenCalledTimes(1);
+
+    for (const path of ["/approvals", "/swaps"]) {
+      mockLocation.pathname = path;
+      view.rerender(<UnifiedNav />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    }
+
+    expect(mockGetNavCounts).toHaveBeenCalledTimes(1);
+    expect(mockGetIneligibleSoldierCount).toHaveBeenCalledTimes(1);
+    expect(mockListJobs).toHaveBeenCalledTimes(1);
+  });
+
+  test("polls algorithm jobs every 30 s while the tab is visible and not while it is hidden", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<UnifiedNav />, queryClient);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    expect(mockListJobs).toHaveBeenCalledTimes(1);
+
+    focusManager.setFocused(false);
+    try {
+      await act(async () => { await vi.advanceTimersByTimeAsync(65_000); });
+      expect(mockListJobs).toHaveBeenCalledTimes(1);
+    } finally {
+      focusManager.setFocused(undefined);
+    }
+  });
+
+  test("shares the algorithm jobs request with the shifts page query key", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    mockListJobs.mockResolvedValue({ items: [job("done", "shadow")], total: 1 });
+    render(<UnifiedNav />, queryClient);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(mockListJobs).toHaveBeenCalledWith(50, 0);
+    expect(queryClient.getQueryData(queryKeys.algorithmJobs(50, 0))).toEqual({ items: [job("done", "shadow")], total: 1 });
+    expect(mockSeedSeenIds).toHaveBeenCalledWith([job("done", "shadow")]);
   });
 });
 

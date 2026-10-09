@@ -1,18 +1,32 @@
 import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS, isQuickDecisionNotification } from "../api/notifications";
 import { soldierApproveSwap, soldierRejectSwap } from "../api/swaps";
 import { decideRangeExcusal } from "../api/ranges";
+import { queryKeys } from "../queryKeys";
 import { Check, Eye, X, Trash2 } from "lucide-react";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 import { getNotificationTitle } from "./notifications/NotificationDetails";
 
+const UNREAD_COUNT_KEY = queryKeys.notificationsUnreadCount();
+
 export default function NotificationBell() {
   const { t } = useTranslation();
   const { openBugReportModal } = useBugReportModal();
-  const [unread, setUnread] = useState(0);
-  const [unreadCountError, setUnreadCountError] = useState(false);
+  const queryClient = useQueryClient();
+  const unreadQuery = useQuery({
+    queryKey: UNREAD_COUNT_KEY,
+    queryFn: getUnreadCount,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+  const unread = unreadQuery.data?.count ?? 0;
+  const unreadCountError = unreadQuery.isError;
+  const decrementUnread = (by = 1) =>
+    queryClient.setQueryData<{ count: number }>(UNREAD_COUNT_KEY, (old) => ({ count: Math.max(0, (old?.count ?? 0) - by) }));
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationDTO[]>([]);
   const ref = useRef<HTMLDivElement>(null);
@@ -23,21 +37,13 @@ export default function NotificationBell() {
   const openRef = useRef(open);
   useEffect(() => { openRef.current = open; }, [open]);
 
+  // While the dropdown is open, keep the five newest in step with each count poll.
+  const unreadPollAt = unreadQuery.dataUpdatedAt;
   useEffect(() => {
-    const fetch = async () => {
-      try {
-        const { count } = await getUnreadCount();
-        setUnread(count);
-        setUnreadCountError(false);
-      } catch { setUnreadCountError(true); }
-      if (openRef.current) {
-        listNotifications({ is_read: false, limit: 5 }).then((r) => setNotifications(r.items)).catch(() => {});
-      }
-    };
-    fetch();
-    const interval = setInterval(fetch, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    if (openRef.current && unreadPollAt) {
+      listNotifications({ is_read: false, limit: 5 }).then((r) => setNotifications(r.items)).catch(() => {});
+    }
+  }, [unreadPollAt]);
 
   useEffect(() => {
     if (open) {
@@ -56,18 +62,18 @@ export default function NotificationBell() {
   async function handleMarkRead(id: string) {
     await markRead(id).catch(() => {});
     setNotifications((prev) => prev.filter((n) => n.id !== id));
-    setUnread((u) => Math.max(0, u - 1));
+    decrementUnread();
   }
 
   async function handleDelete(id: string) {
     await deleteNotification(id).catch(() => {});
     setNotifications((prev) => prev.filter((n) => n.id !== id));
-    setUnread((u) => Math.max(0, u - 1));
+    decrementUnread();
   }
 
   async function handleMarkAll() {
     const { count } = await markAllRead().catch(() => ({ count: 0 }));
-    setUnread(Math.max(0, unread - count));
+    decrementUnread(count);
     setNotifications([]);
   }
 
@@ -75,15 +81,17 @@ export default function NotificationBell() {
     try {
       if (n.type === "swap_offer_incoming" && n.reference_id) {
         await (approve ? soldierApproveSwap(n.reference_id) : soldierRejectSwap(n.reference_id));
+        void queryClient.invalidateQueries({ queryKey: queryKeys.navCountsAll() });
       } else if (n.type === "range_excusal_pending" && n.reference_id) {
         const eventId = n.metadata?.event_id as string | undefined;
         if (!eventId) return;
         await decideRangeExcusal(eventId, n.reference_id, approve);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.ineligibleSoldierCount() });
       } else {
         return;
       }
       setNotifications((prev) => prev.filter((x) => x.id !== n.id));
-      setUnread((u) => Math.max(0, u - 1));
+      decrementUnread();
     } catch { /* ignore — surfaced via the full review page if it fails */ }
   }
 

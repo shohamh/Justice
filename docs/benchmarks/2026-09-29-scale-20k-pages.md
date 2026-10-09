@@ -636,6 +636,106 @@ The HelpModal hierarchy eligibility tab no longer makes its unconditional full-t
 Home now delays selected secondary React Query reads until primary duties, duty types, locations, and settings are ready and the app has had 400 ms with no query fetches; a 1,200 ms cap prevents indefinite deferral. A newly started fetch cancels the idle window, and the callback rechecks the query client before opening. This changes client request scheduling only. Focused tests cover the idle delay, cap, reset, interruption, command-role held/released reads, and plain-soldier command exclusion. No browser/page reprofile was run, and no speed or latency gain is claimed.
 
 
+## 2026-10-04 transparency snapshot continuation
+
+This follow-up measured the persisted transparency snapshot implementation through the authenticated API on the isolated PostgreSQL scale database. It contained 20,270 soldiers and 1,002,597 duty assignments at capture time. The earlier matched browser matrix used 20,121 soldiers and 1,000,008 assignments. These direct API timings use a different database size and readiness boundary and do not replace the 2026-10-02 browser page-ready matrix.
+
+The requests used the whole-organization admin scope, default `burden_share` descending sort, and `page_size=100`. Three first-page cache misses were measured after deleting prior snapshots; projection state was not forced cold. Five cached first-page requests and five continuation requests followed. The raw captures are [snapshot chunk measurements](data/scale-20k-transparency-snapshot-chunks-20261004.json) and [same-binding single-flight measurements](data/scale-20k-transparency-snapshot-single-flight-20261004.json).
+
+| API operation | Samples | Wall p50/p95 | Accumulated SQL cursor p50/p95 | SQL statements | Response |
+|---|---:|---:|---:|---:|---:|
+| First-page snapshot build | 3 | 11.313 / 12.326 s | 7.547 / 7.803 s | 58 | 72,266 bytes; 100 rows; `row_count=20,270` |
+| Cached first page | 5 | 66.90 / 73.47 ms | 31.65 / 42.63 ms | 18 | 72,266 bytes; 100 rows |
+| Continuation page | 5 | 56.16 / 62.88 ms | 27.84 / 33.42 ms | 15 | 72,636 bytes; 100 rows |
+
+SQL cursor time measures driver execution through `after_cursor_execute`; it excludes fetch and ORM/Python work. The remaining cold-build wall time therefore includes result fetching/decoding, ORM hydration, projection and row processing, filtering, summary/rank/search/sort, JSON encoding, and orchestration. It cannot be labeled pure Python time. This API diagnostic still misses the proposed two-second first-content target and the 10-second stall threshold. It does not measure browser rendering or page readiness.
+
+### Cold-build phase diagnostic
+
+One additional authenticated API capture used a unique rank-order binding to force a first-page miss while keeping the default burden-share sort and 100-row page. This single, instrumented sample took 13.928 s end to end, returned 100 rows from 20,270, and encoded 72,266 response bytes. The [phase artifact](data/scale-20k-transparency-snapshot-phases-20261004.json) contains the method, hashed SQL fingerprints, and privacy limits.
+
+| Measured phase | Wall time |
+|---|---:|
+| `transparency_rows` full-population service | 5.154 s |
+| Source snapshot capture | 1.8 ms |
+| Persist all chunks, evict, and mark ready | 5.971 s |
+| Of persistence: capacity count/eviction | 27.8 ms |
+| Unattributed route and ASGI remainder | 2.801 s |
+| Accumulated SQL cursor execution across route | 8.466 s; 60 statements |
+
+The largest SQL cursor execution was 5.601 s. It exceeded the measured full projection-service and route-remainder phases, and the only long SQL operation inside `persist_rows` is the array-to-JSONB chunk insert; this identifies snapshot persistence as a substantial cold-path cost. The artifact retains only its hash, not SQL text or parameters. The remainder still combines generation/freshness checks, filtering and summary/rank/sort work, bounded read, response serialization, and framework overhead; this sample does not split those further. Compared with the earlier three-sample 11.313 s p50 / 12.326 s p95 miss run, this is a single noisier observation, not a before/after result.
+
+A separate five-client same-binding API burst returned 5/5 HTTP 200 responses at 10.097 / 10.171 s wall p50/p95. Afterward, the database contained one ready snapshot and 203 chunk rows, showing the concurrent requests shared one completed build rather than persisting five copies. This run deliberately did not start the FastAPI lifespan/background workers and is not controlled against the prior browser c5 burst.
+
+Snapshot storage groups 100 output rows per JSONB record. The live ready-snapshot cap is now strict at 100: publication takes a transaction-scoped capacity lock after row construction, retires enough oldest metadata rows to reserve a slot, then publishes within the same transaction. Cache hits also repair inherited over-cap state after releasing their reusable-row lock and revalidating the chosen snapshot. Retirement marks rows unready and expired; physical chunk cascades remain in the bounded two-snapshot cleanup. Repair touches O(excess) metadata rows, so an unusually large inherited backlog can delay that request. A physical table-size reading after repeated clear/rebuild churn was 7,577,600 bytes, versus a 2,214,551-byte sum of logical payload sizes. Deletes leave table/index bloat, so this is not a fresh per-snapshot disk estimate. Eviction can invalidate a cursor; the UI already silently restarts once on `409 stale_cursor`. A PostgreSQL regression verifies that cursor reads can acquire their snapshot during a paused cold capture and that publication waits only in the short retirement/persistence phase. These strict-cap changes have not been remeasured on the 20k API workload; the earlier values above remain pre-cap diagnostics because the saved scale database endpoint is currently unavailable from this worktree.
+
+### Snapshot index plan check
+
+The [index-plan artifact](data/scale-20k-transparency-snapshot-index-plans-20261004.json) records plans from a temporary table in the isolated scale database with 100 rows (90 ready/live and 10 expired), matching the migration indexes. The reusable-snapshot query chose a sequential scan (0.134 ms); the bounded expiry cleanup and capacity candidate queries used `ix_transparency_page_snapshot_expiry` (0.041 ms and 0.069 ms). This supports the expiry index for both bounded maintenance paths. The reuse index was not selected for a 100-row table; these plans do not justify a latency claim, and a larger physical-history fixture is still needed before changing that index because expired metadata can remain until cleanup runs.
+
+### Snapshot chunk write-path comparison (2026-10-04)
+
+The [raw comparison artifact](data/transparency-chunk-write-comparison-20261004.json) records one warm-up and three measured repetitions per method against an ephemeral Testcontainers PostgreSQL 16.15 database. It uses the repository integration-container settings (`fsync=off`, `full_page_writes=off`, and `synchronous_commit=off`), so it compares write-path behavior under the test harness and does not model production durability costs. Each method wrote the same generated 20,270-row `TransparencyPageItem` shape as 203 chunks of 100 rows (70 in the last chunk), with a 15,487,093-byte sum of JSON chunk payloads and the same empty table, foreign key, and primary-key index. The script checked exact payload/ordinal parity and explicit rollback for every method.
+
+| Method | Python prepare median | Client write median | Prepare + write median | Three combined samples |
+|---|---:|---:|---:|---:|
+| Current JSONB array expansion | 326.622 ms | 1,025.470 ms | 1,352.092 ms | 1,320.556 / 1,352.092 / 1,466.968 ms |
+| SQLAlchemy executemany | 319.345 ms | 393.159 ms | 715.478 ms | 712.504 / 715.478 / 731.356 ms |
+| Psycopg COPY | 307.047 ms | 442.822 ms | 785.601 ms | 749.869 / 785.601 / 792.113 ms |
+
+`persist_rows` now uses SQLAlchemy executemany, a 47.1% lower median prepare-plus-client-write time than the array path in this synthetic comparison. COPY was also faster than the baseline, but slower than executemany and requires psycopg-specific access to SQLAlchemy's driver connection. Executemany stays within the existing Session transaction and keeps the caller's commit/rollback boundary. The RED/GREEN regression verifies one executemany chunk insert, exact bounded reads remain covered by the chunk tests, and the benchmark verified rollback for each candidate.
+
+These measurements include Python serialization plus client-side driver/network/PostgreSQL work; they are not server-only timings. The rows and isolated write workload are synthetic, only three measured repetitions were run, and this is not a 20k API or browser/page-ready profile. The earlier 5.601-second JSONB expansion query and 5.971-second persistence phase are pre-change diagnostics. No fraction of that route phase is credited as saved; remeasure on an available isolated 20k endpoint and repeat the matched browser matrix. The first-page path still computes and globally sorts the full transparency projection, so the canonical read model remains the main cold-path work.
+
+### Transparency projection read hydration comparison (2026-10-04)
+
+The [raw microbenchmark artifact](data/transparency-projection-select-comparison-20261004.json) compares the production `SoldierScoreProjection` ORM mapping against selecting only `soldier_id`, `cumulative_score`, and `shift_count`, the fields consumed by `_try_projected_transparency_rows`. It ran against one disposable Testcontainers PostgreSQL 16.15 database with 20,270 deterministic synthetic projection rows and the real mapped projection table/FK; only the required `soldiers(id)` parent table was stubbed, and no application migrations or external database were used. Each variant received two warmups followed by seven paired measured rounds in randomized order. Each pair used one fresh SQLAlchemy Session and transaction for both variants against the same unchanged table. Timed wall time includes one SELECT, fetching/materialization, and building the same ID-to-score/count map; dataset setup is excluded. All outputs matched the source values after PostgreSQL `NUMERIC(18,6)` rounding.
+
+| Read shape | Selected columns | Wall p50 | Wall p95 | Seven measured samples |
+|---|---:|---:|---:|---|
+| Full ORM entity | 7 | 557.192 ms | 626.087 ms | 603.739 / 626.087 / 557.192 / 573.779 / 546.957 / 383.322 / 538.721 ms |
+| Three scalar columns | 3 | 137.221 ms | 293.151 ms | 117.398 / 135.309 / 137.221 / 123.452 / 293.151 / 241.778 / 198.140 ms |
+
+The three-column variant's median was 75.4% lower in this local microbenchmark. The repository Testcontainers helper disables `fsync`, `full_page_writes`, and `synchronous_commit`; the data and database are synthetic, and seven samples on one local container are directional. This isolates projection-row read/materialization only. It excludes active Soldier loading, readiness and repairs, burden calculations, hierarchy/exemption reads, filtering, summary and global sorting, snapshot writes, serialization, HTTP, and browser rendering. It is not a route or page latency measurement, and no endpoint improvement is inferred. The regression also checks that projected output remains equal to the legacy output and that the executed statement selects exactly these three fields.
+
+
+## 2026-10-05 transparency keyset read-model API capture
+
+The [raw API artifact](data/transparency-keyset-read-model-20261005.json) records one direct read-model rebuild, five current-model first-page samples, five keyset continuations, one cold snapshot-fallback first-page sample, one PostgreSQL query plan, and linked browser captures. The API run used the isolated `justice_scale_20k_scale` database (PostgreSQL 16.15, `work_mem=4MB`): 20,120 total/active Soldiers, including 20,000 synthetic Soldiers; 1,000,008 duty assignments; 20,120 score projections. The earlier 2026-10-04 snapshot capture had 20,270 Soldiers and 1,002,597 assignments, so those API datasets are close but not identical.
+
+| Operation | Samples | Wall p50/p95 | SQL cursor p50/p95 | SQL statements | Response bytes |
+|---|---:|---:|---:|---:|---:|
+| Read-model build | 1 | 8.391 s / n/a | 5.355 s / n/a | 79 | n/a |
+| Current-model first page | 5 | 82.405 / 97.916 ms | 57.196 / 70.369 ms | 24 | 72,196 |
+| Snapshot fallback first page, cold miss | 1 | 6.422 s / n/a | 3.189 s / n/a | 67 | 72,290 |
+| Keyset continuation | 5 | 74.344 / 113.767 ms | 48.242 / 68.429 ms | 29 | 71,859 |
+
+Every measured API request returned HTTP 200 and 100 items; the full summary population was 20,120. The cold fallback used a one-space search parameter, which the route strips to an empty search, to avoid reusing the snapshot produced by an earlier artifact-serialization failure. Its cache state was verified as a miss before the request, so the measured request follows the snapshot build path with the same effective empty-search semantics and page size as the keyset samples. The fallback is one diagnostic sample, not a p50/p95 estimate.
+
+The keyset first-page query plan chose `ix_transparency_read_model_keyset` and returned the requested 101 rows in 8.835 ms PostgreSQL execution time (0.134 ms planning), with 89 shared-read blocks and 11 shared hits and no temporary I/O. The planner estimated one row for the limited scan and observed 101. The plan supports use of the intended ordering index; it does not establish behavior under concurrent load.
+
+The current-model first page and continuation are within the proposed 500 ms API target in this single-client capture. The cold fallback remains above the proposed two-second first-content target at 6.422 s, though below the 10-second stall threshold in this one sample. The read-model rebuild itself took 8.391 s and ran outside the page request. Compared with the 2026-10-04 snapshot API capture, the current keyset first page was 82.405 ms p50 / 97.916 ms p95 versus cached snapshot pages at 66.90 / 73.47 ms; keyset continuation was 74.344 / 113.767 ms versus saved-snapshot continuation at 56.16 / 62.88 ms. The keyset requests used 24/29 SQL statements versus 18/15, respectively. The faster cold fallback sample (6.422 s versus 11.313 s old p50) is directional only: it has one sample, a slightly smaller dataset, and a different normalized-empty cache binding. These measurements do not show that the keyset cache-hit path is faster than the prior snapshot cache-hit path; repeated per-page authorized summary aggregation is a candidate for follow-up.
+
+### Browser and concurrent-client measurements
+
+Separate instrumented Playwright Chromium captures loaded the transparency route at c1 and c5. The backend profiling processes explicitly set `TRANSPARENCY_READ_MODEL_ENABLED=true`; the deployment default remains false. All measured pages reached readiness: 5/5 cold and warm at c1 and 25/25 cold and warm at c5. Full per-sample data is in the [c1 artifact](data/transparency-keyset-browser-c1-instrumented-20261005.json) and [c5 artifact](data/transparency-keyset-browser-c5-instrumented-20261005.json).
+
+These captures record page readiness and selector visibility, but not the browser Paint Timing API. First-contentful-paint instrumentation has since been added to the profiler; there is no first-render p50/p95 for these captures, and the older measurements cannot be reconstructed as paint timings.
+
+| Concurrency | Mode | Ready | Page-ready p50/p95 | Transparency API p50/p95 | API SQL p95 |
+|---:|---|---:|---:|---:|---:|
+| 1 | Cold | 5/5 | 1.984 / 2.260 s | 131 / 180 ms | 82 ms |
+| 1 | Warm | 5/5 | 1.726 / 1.783 s | 128 / 139 ms | 79 ms |
+| 5 | Cold | 25/25 | 13.159 / 15.357 s | 998 / 1,271 ms | 529 ms |
+| 5 | Warm | 25/25 | 5.350 / 10.468 s | 525 / 643 ms | 346 ms |
+
+At c1 the cold page-ready p95 slightly exceeds the proposed two-second target; warm p95 is below it. At c5, both cold and warm p95 miss that target. The largest tracked cold c5 endpoint was `GET /api/ranges/ineligible-soldiers/count` at 5.946 s p50 / 7.256 s p95, including 5.197 s p95 SQL cursor time. This is the next optimization lead. The transparency endpoint returned HTTP 200 in every c1 and c5 sample.
+
+The original report baseline recorded one transparency pair at 317.4 s cold / 323.1 s warm. The prior uncommitted candidate recorded one pair at 42.63 / 42.60 s. Current c1 page-ready p50 is 1.984 s cold / 1.726 s warm, but these historical measurements differ in setup and sample count. They show direction only; the improvement cannot be attributed solely to the read model. The c5 results also show that the route needs more work under concurrent use.
+
+`/api/admin/errors/unread-count` returned HTTP 503 because `LOKI_URL` was unset in this isolated stack. Initial `/api/settings/public` 401 responses were followed by successful 200s, and one warm c5 admin-error request was recorded as failed without an HTTP status; the artifact does not establish why it failed. No transparency API requests failed and every page reached readiness. These unrelated statuses are present in the raw artifacts. The API runner still has no live request-frequency or worker telemetry: it made one controlled fallback request, records model publication age at the end of the sample sequence, and does not infer live fallback frequency or worker refresh lag. API `TestClient` timings and browser readiness are distinct measures, not values to add together.
+
+
 ### Task 22 commander score readiness follow-up (2026-10-03)
 
 Commit `0fd9bdb3` changes the healthy `commander_score_totals` projection read to get compact distinct soldier and quarter scopes from PostgreSQL instead of materializing every persisted `(soldier_id, quarter_start)` pair in Python. Exact keys are enumerated and repaired only for unhealthy, dirty, or divergent buckets; the supplied soldier scope remains the only scope used for health checks and marker lookups. Focused projection, freshness, persistence, revalidation, observability, and commander-dashboard tests passed 62/62. The projected-scoring remainder passed 13/13 with one pre-existing Task 21 expectation excluded; that assertion separately failed because it expects a full key enumeration where the current Task 21 path performs none.

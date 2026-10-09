@@ -325,6 +325,7 @@ _AREA_MARKERS: dict[str, str] = {
     "test_change_password": "auth",
     "test_forgot_password": "auth",
     "test_jwt_tokens": "auth",
+    "test_refresh_revocation": "auth",
     "test_password": "auth",
     "test_password_policy": "auth",
     "test_authz": "auth",

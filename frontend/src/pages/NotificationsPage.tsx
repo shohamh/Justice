@@ -39,6 +39,7 @@ export default function NotificationsPage() {
     try {
       await markRead(id);
       await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationsUnreadCount() });
     } catch (err) {
       setActionError(translateApiError(err, t, "שגיאה בסימון ההתראה כנקראה"));
     }
@@ -48,6 +49,7 @@ export default function NotificationsPage() {
     try {
       await markAllRead();
       await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationsUnreadCount() });
     } catch (err) {
       setActionError(translateApiError(err, t, "שגיאה בסימון כל ההתראות כנקראו"));
     }
@@ -57,6 +59,7 @@ export default function NotificationsPage() {
     try {
       await deleteNotification(id);
       await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationsUnreadCount() });
     } catch (err) {
       setActionError(translateApiError(err, t, "שגיאה במחיקת ההתראה"));
     }
@@ -66,10 +69,12 @@ export default function NotificationsPage() {
     try {
       if (n.type === "swap_offer_incoming" && n.reference_id) {
         await (approve ? soldierApproveSwap(n.reference_id) : soldierRejectSwap(n.reference_id));
+        void queryClient.invalidateQueries({ queryKey: queryKeys.navCountsAll() });
       } else if (n.type === "range_excusal_pending" && n.reference_id) {
         const eventId = n.metadata?.event_id as string | undefined;
         if (!eventId) return;
         await decideRangeExcusal(eventId, n.reference_id, approve);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.ineligibleSoldierCount() });
       } else {
         return;
       }

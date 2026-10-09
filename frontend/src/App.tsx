@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { useEffect, useState, type ReactElement } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactElement } from "react";
 import { useLocation } from "react-router-dom";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
@@ -10,36 +10,37 @@ import { BugReportModalProvider } from "./contexts/BugReportModalContext";
 import { usePublicSettings } from "./hooks/usePublicSettings";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
-import ApprovalsPage from "./pages/ApprovalsPage";
+import RouteFallback from "./components/RouteFallback";
+const ApprovalsPage = lazy(() => import("./pages/ApprovalsPage"));
 import ChangePasswordPage from "./pages/ChangePasswordPage";
-import HomePage from "./pages/HomePage";
+const HomePage = lazy(() => import("./pages/HomePage"));
 import LoginPage from "./pages/LoginPage";
-import MyDutiesPage from "./pages/MyDutiesPage";
-import MyRequestsPage from "./pages/MyRequestsPage";
-import NotificationsPage from "./pages/NotificationsPage";
-import AnnouncementsPage from "./pages/AnnouncementsPage";
-import ProfilePage from "./pages/ProfilePage";
-import TeamHierarchyPage from "./pages/TeamHierarchyPage";
-import SwapsPage from "./pages/SwapsPage";
-import TransparencyPage from "./pages/TransparencyPage";
-import UnitCalendarPage from "./pages/UnitCalendarPage";
-import RegisterPage from "./pages/RegisterPage";
-import ForgotPasswordPage from "./pages/ForgotPasswordPage";
-import ResetPasswordPage from "./pages/ResetPasswordPage";
-import VerifyEmailPage from "./pages/VerifyEmailPage";
-import TelegramSetupPage from "./pages/TelegramSetupPage";
-import ShiftsManagementPage from "./pages/planning/ShiftsManagementPage";
-import ConfigPage from "./pages/planning/ConfigPage";
-import ScoreAdjustmentPage from "./pages/planning/ScoreAdjustmentPage";
-import ExportPage from "./pages/planning/ExportPage";
-import PotentialPage from "./pages/planning/PotentialPage";
-import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
-import HakpazaPage from "./pages/HakpazaPage";
-import ImportSessionsListPage from "./pages/ImportSessionsListPage";
-import ImportUploadPage from "./pages/ImportUploadPage";
-import ImportSessionReviewPage from "./pages/ImportSessionReviewPage";
-import ActionPage from "./pages/ActionPage";
-import RangesPage from "./pages/RangesPage";
+const MyDutiesPage = lazy(() => import("./pages/MyDutiesPage"));
+const MyRequestsPage = lazy(() => import("./pages/MyRequestsPage"));
+const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
+const AnnouncementsPage = lazy(() => import("./pages/AnnouncementsPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const TeamHierarchyPage = lazy(() => import("./pages/TeamHierarchyPage"));
+const SwapsPage = lazy(() => import("./pages/SwapsPage"));
+const TransparencyPage = lazy(() => import("./pages/TransparencyPage"));
+const UnitCalendarPage = lazy(() => import("./pages/UnitCalendarPage"));
+const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage"));
+const TelegramSetupPage = lazy(() => import("./pages/TelegramSetupPage"));
+const ShiftsManagementPage = lazy(() => import("./pages/planning/ShiftsManagementPage"));
+const ConfigPage = lazy(() => import("./pages/planning/ConfigPage"));
+const ScoreAdjustmentPage = lazy(() => import("./pages/planning/ScoreAdjustmentPage"));
+const ExportPage = lazy(() => import("./pages/planning/ExportPage"));
+const PotentialPage = lazy(() => import("./pages/planning/PotentialPage"));
+const AdminSettingsPage = lazy(() => import("./pages/admin/AdminSettingsPage"));
+const HakpazaPage = lazy(() => import("./pages/HakpazaPage"));
+const ImportSessionsListPage = lazy(() => import("./pages/ImportSessionsListPage"));
+const ImportUploadPage = lazy(() => import("./pages/ImportUploadPage"));
+const ImportSessionReviewPage = lazy(() => import("./pages/ImportSessionReviewPage"));
+const ActionPage = lazy(() => import("./pages/ActionPage"));
+const RangesPage = lazy(() => import("./pages/RangesPage"));
 
 function ForcedPasswordGate({ children }: { children: ReactElement }) {
   const { mustChangePassword } = useAuth();
@@ -128,63 +129,65 @@ export default function App() {
         <ThemeProvider>
           <SoldierModalProvider>
             <BugReportModalProvider>
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
-                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                <Route path="/reset-password" element={<ResetPasswordPage />} />
-                <Route path="/verify-email" element={<VerifyEmailPage />} />
-                <Route path="/action" element={<ActionPage />} />
-                <Route element={<ProtectedRoute />}>
-                  <Route path="/change-password" element={<ChangePasswordPage />} />
-                  <Route path="/setup/telegram" element={<TelegramSetupPage />} />
-                  <Route path="/" element={<AppGate><HomePage /></AppGate>} />
-                  <Route path="/team" element={<AppGate><TeamHierarchyPage /></AppGate>} />
-                  <Route path="/transparency" element={<AppGate><TransparencyPage /></AppGate>} />
-                  <Route path="/my-duties" element={<AppGate><MyDutiesPage /></AppGate>} />
-                  <Route path="/my-requests" element={<AppGate><MyRequestsPage /></AppGate>} />
-                  <Route path="/approvals" element={<AppGate><ApprovalsPage /></AppGate>} />
-                  <Route path="/unit-calendar" element={<AppGate><UnitCalendarPage /></AppGate>} />
-                  <Route path="/swaps" element={<AppGate><SwapsPage /></AppGate>} />
-                  <Route path="/profile" element={<AppGate><ProfilePage /></AppGate>} />
-                  <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
-                  <Route path="/announcements" element={<AppGate><AnnouncementsPage /></AppGate>} />
-                  {/* Planning pages */}
-                  <Route path="/planning/shifts" element={<AppGate><ShiftsManagementPage /></AppGate>} />
-                  <Route path="/planning/assignment" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/planning/config" element={<AppGate><ConfigPage /></AppGate>} />
-                  <Route path="/planning/score-adjustments" element={<AppGate><ScoreAdjustmentPage /></AppGate>} />
-                  <Route path="/planning/export" element={<AppGate><ExportPage /></AppGate>} />
-                  <Route path="/planning/potential" element={<AppGate><PotentialPage /></AppGate>} />
-                  {/* Admin */}
-                  <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
-                  {hakpazaEnabled && (
-                    <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
-                  )}
-                  {/* Keep the route registered while public settings load. The
-                      planning menu can become available before the settings
-                      hook in this component resolves; a conditional route in
-                      that window falls through to the authenticated catch-all
-                      and sends the user home. */}
-                  <Route path="/ranges" element={<AppGate><RangesPage /></AppGate>} />
-                  <Route path="/import" element={<AppGate><ImportSessionsListPage /></AppGate>} />
-                  <Route path="/import/upload" element={<AppGate><ImportUploadPage /></AppGate>} />
-                  <Route path="/import/sessions/:id" element={<AppGate><ImportSessionReviewPage /></AppGate>} />
-                  {/* Redirects from old routes */}
-                  <Route path="/duty-management" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/algorithm" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/duty-config" element={<Navigate to="/planning/config" replace />} />
-                  <Route path="/shifts" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/shift-templates" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/planning/templates" element={<Navigate to="/planning/shifts" replace />} />
-                  <Route path="/admin/system-settings" element={<Navigate to="/admin/settings?tab=0" replace />} />
-                  <Route path="/admin/invite-codes" element={<Navigate to="/admin/settings?tab=1" replace />} />
-                  {/* Safety net: an unmatched authenticated URL (stale bookmark,
-                      typo, or a redirect target that raced a settings load)
-                      should land somewhere real instead of a blank Outlet. */}
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Route>
-              </Routes>
+              <Suspense fallback={<RouteFallback />}>
+                <Routes>
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/register" element={<RegisterPage />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                  <Route path="/reset-password" element={<ResetPasswordPage />} />
+                  <Route path="/verify-email" element={<VerifyEmailPage />} />
+                  <Route path="/action" element={<ActionPage />} />
+                  <Route element={<ProtectedRoute />}>
+                    <Route path="/change-password" element={<ChangePasswordPage />} />
+                    <Route path="/setup/telegram" element={<TelegramSetupPage />} />
+                    <Route path="/" element={<AppGate><HomePage /></AppGate>} />
+                    <Route path="/team" element={<AppGate><TeamHierarchyPage /></AppGate>} />
+                    <Route path="/transparency" element={<AppGate><TransparencyPage /></AppGate>} />
+                    <Route path="/my-duties" element={<AppGate><MyDutiesPage /></AppGate>} />
+                    <Route path="/my-requests" element={<AppGate><MyRequestsPage /></AppGate>} />
+                    <Route path="/approvals" element={<AppGate><ApprovalsPage /></AppGate>} />
+                    <Route path="/unit-calendar" element={<AppGate><UnitCalendarPage /></AppGate>} />
+                    <Route path="/swaps" element={<AppGate><SwapsPage /></AppGate>} />
+                    <Route path="/profile" element={<AppGate><ProfilePage /></AppGate>} />
+                    <Route path="/notifications" element={<AppGate><NotificationsPage /></AppGate>} />
+                    <Route path="/announcements" element={<AppGate><AnnouncementsPage /></AppGate>} />
+                    {/* Planning pages */}
+                    <Route path="/planning/shifts" element={<AppGate><ShiftsManagementPage /></AppGate>} />
+                    <Route path="/planning/assignment" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/planning/config" element={<AppGate><ConfigPage /></AppGate>} />
+                    <Route path="/planning/score-adjustments" element={<AppGate><ScoreAdjustmentPage /></AppGate>} />
+                    <Route path="/planning/export" element={<AppGate><ExportPage /></AppGate>} />
+                    <Route path="/planning/potential" element={<AppGate><PotentialPage /></AppGate>} />
+                    {/* Admin */}
+                    <Route path="/admin/settings" element={<AppGate><AdminSettingsPage /></AppGate>} />
+                    {hakpazaEnabled && (
+                      <Route path="/commander/hakpaza" element={<AppGate><HakpazaPage /></AppGate>} />
+                    )}
+                    {/* Keep the route registered while public settings load. The
+                        planning menu can become available before the settings
+                        hook in this component resolves; a conditional route in
+                        that window falls through to the authenticated catch-all
+                        and sends the user home. */}
+                    <Route path="/ranges" element={<AppGate><RangesPage /></AppGate>} />
+                    <Route path="/import" element={<AppGate><ImportSessionsListPage /></AppGate>} />
+                    <Route path="/import/upload" element={<AppGate><ImportUploadPage /></AppGate>} />
+                    <Route path="/import/sessions/:id" element={<AppGate><ImportSessionReviewPage /></AppGate>} />
+                    {/* Redirects from old routes */}
+                    <Route path="/duty-management" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/algorithm" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/duty-config" element={<Navigate to="/planning/config" replace />} />
+                    <Route path="/shifts" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/shift-templates" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/planning/templates" element={<Navigate to="/planning/shifts" replace />} />
+                    <Route path="/admin/system-settings" element={<Navigate to="/admin/settings?tab=0" replace />} />
+                    <Route path="/admin/invite-codes" element={<Navigate to="/admin/settings?tab=1" replace />} />
+                    {/* Safety net: an unmatched authenticated URL (stale bookmark,
+                        typo, or a redirect target that raced a settings load)
+                        should land somewhere real instead of a blank Outlet. */}
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Route>
+                </Routes>
+              </Suspense>
             </BugReportModalProvider>
           </SoldierModalProvider>
         </ThemeProvider>

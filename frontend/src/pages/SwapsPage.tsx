@@ -157,6 +157,8 @@ export default function SwapsPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() }),
       queryClient.invalidateQueries({ queryKey: queryKeys.swapBoard(boardFilters as Record<string, unknown>) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() }),
+      // Nav badges (incoming swaps / approvals) are cached; a swap change moves them.
+      queryClient.invalidateQueries({ queryKey: queryKeys.navCountsAll() }),
       user ? queryClient.invalidateQueries({ queryKey: queryKeys.effectiveDuties(user.id) }) : Promise.resolve(),
     ]);
   }

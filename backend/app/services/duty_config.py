@@ -120,6 +120,10 @@ def update_duty_type(
     if score_per_day is not None:
         if score_per_day < 0:
             raise DutyConfigError("score_per_day_must_be_positive")
+        if score_per_day != duty_type.score_per_day:
+            from app.services.score_projection import invalidate_score_projection_buckets
+
+            invalidate_score_projection_buckets(session, duty_type_id=duty_type.id)
         duty_type.score_per_day = score_per_day
     if name is not None and name != duty_type.name:
         if session.execute(select(DutyType.id).where(DutyType.name == name)).first():

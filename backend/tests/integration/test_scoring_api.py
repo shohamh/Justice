@@ -1,3 +1,4 @@
+from datetime import date as snapshot_date
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -127,6 +128,69 @@ def test_transparency_page_keeps_row_order_and_numbers(client, admin_session, mo
     assert second_body["has_more"] is False
 
 
+def test_transparency_page_reuses_persisted_rows_without_reassembling(client, admin_session, monkeypatch):
+    from sqlalchemy import event
+
+    from app.db.session import get_engine
+    from app.routes import scoring as scoring_route
+
+    admin = create_soldier(admin_session, personal_number="persisted-page-admin", role="admin")
+    first = create_soldier(admin_session, personal_number="persisted-page-first")
+    second = create_soldier(admin_session, personal_number="persisted-page-second")
+    admin_session.commit()
+
+    rows = [
+        {"soldier_id": soldier.id, "full_name": soldier.full_name, "node_id": None,
+         "node_name": None, "enrolled_at": snapshot_date(2020, 1, 1),
+         "active_days": 10, "shift_count": 1, "rank": None, "is_officer": False,
+         "service_type": None, "cumulative_score": Decimal("2"),
+         "score_per_day": Decimal("0.2"), "normalised_score": Decimal("1"),
+         "burden_share": share, "c_over_d": 1.0, "burden_share_offset_raw": 0,
+         "exemptions_display": "", "exemptions_visible": False, "exemptions": []}
+        for soldier, share in ((first, 0.9), (second, 0.2))
+    ]
+    calls = 0
+
+    def assemble(session, *, viewer):
+        nonlocal calls
+        calls += 1
+        return {"rows": [dict(row) for row in rows], "can_see_exemption_aggregates": True}
+
+    monkeypatch.setattr(scoring_route.svc, "transparency_rows", assemble)
+    params = {"page_size": 1}
+    initial = client.get("/api/scoring/transparency/page", params=params, headers=auth_headers(admin))
+    assert initial.status_code == 200
+    assert calls == 1
+
+    row_queries: list[tuple[str, dict]] = []
+
+    def record_row_query(connection, cursor, statement, parameters, context, executemany):
+        if "SELECT payload FROM transparency_page_snapshot_rows" in statement:
+            row_queries.append((statement, parameters))
+
+    event.listen(get_engine(), "before_cursor_execute", record_row_query)
+    continuation = client.get(
+        "/api/scoring/transparency/page",
+        params={**params, "cursor": initial.json()["next_cursor"]},
+        headers=auth_headers(admin),
+    )
+    event.remove(get_engine(), "before_cursor_execute", record_row_query)
+    assert continuation.status_code == 200
+    assert continuation.json()["items"][0]["soldier_id"] == str(second.id)
+    assert calls == 1
+    assert len(row_queries) == 1
+    statement, query_parameters = row_queries[0]
+    assert "ordinal BETWEEN %(first)s AND %(last)s" in statement
+    assert "LIMIT %(chunk_count)s" in statement
+    assert query_parameters["first"] == query_parameters["last"] == 0
+    assert query_parameters["chunk_count"] == 1
+
+    repeated = client.get("/api/scoring/transparency/page", params=params, headers=auth_headers(admin))
+    assert repeated.status_code == 200
+    assert repeated.json()["items"] == initial.json()["items"]
+    assert calls == 1
+
+
 def test_transparency_allowed_for_commander_of_own_subtree(client: TestClient, admin_session: Session):
     # A commander of any node always passes the has_any_visibility endpoint gate,
     # regardless of that node's level — the old visible_commander_levels
@@ -189,9 +253,8 @@ def test_transparency_exemptions_redacted_for_plain_soldier(client: TestClient, 
     from datetime import date
 
     from app.db.models import ExemptionType, SoldierExemption
-    from tests.helpers import create_node
-
     from app.services.settings_loader import set_setting
+    from tests.helpers import create_node
 
     # Widen row-scope visibility so the plain viewer's row isn't filtered out
     # entirely — this test targets exemption redaction, not row-scope gating.
@@ -311,9 +374,8 @@ def test_transparency_exemptions_array_empty_when_redacted(client: TestClient, a
     from datetime import date
 
     from app.db.models import ExemptionType, SoldierExemption
-    from tests.helpers import create_node
-
     from app.services.settings_loader import set_setting
+    from tests.helpers import create_node
 
     set_setting(admin_session, "transparency.min_visible_level", "every_soldier", actor_id=None)
     node = create_node(admin_session, level="division", name="div-api-exarr2")

@@ -133,6 +133,7 @@ function buildOutput() {
     authenticationSetup: "one login per invocation; independent client contexts restore from copied refresh-cookie storageState",
     summaryCoverage: "per-run response-byte and database totals require values for every tracked API request",
     serverTiming: "x-scale-server-ms measures ASGI time through response-start; serverMinusDbMs is the signed wall-minus-accumulated-SQL residual, not CPU-only time",
+    renderTiming: "firstContentfulPaintMs comes from the browser Paint Timing API and is relative to a document navigation that occurs during the measured journey; it is null for in-document interactions without a new navigation; pageReadyMs is measured separately through the configured readiness marker and API quiet period",
     timeoutMs: TIMEOUT_MS,
     scenarios: selectedScenarios.map(({ id, path, mode }) => ({
       id,
@@ -334,6 +335,7 @@ function newMeasurement(scenario, run, client, batch, mode) {
     concurrency: CONCURRENCY,
     mode,
     pageReadyMs: null,
+    firstContentfulPaintMs: null,
     selectorVisibleMs: null,
     apiQuietMs: null,
     readiness: "pending",
@@ -512,6 +514,7 @@ function summarizeMeasurements(rows) {
       failedCount: group.length - ready.length,
       metrics: {
         pageReadyMs: percentileSummary(perReadyMeasurement((measurement) => measurement.pageReadyMs)),
+        firstContentfulPaintMs: percentileSummary(perReadyMeasurement((measurement) => measurement.firstContentfulPaintMs)),
         selectorVisibleMs: percentileSummary(perMeasurement((measurement) => measurement.selectorVisibleMs)),
         apiQuietMs: percentileSummary(perMeasurement((measurement) => measurement.apiQuietMs)),
         apiRequestCount: percentileSummary(perMeasurement((measurement) => measurement.apiRequestCount)),
@@ -615,6 +618,17 @@ async function readLongTaskDelta(page, baseline) {
   }, baseline).catch(() => ({ count: 0, totalMs: 0, maxMs: 0 }));
 }
 
+async function readDocumentPaintTiming(page) {
+  return page.evaluate(() => {
+    const entry = performance.getEntriesByType("paint")
+      .find((candidate) => candidate.name === "first-contentful-paint");
+    return {
+      timeOrigin: performance.timeOrigin,
+      firstContentfulPaintMs: Number.isFinite(entry?.startTime) ? entry.startTime : null,
+    };
+  }).catch(() => ({ timeOrigin: null, firstContentfulPaintMs: null }));
+}
+
 async function longTaskBaseline(page) {
   return page.evaluate(() => ({
     timeOrigin: performance.timeOrigin,
@@ -625,6 +639,7 @@ async function longTaskBaseline(page) {
 async function recordMeasurement(page, collector, scenario, run, client, batch, mode, action) {
   const measurement = newMeasurement(scenario, run, client, batch, mode);
   const baseline = await longTaskBaseline(page);
+  const documentTimeOriginBefore = (await readDocumentPaintTiming(page)).timeOrigin;
   const startedAt = performance.now();
   collector.current = measurement;
   collector.measurementStartedAt = startedAt;
@@ -633,6 +648,13 @@ async function recordMeasurement(page, collector, scenario, run, client, batch, 
     const phaseTimings = await action();
     if (phaseTimings && typeof phaseTimings === "object") {
       measurement.phaseTimings = phaseTimings;
+    }
+    const paintTiming = await readDocumentPaintTiming(page);
+    if (
+      paintTiming.timeOrigin !== documentTimeOriginBefore &&
+      Number.isFinite(paintTiming.firstContentfulPaintMs)
+    ) {
+      measurement.firstContentfulPaintMs = paintTiming.firstContentfulPaintMs;
     }
     await waitForApiQuiescence(collector);
     measurement.pageReadyMs = roundMillis(performance.now() - startedAt);
@@ -666,6 +688,9 @@ async function recordMeasurement(page, collector, scenario, run, client, batch, 
 async function login(page) {
   await page.goto(routeUrl("/login"), { waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS });
   await page.locator('[data-testid="login-form"]').waitFor({ state: "visible", timeout: NAVIGATION_TIMEOUT_MS });
+  // Let the app finish its startup session-restore (refresh) before submitting, otherwise a
+  // late restore bumps the auth generation and silently aborts the in-flight login.
+  await page.waitForLoadState("networkidle", { timeout: NAVIGATION_TIMEOUT_MS });
   await page.locator('[data-testid="personal-number-input"]').fill(USERNAME);
   await page.locator('[data-testid="password-input"]').fill(PASSWORD);
   await page.locator('[data-testid="login-submit"]').click();

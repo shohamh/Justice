@@ -1,7 +1,8 @@
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 
 import { changePassword as apiChangePassword, fetchMe, login as apiLogin, logout as apiLogout, Me } from "../api/auth";
-import { api, setAccessToken } from "../api/client";
+import { RefreshTimeoutError, refreshAccessToken, setAccessToken, StaleRefreshError } from "../api/client";
 
 export interface AuthContextValue {
   user: Me | null;
@@ -29,14 +30,22 @@ const RESTORE_RETRY_DELAY_MS = 400;
  * answer (401/403 etc.) means "no session"; a transient failure (network error, proxy
  * 5xx/429 while the backend is slow or restarting) is retried briefly instead of
  * silently logging the user out and bouncing them to /login on a full page reload.
+ * A refresh timeout is not retried (see below).
  */
 async function restoreSession(): Promise<Me | null> {
   for (let attempt = 1; ; attempt++) {
     try {
-      const r = await api.post<{ access_token: string }>("/auth/refresh");
-      setAccessToken(r.data.access_token);
+      // Shared with the 401 handler in the API client, so requests that start
+      // while the session is being restored wait for this refresh instead of
+      // starting their own.
+      await refreshAccessToken();
       return await fetchMe();
     } catch (err) {
+      // Login/logout replaced the token mid-restore; the generation check discards this result.
+      if (err instanceof StaleRefreshError) return null;
+      // The refresh already waited REFRESH_TIMEOUT_MS with no answer; retrying would
+      // keep the app on its loading screen for a minute. Fall into "not logged in".
+      if (err instanceof RefreshTimeoutError) return null;
       const status = (err as { response?: { status?: number } })?.response?.status;
       const transient = status === undefined || status >= 500 || status === 429;
       if (!transient || attempt >= RESTORE_MAX_ATTEMPTS) return null;
@@ -45,11 +54,35 @@ async function restoreSession(): Promise<Me | null> {
   }
 }
 
+/** The provider may be mounted without a QueryClient (unit tests); then there is no cache to clear. */
+function useOptionalQueryClient(): QueryClient | null {
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- useQueryClient is a plain context read; it throws without a provider
+    return useQueryClient();
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<Me | null>(null);
+  const queryClient = useOptionalQueryClient();
+  const [user, setUserState] = useState<Me | null>(null);
+  const userIdRef = useRef<string | null>(null);
+  // Cached query data belongs to one identity: drop it on logout and when a
+  // different user signs in. Refreshing the same user keeps the cache.
+  const setUser = useCallback((next: Me | null) => {
+    const previousId = userIdRef.current;
+    const nextId = next?.id ?? null;
+    if (previousId !== null && previousId !== nextId) queryClient?.clear();
+    userIdRef.current = nextId;
+    setUserState(next);
+  }, [queryClient]);
   const [authLoading, setAuthLoading] = useState(true);
   const [authScopeReady, setAuthScopeReady] = useState(false);
   const authGeneration = useRef(0);
+  // Generation of a login whose credentials are still with the server (no token of
+  // its own installed yet); null otherwise.
+  const loginAwaitingToken = useRef<number | null>(null);
   const scopeTransitioning = useRef(true);
   const hasUser = user !== null;
 
@@ -65,10 +98,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => {
         if (generation === authGeneration.current) setAuthLoading(false);
       });
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     const handler = () => {
+      // While signed out, a login waiting for its token makes this event moot: it
+      // comes from an anonymous request (e.g. a startup request that waited on the
+      // session restore, went out without a token and 401'd). Handling it would bump
+      // the generation and silently drop the login's result. A login that installed
+      // its token is no longer "awaiting", and a signed-in user is always handled.
+      if (
+        userIdRef.current === null
+        && loginAwaitingToken.current !== null
+        && loginAwaitingToken.current === authGeneration.current
+      ) return;
       authGeneration.current += 1;
       setAuthLoading(false);
       scopeTransitioning.current = false;
@@ -78,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("auth:session-expired", handler);
     return () => window.removeEventListener("auth:session-expired", handler);
-  }, []);
+  }, [setUser]);
 
   // `user` is otherwise only refreshed on login/mount — any server-side change to
   // this soldier's own record (enrollment approved, a profile field-update request
@@ -98,15 +141,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }).catch(() => {});
     }, 60000);
     return () => clearInterval(interval);
-  }, [hasUser]);
+  }, [hasUser, setUser]);
 
   const login = useCallback(async (personal_number: string, password: string, remember_me = false) => {
     const generation = ++authGeneration.current;
     setAuthLoading(false);
     scopeTransitioning.current = true;
     let tokenChanged = false;
+    loginAwaitingToken.current = generation;
     try {
-      const r = await apiLogin(personal_number, password, remember_me);
+      let r: Awaited<ReturnType<typeof apiLogin>>;
+      try {
+        r = await apiLogin(personal_number, password, remember_me);
+      } finally {
+        if (loginAwaitingToken.current === generation) loginAwaitingToken.current = null;
+      }
       if (generation !== authGeneration.current) return;
       setAuthScopeReady(false);
       setAccessToken(r.access_token);
@@ -123,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw error;
     }
-  }, []);
+  }, [setUser]);
 
   const loginWithToken = useCallback(async (token: string) => {
     const generation = ++authGeneration.current;
@@ -144,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw error;
     }
-  }, []);
+  }, [setUser]);
 
   const logout = useCallback(async () => {
     const generation = ++authGeneration.current;
@@ -160,7 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         scopeTransitioning.current = false;
       }
     }
-  }, []);
+  }, [setUser]);
 
   const changePassword = useCallback(async (current: string, next: string) => {
     const generation = ++authGeneration.current;
@@ -184,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw error;
     }
-  }, []);
+  }, [setUser]);
 
   const refreshMe = useCallback(async () => {
     const generation = ++authGeneration.current;
@@ -204,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw error;
     }
-  }, []);
+  }, [setUser]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

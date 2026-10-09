@@ -39,7 +39,7 @@ export default function ShiftsManagementPage() {
   function handleJobSubmitted(jobId: string) {
     setLatestJobId(jobId);
     setRunsOpen(true);
-    void queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobs(RUN_BADGES_LIMIT, RUN_BADGES_OFFSET) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobsAll() });
     setTimeout(() => runsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 

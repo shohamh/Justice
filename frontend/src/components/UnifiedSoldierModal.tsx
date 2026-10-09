@@ -92,6 +92,7 @@ export default function UnifiedSoldierModal({ soldier, score, onClose, onRefresh
   const [tab, setTab] = useState<TabKey>(initialTab ?? "details");
   const { data: rangeStatus } = useQuery({
     queryKey: ["soldierRangeStatus", soldierData.id],
+    staleTime: 0,
     queryFn: () => getSoldierRangeStatus(soldierData.id),
     enabled: tab === "profile" && !isPublic,
   });

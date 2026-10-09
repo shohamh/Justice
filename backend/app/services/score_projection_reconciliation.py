@@ -3,23 +3,24 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, tuple_
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     ScoreProjectionDirtyBucket,
     ScoreProjectionState,
-    SoldierQuarterScoreProjection,
 )
 from app.services.score_projection import (
-    SCORE_PROJECTION_CANONICAL_VERSION,
     SCORE_PROJECTION_STATE_KEY,
-    _json_safe_summary,
     _canonical_bucket_summary,
+    _json_safe_summary,
     _metadata_unprovable_bucket_keys,
     _persisted_bucket_summary,
     _upsert_quarter_total,
+    _upsert_soldier_total,
     _utcnow,
+    lock_partition_rows_for_keys,
+    lock_score_projection_maintenance_shared,
     rebuild_projection_bucket,
 )
 
@@ -39,8 +40,38 @@ def reconcile_score_projection(session: Session, limit: int = 500) -> dict[str, 
             .limit(limit)
         ).scalars()
     )
+    candidate_keys = sorted(
+        {(row.soldier_id, row.quarter_start) for row in dirty_rows},
+        key=lambda item: (str(item[0]), item[1]),
+    )
+    if candidate_keys:
+        lock_score_projection_maintenance_shared(session)
+        dirty_rows = list(
+            session.execute(
+                select(ScoreProjectionDirtyBucket)
+                .where(
+                    tuple_(
+                        ScoreProjectionDirtyBucket.soldier_id,
+                        ScoreProjectionDirtyBucket.quarter_start,
+                    ).in_(candidate_keys)
+                )
+                .order_by(
+                    ScoreProjectionDirtyBucket.soldier_id,
+                    ScoreProjectionDirtyBucket.quarter_start,
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            ).scalars()
+        )
+        dirty_rows = [row for row in dirty_rows if row.status == "dirty"]
+
+    repair_keys = {(row.soldier_id, row.quarter_start) for row in dirty_rows}
+    lock_partition_rows_for_keys(session, keys=repair_keys)
+
     repaired = 0
     diverged = 0
+    repaired_soldiers: set[uuid.UUID] = set()
+    repaired_quarters = set()
     for dirty in dirty_rows:
         before = _persisted_bucket_summary(
             session, soldier_id=dirty.soldier_id, quarter_start_value=dirty.quarter_start
@@ -54,11 +85,25 @@ def reconcile_score_projection(session: Session, limit: int = 500) -> dict[str, 
                 "expected": _json_safe_summary(expected),
             }
             diverged += 1
-        rebuild_projection_bucket(session, dirty.soldier_id, dirty.quarter_start)
+        rebuild_projection_bucket(
+            session,
+            dirty.soldier_id,
+            dirty.quarter_start,
+            refresh_soldier_total=False,
+            refresh_quarter_total=False,
+        )
         dirty.status = "current"
         dirty.reconciled_at = _utcnow()
         dirty.updated_at = _utcnow()
+        repaired_soldiers.add(dirty.soldier_id)
+        repaired_quarters.add(dirty.quarter_start)
         repaired += 1
+
+    for soldier_id in sorted(repaired_soldiers, key=str):
+        _upsert_soldier_total(session, soldier_id=soldier_id)
+    for quarter_start_value in sorted(repaired_quarters):
+        _upsert_quarter_total(session, quarter_start_value=quarter_start_value)
+
     session.flush()
     return {"checked": len(dirty_rows), "repaired": repaired, "diverged": diverged}
 

@@ -12,6 +12,7 @@ import AddRootNodeDialog from "../components/AddRootNodeDialog";
 import ImportRowFieldsModal from "../components/ImportRowFieldsModal";
 import ImportRowDetailModal, { type DetailField } from "../components/ImportRowDetailModal";
 import { queryKeys } from "../queryKeys";
+import { invalidateImportedData } from "../utils/invalidateImportedData";
 import { downloadImportWorkbook } from "../api/importSessions";
 import { downloadBlob } from "../utils/downloadFile";
 import {
@@ -512,6 +513,7 @@ export default function ImportSessionReviewPage() {
       setConfirmResult(result);
       await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionDetail(id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.importSessionsList() });
+      invalidateImportedData(queryClient);
     } catch (err: unknown) {
       setConfirmError(translateApiError(err, t, "שגיאה באישור הייבוא"));
     } finally {

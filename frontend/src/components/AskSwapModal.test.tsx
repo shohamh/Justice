@@ -20,7 +20,13 @@ vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ enrollmentPending: fal
 
 function renderModal() {
   const client = new QueryClient();
-  return render(
+  const invalidate = vi.spyOn(client, "invalidateQueries");
+  const navCountsInvalidations = () =>
+    invalidate.mock.calls.filter(([filters]) => {
+      const key = (filters as { queryKey?: readonly unknown[] } | undefined)?.queryKey;
+      return key?.[0] === "navigation" && key?.[1] === "counts";
+    }).length;
+  const result = render(
     <QueryClientProvider client={client}>
       <AskSwapModal
         duty={{ assignment_id: "a1", start_date: "2026-08-01", end_date: "2026-08-02" } as never}
@@ -30,6 +36,7 @@ function renderModal() {
       />
     </QueryClientProvider>,
   );
+  return Object.assign(result, { navCountsInvalidations });
 }
 
 describe("AskSwapModal", () => {
@@ -49,6 +56,13 @@ describe("AskSwapModal", () => {
       }),
     ));
     expect(mockCreateSwap.mock.calls[0][0]).not.toHaveProperty("target_soldier_id");
+  });
+
+  test("a successful submit refreshes the nav counts", async () => {
+    const view = renderModal();
+    fireEvent.click(await screen.findByTestId("ask-swap-marketplace-checkbox"));
+    fireEvent.click(screen.getByText("swaps.save"));
+    await waitFor(() => expect(view.navCountsInvalidations()).toBeGreaterThan(0));
   });
 
   test("submit is disabled with neither marketplace checked nor a target selected", () => {

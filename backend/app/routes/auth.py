@@ -14,6 +14,7 @@ from sqlalchemy import select, update as sa_update, case as sa_case
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+from app.auth import refresh_revocation
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
 from app.auth.password import hash_password, verify_password
@@ -183,6 +184,28 @@ def _warn_if_insecure_cookie_mismatch(request: Request, settings) -> None:
         )
 
 
+def _revoke_presented_refresh_cookie(request: Request) -> None:
+    """Revoke the refresh token this browser presented (its jti and login session).
+
+    Used by logout, and by login/registration right before a new session's cookie
+    replaces it: a restore refresh for the previous cookie that is answered after
+    the new login would otherwise leave the previous user's rotated cookie as the
+    browser's last Set-Cookie, and the next refresh would silently run as that
+    user. With the old session revoked, that refresh 401s and the user is sent to
+    /login instead. A missing, expired, garbage or non-refresh cookie has nothing
+    to revoke. Never raises: ``revoke`` logs and fails open on store errors.
+    """
+    cookie = request.cookies.get("refresh_token")
+    if not cookie:
+        return
+    try:
+        payload = decode_token(cookie)
+    except InvalidToken:
+        return
+    if payload.get("type") == "refresh":
+        refresh_revocation.revoke(payload)
+
+
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit(lambda: get_settings().login_rate_limit)
 @limiter.limit(lambda: get_settings().login_account_rate_limit, key_func=_login_account_key)
@@ -282,6 +305,8 @@ def login(
         context={**_client_context(request), **({"method": "activation_code"} if activation_consumed else {})},
     )
     session.commit()
+    # Only after the credentials were accepted: a failed attempt never revokes.
+    _revoke_presented_refresh_cookie(request)
 
     response.set_cookie(
         key="refresh_token",
@@ -310,6 +335,10 @@ def refresh(
         ) from exc
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="wrong_token_type")
+    # Revoked at logout (this exact token, or its login session). Fails open if
+    # Redis is down -- see app.auth.refresh_revocation.
+    if refresh_revocation.is_revoked(payload):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token_revoked")
 
     soldier = session.get(Soldier, uuid.UUID(payload["sub"]))
     if soldier is None or soldier.left_at is not None:
@@ -324,7 +353,14 @@ def refresh(
     settings = get_settings()
     _warn_if_insecure_cookie_mismatch(request, settings)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
+    # Rotation keeps the login session id so a logout of this session also
+    # revokes the rotated token. Legacy tokens (no sid) start a new session.
+    sid = payload.get("sid")
+    refresh = issue_refresh_token(
+        user_id=soldier.id,
+        token_version=soldier.token_version,
+        session_id=sid if isinstance(sid, str) and sid else None,
+    )
     response.set_cookie(
         key="refresh_token",
         value=refresh,
@@ -338,7 +374,19 @@ def refresh(
 
 
 @router.post("/logout")
-def logout(response: Response, user: Soldier = Depends(get_current_user)) -> dict[str, str]:
+def logout(
+    request: Request, response: Response, user: Soldier = Depends(get_current_user)
+) -> dict[str, str]:
+    """Log out this browser: revoke its refresh token server-side, delete the cookie.
+
+    Revocation is per token/session (jti + sid), never a token_version bump,
+    so the user's other devices stay signed in. A missing, expired, garbage or
+    non-refresh cookie has nothing to revoke and is not an error. The cookie is
+    revoked even if it belongs to a different user than the access token: this
+    browser is logging out and is about to drop that cookie anyway. A store
+    failure is logged inside ``revoke`` and never fails the logout.
+    """
+    _revoke_presented_refresh_cookie(request)
     response.delete_cookie(key="refresh_token", path="/api/auth")
     return {"status": "ok"}
 
@@ -495,6 +543,8 @@ async def register(
         if sso_context is not None and detail in oidc_reg.COLLISION_DETAILS:
             detail = SSO_REGISTRATION_REFUSED  # never say which value collided
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+    # Registration signs the new soldier in: retire the session this browser had.
+    _revoke_presented_refresh_cookie(request)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
     refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
     response.set_cookie(

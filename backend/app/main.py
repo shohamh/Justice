@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,7 +35,6 @@ from app.routes import approvals_export as approvals_export_routes
 from app.routes import assignments as assignment_routes
 from app.routes import audit_logs as audit_log_routes
 from app.routes import auth as auth_routes
-from app.routes import oidc as oidc_routes
 from app.routes import bug_reports as bug_report_routes
 from app.routes import calendar as calendar_routes
 from app.routes import calendar_holidays as calendar_holidays_routes
@@ -69,6 +68,7 @@ from app.routes import my_requests as my_request_routes
 from app.routes import nav_counts as nav_count_routes
 from app.routes import no_show as no_show_routes
 from app.routes import notifications as notification_routes
+from app.routes import oidc as oidc_routes
 from app.routes import potential as potential_routes
 from app.routes import public_settings as public_settings_routes
 from app.routes import range_locations as range_locations_routes
@@ -93,6 +93,7 @@ from app.score_projection_revalidation_worker import run_score_projection_revali
 from app.services.import_parsers import v1_standard as _v1_standard_import_parser  # noqa: F401
 from app.settings import get_settings
 from app.swap_expiry_worker import run_swap_expiry_worker
+from app.transparency_read_model_worker import run_transparency_read_model_worker
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -142,10 +143,11 @@ class _BodySizeLimitMiddleware(BaseHTTPMiddleware):
                     "headers": redact(headers),
                     "body": None,
                 }
+            # Label it with the real status: this is a deliberate >=500 answer
+            # (e.g. a 503), not a crash, and must not read as "Unhandled HTTP 500".
+            status_message = f"HTTP {response.status_code} response"
             log_backend_exception(
-                request,
-                RuntimeError(f"HTTP {response.status_code} response"),
-                data,
+                request, RuntimeError(status_message), data, message=status_message,
             )
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
         return response
@@ -214,14 +216,22 @@ async def lifespan(app: FastAPI):
     hr_sync_task = asyncio.create_task(run_hr_sync_worker())
     qualification_expiry_task = asyncio.create_task(run_qualification_expiry_worker())
     score_projection_revalidation_task = asyncio.create_task(run_score_projection_revalidation_worker())
+    transparency_read_model_task = None
+    if get_settings().transparency_read_model_enabled:
+        transparency_read_model_task = asyncio.create_task(run_transparency_read_model_worker())
     yield
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, hr_sync_task, qualification_expiry_task, score_projection_revalidation_task):
+    tasks = [
+        email_task, swap_expiry_task, range_reminder_task, range_attendance_task,
+        duty_eligibility_task, rank_advancement_task, hr_sync_task,
+        qualification_expiry_task, score_projection_revalidation_task,
+    ]
+    if transparency_read_model_task is not None:
+        tasks.append(transparency_read_model_task)
+    for task in tasks:
         task.cancel()
-    for task in (email_task, swap_expiry_task, range_reminder_task, range_attendance_task, duty_eligibility_task, rank_advancement_task, hr_sync_task, qualification_expiry_task, score_projection_revalidation_task):
-        try:
+    for task in tasks:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
     logger.info("=== CLEAN SHUTDOWN ===")
 
 

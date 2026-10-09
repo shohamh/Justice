@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import Layout from "../components/Layout";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import SoldierLink from "../components/SoldierLink";
 import EnrollmentApprovalModal from "../components/EnrollmentApprovalModal";
-import DocumentPreviewModal from "../components/DocumentPreviewModal";
+const DocumentPreviewModal = lazy(() => import("../components/DocumentPreviewModal"));
 import { revokeBlobUrl, sanitizeFilename } from "../utils/downloadFile";
 import DirectCommanderApproval, { DirectCommanderApprovalRow, groupByKind, isSideSatisfied } from "../components/DirectCommanderApproval";
 import SwapApprovalColumns, { requesterColumn, candidateColumn } from "../components/SwapApprovalColumns";
@@ -357,11 +357,17 @@ export default function ApprovalsPage() {
     [exemptionTypesQuery.data],
   );
 
+  // The nav badges (approvals / incoming swaps) are cached for 15 s; any decision here changes them.
+  function refreshNavCounts() {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.navCountsAll() });
+  }
+
   async function onApprove(id: string) {
     try {
       await withPending(`constraint-${id}`, () => approveConstraint(id));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraints() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraintsCount() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה באישור האילוץ"));
     }
@@ -376,6 +382,7 @@ export default function ApprovalsPage() {
       setRejectNotes(next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraints() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingConstraintsCount() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה בדחיית האילוץ"));
     }
@@ -386,6 +393,7 @@ export default function ApprovalsPage() {
       await withPending(`er-commander-${id}`, () => approveExemptionRequestCommanderStep(id));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(translateApiError(err, i18n.t.bind(i18n), "שגיאה באישור בקשת הפטור"));
     }
@@ -395,6 +403,7 @@ export default function ApprovalsPage() {
       await withPending(`er-duty-manager-${id}`, () => approveExemptionRequestDutyManagerStep(id));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(translateApiError(err, i18n.t.bind(i18n), "שגיאה באישור בקשת הפטור"));
     }
@@ -409,6 +418,7 @@ export default function ApprovalsPage() {
       setRejectNotes(next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionRequests() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingExemptionsCount() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה בדחיית בקשת הפטור"));
     }
@@ -429,6 +439,7 @@ export default function ApprovalsPage() {
       await withPending(`fu-${item.id}`, () => approveFieldUpdate(item.soldier_id, item.id, fuNotes[item.id]));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdates() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdatesCount() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה באישור עדכון פרטי החייל"));
     }
@@ -440,6 +451,7 @@ export default function ApprovalsPage() {
       await rejectFieldUpdate(item.soldier_id, item.id, note);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdates() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingFieldUpdatesCount() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה בדחיית עדכון פרטי החייל"));
     }
@@ -451,6 +463,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה באישור ההחלפה"));
       // Another approver may have already finalized/rejected this request
@@ -459,6 +472,7 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
+      refreshNavCounts();
     }
   }
   async function onSwapManagerReject(id: string, candidateId?: string) {
@@ -471,11 +485,13 @@ export default function ApprovalsPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה בדחיית ההחלפה"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingSwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.mySwaps() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.incomingSwaps() });
+      refreshNavCounts();
     }
   }
 
@@ -488,6 +504,7 @@ export default function ApprovalsPage() {
       delete next[id];
       setEnrollRejectNotes(next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingEnrollments() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה בדחיית ההרשמה"));
     }
@@ -497,6 +514,7 @@ export default function ApprovalsPage() {
     try {
       await withPending(`transfer-${id}`, () => approveTransferRequest(id));
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingHierarchyTransfers() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה באישור בקשת העברת היחידה"));
     }
@@ -510,6 +528,7 @@ export default function ApprovalsPage() {
       delete next[id];
       setTransferRejectNotes(next);
       await queryClient.invalidateQueries({ queryKey: queryKeys.pendingHierarchyTransfers() });
+      refreshNavCounts();
     } catch (err) {
       setActionError(describeError(err, "שגיאה בדחיית בקשת העברת היחידה"));
     }
@@ -1139,19 +1158,22 @@ export default function ApprovalsPage() {
           onDone={async () => {
             setSelectedEnrollment(null);
             await queryClient.invalidateQueries({ queryKey: queryKeys.pendingEnrollments() });
+            refreshNavCounts();
           }}
         />
       )}
       {previewFile && (
-        <DocumentPreviewModal
-          fileUrl={previewFile.url}
-          fileName={previewFile.name}
-          contentType={previewFile.contentType}
-          onClose={() => {
-            URL.revokeObjectURL(previewFile.url);
-            setPreviewFile(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <DocumentPreviewModal
+            fileUrl={previewFile.url}
+            fileName={previewFile.name}
+            contentType={previewFile.contentType}
+            onClose={() => {
+              URL.revokeObjectURL(previewFile.url);
+              setPreviewFile(null);
+            }}
+          />
+        </Suspense>
       )}
     </Layout>
   );

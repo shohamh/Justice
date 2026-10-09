@@ -30,6 +30,7 @@ from app.db.models import (
     SoldierExemption,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
+    SystemSetting,
 )
 from app.services.authority import (
     build_soldier_scope_visibility,
@@ -45,15 +46,16 @@ logger = logging.getLogger(__name__)
 
 
 def _duty_type_scores(session: Session) -> dict[uuid.UUID, Decimal]:
-    return {dt.id: dt.score_per_day for dt in session.execute(select(DutyType)).scalars().all()}
+    return dict(session.execute(select(DutyType.id, DutyType.score_per_day)).all())
 
 
 def _get_multiplier_setting(session: Session, key: str, default: str) -> Decimal:
-    from app.services.settings_loader import SettingNotFound, get_setting
-    try:
-        return Decimal(str(get_setting(session, key)))
-    except SettingNotFound:
+    row = session.execute(
+        select(SystemSetting.key, SystemSetting.value).where(SystemSetting.key == key)
+    ).first()
+    if row is None:
         return Decimal(default)
+    return Decimal(str(row.value))
 
 
 def effective_duty_days(
@@ -1572,6 +1574,22 @@ def _ensure_projection_ready(
         )
     )
 
+    if rebuild_keys:
+        from app.services.score_projection import (
+            _mark_dirty_bucket,
+            lock_score_projection_maintenance_shared,
+        )
+
+        lock_score_projection_maintenance_shared(session)
+        for soldier_id, quarter_start_value in sorted(
+            rebuild_keys, key=lambda item: (str(item[0]), item[1])
+        ):
+            _mark_dirty_bucket(
+                session,
+                soldier_id=soldier_id,
+                quarter_start_value=quarter_start_value,
+            )
+
     repaired_quarters: set[date] = set()
     repaired_keys: set[tuple[uuid.UUID, date]] = set()
     for soldier_id, quarter_start_value in sorted(rebuild_keys, key=lambda item: (str(item[0]), item[1])):
@@ -2080,9 +2098,16 @@ def _try_projected_transparency_rows(
         return None
 
     total_rows = session.execute(
-        select(SoldierScoreProjection).where(uuid_any("soldier_score_projection.soldier_id", soldier_ids))
-    ).scalars().all()
-    totals_by_soldier = {row.soldier_id: row for row in total_rows}
+        select(
+            SoldierScoreProjection.soldier_id,
+            SoldierScoreProjection.cumulative_score,
+            SoldierScoreProjection.shift_count,
+        ).where(uuid_any("soldier_score_projection.soldier_id", soldier_ids))
+    ).all()
+    totals_by_soldier = {
+        soldier_id: (cumulative_score, shift_count)
+        for soldier_id, cumulative_score, shift_count in total_rows
+    }
     active_days_map = _bulk_active_days(session, list(soldiers))
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
     exempted_ids = globally_exempted_soldier_ids(session)
@@ -2119,8 +2144,8 @@ def _try_projected_transparency_rows(
                 extra={"soldier_id": str(s.id)},
             )
             return None
-        cum = _q6(total.cumulative_score)
-        shift_count = total.shift_count
+        cum = _q6(total[0])
+        shift_count = total[1]
         ad = active_days_map.get(s.id, 1)
         # Normalisation is computed over the FULL active population (dev
         # behavior) regardless of which rows this viewer may see.

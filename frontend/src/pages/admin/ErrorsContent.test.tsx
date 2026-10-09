@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ErrorsContent } from "./ErrorsContent";
@@ -11,6 +11,11 @@ vi.mock("../../api/bugReports", async () => ({
   markAllAdminErrorsRead: vi.fn().mockResolvedValue(undefined),
   markAllAdminBugReportsRead: vi.fn().mockResolvedValue(undefined),
   clearAdminErrors: vi.fn().mockResolvedValue(undefined),
+}));
+
+let mockPublicSettings: Record<string, unknown> | null = { "errors.log_source_configured": true };
+vi.mock("../../hooks/usePublicSettings", () => ({
+  usePublicSettings: () => mockPublicSettings,
 }));
 
 vi.mock("../../components/SoldierLink", () => ({
@@ -203,4 +208,28 @@ it("clears each datetime picker with its small clear button", async () => {
   const clear = await screen.findByRole("button", { name: "נקה תאריך התחלה" });
   fireEvent.click(clear);
   expect(from).toHaveValue("");
+});
+
+describe("log source configuration", () => {
+  beforeEach(() => {
+    vi.mocked(bugReportsApi.listAdminErrors).mockReset().mockResolvedValue({ total: 0, items: [] });
+  });
+  afterEach(() => {
+    mockPublicSettings = { "errors.log_source_configured": true };
+  });
+
+  it("shows a not-configured notice and does not request errors when no log source is configured", async () => {
+    mockPublicSettings = { "errors.log_source_configured": false };
+    renderContent();
+    const root = await screen.findByTestId("admin-errors-content");
+    expect(root).toContainElement(screen.getByTestId("admin-errors-not-configured"));
+    expect(bugReportsApi.listAdminErrors).not.toHaveBeenCalled();
+  });
+
+  it("does not claim the source is unconfigured when settings failed to load (unknown state)", async () => {
+    mockPublicSettings = {};
+    renderContent();
+    await screen.findByTestId("admin-errors-content");
+    expect(screen.queryByTestId("admin-errors-not-configured")).not.toBeInTheDocument();
+  });
 });

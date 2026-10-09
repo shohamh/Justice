@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import * as calendarDataApi from "../api/calendarData";
+import * as dutyConfigApi from "../api/dutyConfig";
+import { useDutyTypes } from "../hooks/useDutyTypes";
 import type { CalendarShift, CalendarShiftAssignee } from "../api/calendar";
 import type { RangeEvent } from "../api/ranges";
 import { useAuth } from "../auth/AuthContext";
@@ -576,5 +578,29 @@ describe("UnitCalendar holidays", () => {
     fireEvent.click(screen.getByTestId("set-calendar-dates"));
 
     expect(await screen.findByTestId("calendar-event-holiday-2026-09-11")).toHaveTextContent("Eve of Rosh Hashanah");
+  });
+});
+
+describe("UnitCalendar duty types", () => {
+  function HomeDutyTypesReader() {
+    const { data } = useDutyTypes();
+    return <span data-testid="home-duty-types">{data ? data.length : "loading"}</span>;
+  }
+
+  test("shares one duty-types request with the page it is embedded in (Home)", async () => {
+    vi.mocked(dutyConfigApi.listDutyTypes).mockClear();
+    loadCalendarWith([]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <HomeDutyTypesReader />
+        <UnitCalendar nodeIds={["node-1"]} scope="command" highlightSoldierId="me" />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByTestId("set-calendar-dates"));
+
+    await waitFor(() => expect(screen.getByTestId("home-duty-types")).toHaveTextContent("0"));
+    expect(dutyConfigApi.listDutyTypes).toHaveBeenCalledTimes(1);
   });
 });

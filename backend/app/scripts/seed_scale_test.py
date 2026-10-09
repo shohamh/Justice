@@ -8,7 +8,9 @@ updates or deletes existing data.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import os
+import re
 import sys
 import time
 import uuid
@@ -42,6 +44,18 @@ SEED_NAMESPACE = uuid.UUID("9a6ca943-a898-4e74-9022-9700a5dbfd2d")
 HISTORY_END_DATE = date(2026, 9, 29)
 REVIEW_EXCEPTION_KINDS = ("held", "divergent", "vanished", "conflict")
 _TEST_ONLY_PASSWORD = "scale-seed-test-only-password"
+_PRODUCTION_TARGET_MARKER = re.compile(
+    r"(?:^|[_\-.])(?:prd|prod(?:uction)?\d*|live|primary)(?:$|[_\-.])"
+)
+
+
+def _is_loopback_host(host: str) -> bool:
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 @dataclass(frozen=True)
 class ScaleSeedConfig:
@@ -110,16 +124,25 @@ def validate_target_database_url(database_url: str | None) -> URL:
         raise ValueError(f"{SCALE_DATABASE_URL_ENV} is not a valid SQLAlchemy URL.") from exc
 
     database_name = (parsed.database or "").casefold()
+    host_name = (parsed.host or "").casefold()
     safe_name = "_scale" in database_name or "_perf" in database_name
+    loopback_host = bool(host_name) and _is_loopback_host(host_name)
+    production_like = bool(
+        _PRODUCTION_TARGET_MARKER.search(database_name)
+        or _PRODUCTION_TARGET_MARKER.search(host_name)
+    )
     if (
         parsed.get_backend_name() != "postgresql"
         or database_name in {"justice", "postgres"}
         or not safe_name
+        or not loopback_host
+        or production_like
     ):
         raise ValueError(
-            f"{SCALE_DATABASE_URL_ENV} must target PostgreSQL with a database name "
-            "containing _scale or _perf; the default justice and postgres databases "
-            "are not allowed."
+            f"{SCALE_DATABASE_URL_ENV} must target an isolated PostgreSQL database "
+            "with an explicit loopback host, a name containing _scale or _perf, "
+            "and no production-like name or host; "
+            "the default justice and postgres databases are not allowed."
         )
     return parsed
 
@@ -177,6 +200,7 @@ def iter_soldier_rows(
             "role": "soldier",
             "hierarchy_node_id": team_node_id(team_index),
             "email": f"{pn.lower()}@example.invalid",
+            "ad_username": pn.lower(),
             "gender": "male" if index % 2 == 0 else "female",
         }
 
@@ -392,6 +416,7 @@ def _preflight(
             "role",
             "hierarchy_node_id",
             "email",
+            "ad_username",
             "gender",
         ),
     )
