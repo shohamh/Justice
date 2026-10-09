@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-09",
+  "description": "Validation of deploy/nginx.conf (follow-up batch 6) in the locally present image nginx:1.27-alpine (nginx/1.27.5), config and throwaway self-signed certificate mounted read-only, upstream host names mapped with --add-host. Header and size checks served the fonts+placeholder production build on 127.0.0.1:5175 -> 443; the old config (15a4adfa) was checked the same way for comparison.",
+  "nginx_t": [
+    "nginx: the configuration file /etc/nginx/nginx.conf syntax is ok",
+    "nginx: configuration file /etc/nginx/nginx.conf test is successful"
+  ],
+  "alpn": { "new": "h2", "old": "none (HTTP/1.1)" },
+  "headers_new": {
+    "/ , /login (SPA fallback), /index.html": "Cache-Control: no-cache; Content-Encoding: gzip; Vary: Accept-Encoding; HSTS, X-Content-Type-Options, X-Frame-Options present",
+    "/assets/index-*.js": "Cache-Control: public, max-age=31536000, immutable; gzip; security headers present",
+    "/fonts/Heebo-v28-hebrew.woff2": "Cache-Control: public, max-age=31536000, immutable; not gzipped; security headers present",
+    "/favicon.svg": "Cache-Control: public, max-age=31536000, immutable; gzip (svg newly in gzip_types)",
+    "/pdfjs/pdf.worker.min.mjs": "Cache-Control: no-cache; Content-Type: application/octet-stream (unchanged, mime.types has no .mjs)"
+  },
+  "headers_old": {
+    "/login": "no Cache-Control",
+    "/assets/index-*.js": "Expires + two Cache-Control headers (max-age=31536000 and public, immutable); HSTS, X-Content-Type-Options and X-Frame-Options missing (nested location add_header replaced the server-level ones)"
+  },
+  "eager_assets_transferred_bytes": {
+    "description": "Sum of gzip transfer sizes of the 20 /assets/ files referenced by index.html of the fonts+placeholder build",
+    "old_gzip_level_1": 308995,
+    "new_gzip_level_6": 262618
+  }
+}
