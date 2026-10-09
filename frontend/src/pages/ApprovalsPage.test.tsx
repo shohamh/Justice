@@ -1116,3 +1116,66 @@ describe("ApprovalsPage hierarchy reads", () => {
     expect(hierarchyApi.fetchFullTree).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ApprovalsPage - nav counts invalidation", () => {
+  function renderPage() {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SoldierModalProvider>
+            <ApprovalsPage />
+          </SoldierModalProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const navCountsInvalidations = () =>
+      invalidate.mock.calls.filter(([filters]) => {
+        const key = (filters as { queryKey?: readonly unknown[] } | undefined)?.queryKey;
+        return key?.[0] === "navigation" && key?.[1] === "counts";
+      }).length;
+    return { navCountsInvalidations };
+  }
+
+  it("refreshes the nav badges after approving a constraint", async () => {
+    vi.mocked(constraintsApi.approveConstraint).mockResolvedValue(constraint);
+    const { navCountsInvalidations } = renderPage();
+    fireEvent.click(await screen.findByTestId("approvals-tab-constraints"));
+    fireEvent.click(await screen.findByTestId("approve-c1"));
+    await waitFor(() => expect(navCountsInvalidations()).toBeGreaterThan(0));
+  });
+
+  it("refreshes the nav badges after approving a transfer", async () => {
+    vi.mocked(hierarchyTransfersApi.listPendingTransferRequests).mockResolvedValue([
+      { id: "tr1", soldier_id: "sol-9", soldier_name: "x", from_node_id: "n1", to_node_id: "n2", status: "pending" },
+    ]);
+    vi.mocked(hierarchyTransfersApi.approveTransferRequest).mockResolvedValue(
+      { id: "tr1", soldier_id: "sol-9", soldier_name: "x", from_node_id: "n1", to_node_id: "n2", status: "approved" },
+    );
+    const { navCountsInvalidations } = renderPage();
+    fireEvent.click(await screen.findByTestId("approvals-tab-transfers"));
+    fireEvent.click(await screen.findByTestId("transfer-approve-tr1"));
+    await waitFor(() => expect(navCountsInvalidations()).toBeGreaterThan(0));
+  });
+
+  it("refreshes the nav badges after approving a swap, and also when the approval fails", async () => {
+    vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([swap]);
+    vi.mocked(swapsApi.managerApproveSwap).mockResolvedValueOnce(swap);
+    const { navCountsInvalidations } = renderPage();
+    fireEvent.click(await screen.findByTestId("approvals-tab-swaps"));
+    fireEvent.click(await screen.findByText("approvals.approve"));
+    await waitFor(() => expect(navCountsInvalidations()).toBeGreaterThan(0));
+  });
+
+  it("refreshes the nav badges when a swap approval fails (request may have been resolved elsewhere)", async () => {
+    vi.mocked(swapsApi.listPendingSwaps).mockResolvedValue([swap]);
+    vi.mocked(swapsApi.managerApproveSwap).mockRejectedValue(new Error("boom"));
+    const { navCountsInvalidations } = renderPage();
+    fireEvent.click(await screen.findByTestId("approvals-tab-swaps"));
+    fireEvent.click(await screen.findByText("approvals.approve"));
+    await waitFor(() => expect(navCountsInvalidations()).toBeGreaterThan(0));
+  });
+});

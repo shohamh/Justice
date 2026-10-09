@@ -225,6 +225,21 @@ describe("NotificationBell quick decisions", () => {
     await waitFor(() => expect(swapsApi.soldierApproveSwap).toHaveBeenCalledWith("req1"));
   });
 
+  it("invalidates the nav counts after a swap decision from the bell", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{ ...baseNotification, id: "n1", title: "Swap offer", type: "swap_offer_incoming", reference_type: "swap_request", reference_id: "req1" }],
+      total: 1,
+    });
+    vi.mocked(swapsApi.soldierRejectSwap).mockResolvedValue({} as never);
+    renderBell();
+    const navKey = queryKeys.navCounts("scope", false);
+    lastQueryClient.setQueryData(navKey, { approvals: 0, hakpaza: 0, incoming_swaps: 1 });
+    (await screen.findByTestId("notification-bell")).click();
+    await screen.findByText("Swap offer");
+    screen.getByLabelText("notifications.reject").click();
+    await waitFor(() => expect(lastQueryClient.getQueryState(navKey)?.isInvalidated).toBe(true));
+  });
+
   it("shows approve/reject for range_excusal_pending and calls decideRangeExcusal with metadata.event_id", async () => {
     vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
       items: [{

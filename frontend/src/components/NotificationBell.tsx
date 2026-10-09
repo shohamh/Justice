@@ -81,6 +81,7 @@ export default function NotificationBell() {
     try {
       if (n.type === "swap_offer_incoming" && n.reference_id) {
         await (approve ? soldierApproveSwap(n.reference_id) : soldierRejectSwap(n.reference_id));
+        void queryClient.invalidateQueries({ queryKey: queryKeys.navCountsAll() });
       } else if (n.type === "range_excusal_pending" && n.reference_id) {
         const eventId = n.metadata?.event_id as string | undefined;
         if (!eventId) return;

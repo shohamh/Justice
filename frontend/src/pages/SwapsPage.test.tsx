@@ -47,6 +47,9 @@ vi.mock("../api/swaps", async () => {
     getSwapConfig: vi.fn().mockResolvedValue({ require_manager_approval: true, require_duty_manager_approval: true, max_specific_targets: 5 }),
     checkCoverEligibility: vi.fn().mockResolvedValue({ eligible: true, reason: null }),
     listEligibleTargets: vi.fn().mockResolvedValue([]),
+    soldierApproveSwap: vi.fn().mockResolvedValue({}),
+    soldierRejectSwap: vi.fn().mockResolvedValue({}),
+    cancelSwap: vi.fn().mockResolvedValue(undefined),
   };
 });
 vi.mock("../api/assignments", () => ({ listEffectiveDuties: vi.fn().mockResolvedValue([]) }));
@@ -73,7 +76,8 @@ vi.mock("../components/Layout", () => ({
 
 function renderPage(initialEntries = ["/swaps"]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const invalidate = vi.spyOn(client, "invalidateQueries");
+  const result = render(
     <QueryClientProvider client={client}>
       <SoldierModalProvider>
         <MemoryRouter initialEntries={initialEntries}>
@@ -82,6 +86,12 @@ function renderPage(initialEntries = ["/swaps"]) {
       </SoldierModalProvider>
     </QueryClientProvider>,
   );
+  const navCountsInvalidations = () =>
+    invalidate.mock.calls.filter(([filters]) => {
+      const key = (filters as { queryKey?: readonly unknown[] } | undefined)?.queryKey;
+      return key?.[0] === "navigation" && key?.[1] === "counts";
+    }).length;
+  return Object.assign(result, { navCountsInvalidations });
 }
 
 describe("SwapsPage mine tab candidate list", () => {
@@ -262,5 +272,25 @@ describe("SwapsPage hierarchy reads", () => {
     })));
     expect(eligibleOnly).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Root" })).not.toBeChecked();
+  });
+});
+
+describe("SwapsPage nav badge refresh", () => {
+  test("accepting an incoming invite refreshes the nav counts", async () => {
+    const view = renderPage(["/swaps?tab=incoming"]);
+    fireEvent.click(await screen.findByText("approvals.approve"));
+    await waitFor(() => expect(view.navCountsInvalidations()).toBeGreaterThan(0));
+  });
+
+  test("declining an incoming invite refreshes the nav counts", async () => {
+    const view = renderPage(["/swaps?tab=incoming"]);
+    fireEvent.click(await screen.findByText("approvals.reject"));
+    await waitFor(() => expect(view.navCountsInvalidations()).toBeGreaterThan(0));
+  });
+
+  test("cancelling one of my requests (MySwapCard) refreshes the nav counts", async () => {
+    const view = renderPage();
+    fireEvent.click(await screen.findByText("swaps.cancel"));
+    await waitFor(() => expect(view.navCountsInvalidations()).toBeGreaterThan(0));
   });
 });

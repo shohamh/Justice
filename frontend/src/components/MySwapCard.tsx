@@ -143,6 +143,7 @@ export function MySwapCard({ swap }: { swap: SwapRequest }) {
     setActionError(null);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["swaps"] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.navCountsAll() }),
       user ? queryClient.invalidateQueries({ queryKey: queryKeys.effectiveDuties(user.id) }) : Promise.resolve(),
     ]);
   }

@@ -182,6 +182,28 @@ describe("NotificationsPage", () => {
     await waitFor(() => expect(swapsApi.soldierApproveSwap).toHaveBeenCalledWith("req1"));
   });
 
+  it("invalidates the nav counts after a swap decision", async () => {
+    vi.mocked(listNotifications).mockResolvedValue({
+      items: [{
+        id: "notification-1", soldier_id: "soldier-1", title: "הצעת החלפה",
+        body: null, type: "swap_offer_incoming", reference_type: "swap_request", reference_id: "req1",
+        is_read: false, created_at: "2026-08-03T12:00:00Z", metadata: null,
+      }],
+      total: 1,
+    });
+    vi.mocked(swapsApi.soldierApproveSwap).mockResolvedValue({} as never);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const navKey = queryKeys.navCounts("scope", false);
+    queryClient.setQueryData(navKey, { approvals: 0, hakpaza: 0, incoming_swaps: 1 });
+
+    renderPage(queryClient);
+
+    await screen.findByText("הצעת החלפה נכנסת");
+    fireEvent.click(screen.getByLabelText("אשר"));
+
+    await waitFor(() => expect(queryClient.getQueryState(navKey)?.isInvalidated).toBe(true));
+  });
+
   it("shows a load-error alert and suppresses the empty-state copy when the notifications query fails", async () => {
     vi.mocked(listNotifications).mockRejectedValue(new Error("network error"));
 

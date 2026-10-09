@@ -30,6 +30,8 @@ export const queryKeys = {
   pendingConstraintsCount: () => ["constraints", "pendingCount"] as const,
   pendingExemptionsCount: () => ["exemptions", "pendingCount"] as const,
   pendingFieldUpdatesCount: () => ["soldiers", "pendingFieldUpdatesCount"] as const,
+  /** Prefix of every navCounts(scope, hakpazaEnabled) variant: use it after anything that changes approvals, incoming swaps or hakpaza. */
+  navCountsAll: () => ["navigation", "counts"] as const,
   navCounts: (scopeKey: string, hakpazaEnabled: boolean) =>
     ["navigation", "counts", scopeKey, hakpazaEnabled] as const,
   myConstraints: () => ["constraints", "mine"] as const,
