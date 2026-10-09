@@ -38,12 +38,12 @@ Fix in measurement order. Nothing is claimed as a gain until a matched before/af
 
 | Metric | Baseline | Target |
 |---|---|---|
-| `GET /api/admin/errors/unread-count` requests when Loki unset | 78 (c1), 473 (c5) | 0 |
+| `GET /api/admin/errors/unread-count` requests when Loki unset | 134 (c1, 70 page loads), 836 (c5, 350 page loads) | 0 |
 | Entry JS chunk (raw) | 3.99 MB | <= 1.6 MB, heavy libs in separate lazy chunks |
-| Requests per cold page load, each page | measured in Task 1 | no endpoint requested more than once per page load, except where the page genuinely refetches |
-| `ineligible-soldiers/count` c5 cold p50 | 3.6-5.4 s (dev setup; re-baselined in Task 1) | <= 1.0 s |
-| FCP c5 cold p50, every navigation page | 3.4-3.8 s (dev setup; re-baselined in Task 1) | <= 2.0 s |
-| Page-ready p95 (every page, c1 and c5) | re-baselined in Task 1 | not worse than baseline; reported per page |
+| Requests per cold page load, each page | home 39, calendar team 23, calendar org 18-19, hierarchy 16-17, hr-sync 20, soldier detail 20-21, transparency 10 (c1/c5 medians) | no endpoint requested more than once per page load, except where the page genuinely refetches |
+| `ineligible-soldiers/count` c5 cold p50 | 4.14 s (production build, measured in Task 1; c1 1.23 s) | <= 1.0 s |
+| FCP c5 cold p50, every navigation page | 1.52-1.59 s (production build, measured in Task 1; c1 1.22-1.30 s) | <= 2.0 s |
+| Page-ready p95 (every page, c1 and c5) | measured in Task 1: c1 cold 2.3-6.6 s, c5 cold 7.8-14.3 s by page (see `docs/benchmarks/2026-10-08-shell-load.md`) | not worse than baseline; reported per page |
 
 Targets are goals, not promises. If a target is missed, the result is reported as missed with the measured value.
 
