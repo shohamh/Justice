@@ -415,7 +415,7 @@ def count_ineligible_soldiers(
     )
 
 
-_count_flight: SingleFlight[int] = SingleFlight()
+_count_flight: SingleFlight[int] = SingleFlight("ineligible_count")
 
 
 def count_ineligible_soldiers_coalesced(
@@ -430,7 +430,10 @@ def count_ineligible_soldiers_coalesced(
     Every shell load asks for this count at once (5 simultaneous admin loads
     ran 5 identical CPU-bound counts that serialized on the GIL). The key holds
     the caller's scope roots, so callers with different scopes never share a
-    result, and nothing is kept after the computation ends.
+    result, and nothing is kept after the computation ends. Only callers that
+    arrive within ``single_flight.JOIN_WINDOW_SECONDS`` of the running
+    computation's start join it, so a refetch after the caller's own write
+    misses that write only if it lands inside that window.
     """
     key = (None if roots is None else frozenset(roots), as_of)
     return _count_flight.do(
