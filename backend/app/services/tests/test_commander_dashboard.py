@@ -751,3 +751,39 @@ def test_potential_counts_no_scope_has_zero_counts_without_query(admin_session):
     )
     assert [item["count"] for item in result] == [0, 0, 0, 0, 0]
     assert statements == []
+
+
+def test_alerts_exemption_alert_carries_name_when_soldier_joins_scope_mid_request(
+    admin_session, monkeypatch
+):
+    """A soldier moved into the subtree after the soldier-rows statement but before
+    the exemption statement must not yield an info alert with an empty name."""
+    from app.services import commander_dashboard
+
+    node = create_node(admin_session, level="unit", name="alerts_drift_node")
+    other_node = create_node(admin_session, level="unit", name="alerts_drift_other")
+    today = date.today()
+    early = create_soldier(admin_session, personal_number="alerts-drift-early", hierarchy_node_id=node.id)
+    late = create_soldier(admin_session, personal_number="alerts-drift-late", hierarchy_node_id=other_node.id)
+    outside = create_soldier(admin_session, personal_number="alerts-drift-out", hierarchy_node_id=other_node.id)
+    for soldier in (early, late, outside):
+        _grant_exemption(admin_session, soldier.id, end_date=today + timedelta(days=2))
+    admin_session.commit()
+
+    original = commander_dashboard.commander_alert_warning_scores
+
+    def move_late_soldier_in(*args, **kwargs):
+        result = original(*args, **kwargs)
+        late.hierarchy_node_id = node.id  # lands between the two statements
+        admin_session.flush()
+        return result
+
+    monkeypatch.setattr(commander_dashboard, "commander_alert_warning_scores", move_late_soldier_in)
+
+    result = alerts(admin_session, subtree_ids=[node.id])
+
+    info = {a["soldier_id"]: a["soldier_name"] for a in result if a["severity"] == "info"}
+    assert all(info.values()), info
+    assert outside.id not in info
+    assert info[early.id] == early.full_name
+    assert info.get(late.id, late.full_name) == late.full_name

@@ -66,8 +66,12 @@ def _soon_expiring_exemptions(
     start: date,
     end: date,
     soldier_id_scope: Select[Any] | None = None,
-) -> list[tuple[uuid.UUID, date, str]]:
-    """(soldier_id, end_date, exemption_type_name) for exemptions expiring in [start, end], in one query.
+) -> list[tuple[uuid.UUID, str, date, str]]:
+    """(soldier_id, soldier_name, end_date, exemption_type_name) for exemptions expiring in [start, end].
+
+    One query. The soldier name comes from the same statement (joined under the
+    same scope predicate) so it cannot drift from the exemption rows when
+    soldiers move between statements under READ COMMITTED.
 
     ``soldier_id_scope``, when given, is a ``SELECT`` of exactly ``soldier_ids``
     and replaces the id array parameter (see ``commander_alert_warning_scores``).
@@ -80,7 +84,13 @@ def _soon_expiring_exemptions(
         else uuid_any("soldier_exemptions.soldier_id", soldier_ids)
     )
     rows = session.execute(
-        select(SoldierExemption.soldier_id, SoldierExemption.end_date, ExemptionType.name)
+        select(
+            SoldierExemption.soldier_id,
+            Soldier.full_name,
+            SoldierExemption.end_date,
+            ExemptionType.name,
+        )
+        .join(Soldier, Soldier.id == SoldierExemption.soldier_id)
         .join(ExemptionType, ExemptionType.id == SoldierExemption.exemption_type_id)
         .where(
             soldier_filter,
@@ -90,7 +100,7 @@ def _soon_expiring_exemptions(
             SoldierExemption.end_date >= start,
         )
     ).all()
-    return [(row[0], row[1], row[2]) for row in rows]
+    return [(row[0], row[1], row[2], row[3]) for row in rows]
 
 
 def _score_data(session: Session, soldiers: list[Soldier]) -> dict[uuid.UUID, dict]:
@@ -409,7 +419,6 @@ def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
     )
 
     soldier_ids = {s.id for s in soldiers}
-    name_by_id = {s.id: s.full_name for s in soldiers}
     expiring = _soon_expiring_exemptions(
         session, soldier_ids, start=today, end=next_week, soldier_id_scope=soldier_id_scope
     )
@@ -428,12 +437,12 @@ def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
                 }
             )
 
-    for soldier_id, end_date, exemption_type_name in expiring:
+    for soldier_id, soldier_name, end_date, exemption_type_name in expiring:
         alerts_list.append(
             {
                 "severity": "info",
                 "soldier_id": soldier_id,
-                "soldier_name": name_by_id.get(soldier_id, ""),
+                "soldier_name": soldier_name,
                 "message": f"תוקף {exemption_type_name} מסתיים ב-{end_date.strftime('%d.%m.%Y')}",
             }
         )
