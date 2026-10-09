@@ -688,6 +688,9 @@ async function recordMeasurement(page, collector, scenario, run, client, batch, 
 async function login(page) {
   await page.goto(routeUrl("/login"), { waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS });
   await page.locator('[data-testid="login-form"]').waitFor({ state: "visible", timeout: NAVIGATION_TIMEOUT_MS });
+  // Let the app finish its startup session-restore (refresh) before submitting, otherwise a
+  // late restore bumps the auth generation and silently aborts the in-flight login.
+  await page.waitForLoadState("networkidle", { timeout: NAVIGATION_TIMEOUT_MS });
   await page.locator('[data-testid="personal-number-input"]').fill(USERNAME);
   await page.locator('[data-testid="password-input"]').fill(PASSWORD);
   await page.locator('[data-testid="login-submit"]').click();
