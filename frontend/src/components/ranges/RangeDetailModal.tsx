@@ -52,6 +52,8 @@ export default function RangeDetailModal({ rangeId, onClose }: Props) {
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.rangeEvent(rangeId) });
     await queryClient.invalidateQueries({ queryKey: queryKeys.rangeExcusalRequests(rangeId) });
+    // Excusals and attendance change who is range-ineligible; the nav badge no longer refetches per route.
+    await queryClient.invalidateQueries({ queryKey: queryKeys.ineligibleSoldierCount() });
   };
 
   if (rangeEventQuery.isError) {

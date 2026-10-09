@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { getUnreadCount, listNotifications, markRead, markAllRead, deleteNotification, getNotificationLink, NotificationDTO, NOTIFICATION_TYPE_ICONS, isQuickDecisionNotification } from "../api/notifications";
 import { soldierApproveSwap, soldierRejectSwap } from "../api/swaps";
 import { decideRangeExcusal } from "../api/ranges";
+import { queryKeys } from "../queryKeys";
 import { Check, Eye, X, Trash2 } from "lucide-react";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 import { getNotificationTitle } from "./notifications/NotificationDetails";
@@ -84,6 +85,7 @@ export default function NotificationBell() {
         const eventId = n.metadata?.event_id as string | undefined;
         if (!eventId) return;
         await decideRangeExcusal(eventId, n.reference_id, approve);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.ineligibleSoldierCount() });
       } else {
         return;
       }

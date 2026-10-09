@@ -70,6 +70,7 @@ export default function NotificationsPage() {
         const eventId = n.metadata?.event_id as string | undefined;
         if (!eventId) return;
         await decideRangeExcusal(eventId, n.reference_id, approve);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.ineligibleSoldierCount() });
       } else {
         return;
       }

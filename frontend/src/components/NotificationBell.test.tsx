@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import NotificationBell from "./NotificationBell";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
+import { queryKeys } from "../queryKeys";
 import * as notificationsApi from "../api/notifications";
 import * as swapsApi from "../api/swaps";
 import * as rangesApi from "../api/ranges";
@@ -28,8 +29,11 @@ vi.mock("../api/bugReports", async (importOriginal) => ({
   listComments: vi.fn().mockResolvedValue([]),
 }));
 
+let lastQueryClient: QueryClient;
+
 function renderBell() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  lastQueryClient = queryClient;
   return render(
     <MemoryRouter>
       <QueryClientProvider client={queryClient}>
@@ -235,6 +239,26 @@ describe("NotificationBell quick decisions", () => {
     await screen.findByText("Excusal pending");
     screen.getByLabelText("notifications.reject").click();
     await waitFor(() => expect(rangesApi.decideRangeExcusal).toHaveBeenCalledWith("evt1", "req1", false));
+  });
+
+  it("invalidates the ineligible-soldier count after an excusal decision", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{
+        ...baseNotification, id: "n1", title: "Excusal pending", type: "range_excusal_pending",
+        reference_type: "range_excusal_request", reference_id: "req1", metadata: { event_id: "evt1" },
+      }],
+      total: 1,
+    });
+    vi.mocked(rangesApi.decideRangeExcusal).mockResolvedValue({} as never);
+    renderBell();
+    const planningKey = [...queryKeys.ineligibleSoldierCount(), "planning", "scope"];
+    lastQueryClient.setQueryData(planningKey, { count: 4 });
+    (await screen.findByTestId("notification-bell")).click();
+    await screen.findByText("Excusal pending");
+
+    screen.getByLabelText("notifications.approve").click();
+
+    await waitFor(() => expect(lastQueryClient.getQueryState(planningKey)?.isInvalidated).toBe(true));
   });
 });
 vi.mock('../api/client', () => ({
