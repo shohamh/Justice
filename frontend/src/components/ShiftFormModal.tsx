@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "../queryKeys";
 import { CreateShiftInput, DutyShift, createShift, updateShift, setShiftQuotas, getQuotaSplitPreview } from "../api/shifts";
 import { DutyType, DutyLocation } from "../api/dutyConfig";
 import { NodeDTO, fetchTree } from "../api/hierarchy";
@@ -88,6 +90,7 @@ interface Props {
 export default function ShiftFormModal({ dutyTypes, locations: initialLocations, existing, onSaved, onClose }: Props) {
   useModalBackClose(onClose);
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [locations, setLocations] = useState<DutyLocation[]>(initialLocations);
   const [dtId, setDtId] = useState(existing?.duty_type_id ?? dutyTypes[0]?.id ?? "");
   const [locId, setLocId] = useState(existing?.duty_location_id ?? initialLocations[0]?.id ?? "");
@@ -152,6 +155,8 @@ export default function ShiftFormModal({ dutyTypes, locations: initialLocations,
       const defaults = await getAlgorithmDefaults();
       const settings: SolverSettings = { ...DEFAULT_RERUN_SETTINGS, ...defaults };
       const resp = await submitJob({ shift_ids: [existing.id], mode: "shadow", settings });
+      // The nav algorithm badge reads the shared job list; a new job must show up now.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobsAll() });
       setRerunResult(t("shifts.rerun_algorithm_success", { id: resp.id }));
     } catch (err: unknown) {
       setError(extractErrorMessage(err, t, "שגיאה בהרצת האלגוריתם מחדש"));
