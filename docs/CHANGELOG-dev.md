@@ -8,6 +8,17 @@ by `release-dev-to-master`.
 
 ## Unreleased
 
+### Faster eligibility groups: lightweight groups endpoint, top/bottom ranked list (`perf/why-received-and-qualification-groups`, 2026-10-09)
+Docs: none
+- Backend: new `services.scoring.eligibility_groups(session)` backs `GET /api/scoring/eligibility-groups`. It loads `Soldier` with `load_only(...)` of just the columns the duty-type requirement checks read, skips the burden-share pass and names, and leaves exempt-from-all soldiers out of the component build. Same groups and order as `fairness_components()` (covered by a projection-equivalence test).
+- Backend: `algorithm_bridge.exempted_duty_type_ids_by_soldier(..., soldiers=None)` takes an already-loaded roster; `fairness_components()` passes its visible soldiers instead of re-reading every `Soldier` row.
+- Frontend: `FairnessComponentsCard` ranked list opens as the top 30 and bottom 30 (`CANDIDATE_EDGE_ROWS`) with the middle collapsed; "טען עוד מלמעלה" / "טען עוד מלמטה" buttons (up/down chevrons, stacked above/below the hidden-count label) each load `CANDIDATE_LOAD_STEP` (50) from their end. When nothing is hidden the list is one plain list and both buttons go away. Ranks stay real ranks. New name search over the whole group; the same split applies to its matches. List state is keyed to group/sub-group filter/query, so changing any of them resets to 30/30. Rank column widened 16px -> 36px (4-digit ranks overlapped names).
+- No API shape changes; no migrations.
+- Measured at 20k soldiers (`justice_scale_20k_scale`): `eligibility-groups` 2159 -> ~855 ms p50; `fairness-components` ~2234 -> ~1970 ms p50 (still dominated by the full `Soldier` ORM load and burden shares); opening a 5,000-soldier group (mocked response; the seed's largest real group is only 192 soldiers) ~1.7 s / 40k DOM nodes -> ~0.2 s / ~890 nodes.
+- Gotchas: `fairness-components` is still ~2 s and 3.4 MB (the seed has 20,000 exempt soldiers); a cache or read model would be the real fix. Pressing the load buttons until the middle is gone renders every row of the group again. Homepage "למה קיבל/ה" was not reproducible as slow server-side (explanation endpoint ~14 ms, modal ~100 ms for admin); the visible delay there is the page's own reads (`assignments/effective` ~4.9 s at 20k) and is untouched.
+- Tests: `test_eligibility_groups_service_matches_fairness_components_projection`; `FairnessComponentsCard.test.tsx` covers top/bottom split, both load buttons, merge into one list, small groups, search (rank preserved, reset, no-match).
+- Type: perf
+
 ## 2026-10-04 (released, third cut)
 
 ### Native dev stack runs storage; roster 400; inline tree soldiers; i18n polish (`fix/dev-stack-roster-tree-i18n`, 2026-10-04)
