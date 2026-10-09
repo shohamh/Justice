@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
@@ -70,6 +71,26 @@ class _IneligibleCandidates:
     valid_qualifications: dict[uuid.UUID, tuple[QualificationSummary, ...]]
     upcoming_weapon_duties: dict[uuid.UUID, tuple[UpcomingWeaponDuty, ...]]
     duty_eligibility: dict[tuple[uuid.UUID, uuid.UUID], DutyEligibilityFact]
+
+
+# Every Soldier attribute ``eligibility._ineligibility_reason`` reads (with no
+# rank override). Keep in sync with that function: a missing field would make
+# soldiers with different values share one structural-eligibility verdict.
+_STRUCTURAL_ELIGIBILITY_FIELDS = (
+    "gender",
+    "last_mitvahim_date",
+    "last_alal_date",
+    "rank",
+    "mandatory_end_date",
+    "is_officer",
+    "bahad1_graduate",
+    "has_military_driving_license",
+    "military_driving_license_expiry",
+)
+
+
+def _structural_profile(soldier: Any) -> tuple[Any, ...]:
+    return tuple(getattr(soldier, field) for field in _STRUCTURAL_ELIGIBILITY_FIELDS)
 
 
 def _scope_clause(roots: set[uuid.UUID] | None):
@@ -220,14 +241,19 @@ def _has_matching_range_for_each_duty(
 def _weapon_eligible_soldier_ids(
     session: Session,
     *,
-    soldiers: list[Soldier],
+    soldiers: Sequence[Any],
     as_of: date,
+    profile_key: Callable[[Any], tuple[Any, ...]] = _structural_profile,
 ) -> set[uuid.UUID]:
     """Return whether the soldier can structurally serve any weapon duty.
 
     Range dates are deliberately removed from this check: this panel is meant
     to identify soldiers who need a current range, so lacking that range must
     not make every weapon duty appear structurally unavailable.
+
+    ``soldiers`` may be ``Soldier`` entities or rows exposing the same
+    attributes; ``profile_key`` must return the values of
+    ``_STRUCTURAL_ELIGIBILITY_FIELDS`` for one of them.
     """
     duty_types = session.execute(
         select(DutyType).where(
@@ -235,6 +261,16 @@ def _weapon_eligible_soldier_ids(
             or_(DutyType.requires_weapon.is_(True), DutyType.required_range_type.is_not(None)),
         )
     ).scalars().all()
+    # ``_is_eligible`` is a pure function of these attributes, so evaluating
+    # one representative per distinct combination is exact and turns
+    # duty types x soldiers into duty types x combinations.
+    ids_by_profile: defaultdict[tuple[Any, ...], list[uuid.UUID]] = defaultdict(list)
+    representatives: dict[tuple[Any, ...], Any] = {}
+    for soldier in soldiers:
+        profile = profile_key(soldier)
+        ids_by_profile[profile].append(soldier.id)
+        representatives.setdefault(profile, soldier)
+    pending = set(representatives)
     eligible_soldier_ids: set[uuid.UUID] = set()
     for duty_type in duty_types:
         raw_requirements = dict(duty_type.requirements or {})
@@ -244,17 +280,16 @@ def _weapon_eligible_soldier_ids(
             requirements = DutyTypeRequirements.model_validate(raw_requirements)
         except Exception:
             continue
-        eligible_soldier_ids.update(
-            soldier.id
-            for soldier in soldiers
+        for profile in list(pending):
             if _is_eligible(
-                soldier,
+                representatives[profile],
                 requirements,
                 mitvahim_months=6,
                 alal_months=3,
                 today=as_of,
-            )
-        )
+            ):
+                eligible_soldier_ids.update(ids_by_profile[profile])
+                pending.discard(profile)
     return eligible_soldier_ids
 
 
@@ -317,20 +352,22 @@ def _ineligible_candidates(
 
 # Every Soldier attribute the count path reads: ``_is_eligible`` (structural
 # requirements) plus the profile range dates used by
-# ``_valid_qualifications_by_soldier``. Loading these columns as plain rows
-# instead of full ORM entities is most of the count's cost at scale.
+# ``_valid_qualifications_by_soldier`` (both already in the structural set).
+# Loading these columns as plain rows instead of full ORM entities was most of
+# the count's cost at scale.
 _COUNT_SOLDIER_COLUMNS = (
     Soldier.id,
-    Soldier.gender,
-    Soldier.rank,
-    Soldier.mandatory_end_date,
-    Soldier.is_officer,
-    Soldier.bahad1_graduate,
-    Soldier.has_military_driving_license,
-    Soldier.military_driving_license_expiry,
-    Soldier.last_mitvahim_date,
-    Soldier.last_alal_date,
+    *(getattr(Soldier, field) for field in _STRUCTURAL_ELIGIBILITY_FIELDS),
 )
+
+
+def _count_row_profile(row: Any) -> tuple[Any, ...]:
+    """Structural profile of a ``_COUNT_SOLDIER_COLUMNS`` row: every column but id.
+
+    Positional slicing is several times cheaper than nine by-name lookups on a
+    SQLAlchemy ``Row`` across 20k soldiers.
+    """
+    return tuple(row)[1:]
 
 
 def count_ineligible_soldiers(
@@ -349,7 +386,7 @@ def count_ineligible_soldiers(
     # Lightweight rows exposing the same attribute names the helpers read.
     scoped_soldiers: list[Any] = list(session.execute(statement).all())
     weapon_eligible_ids = _weapon_eligible_soldier_ids(
-        session, soldiers=scoped_soldiers, as_of=as_of
+        session, soldiers=scoped_soldiers, as_of=as_of, profile_key=_count_row_profile
     )
     eligible_soldiers = [
         soldier for soldier in scoped_soldiers if soldier.id in weapon_eligible_ids

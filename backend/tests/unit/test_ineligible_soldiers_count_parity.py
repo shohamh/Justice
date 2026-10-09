@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 
 from app.db.models import DutyAssignment, DutyType, RangeType, SoldierRangeQualification
 from app.services import ineligible_soldiers as svc
@@ -81,7 +82,18 @@ def seeded(admin_session):
         requires_weapon=True,
         active=False,
     )
-    session.add_all([weapon_duty, inactive_duty])
+    # Females with a military driving licence qualify only for this one, so a
+    # soldier's structural verdict depends on more than one profile field.
+    licensed_duty = DutyType(
+        name=f"parity-licensed-{_uid()}",
+        score_per_day=Decimal("1.00"),
+        requires_weapon=True,
+        requirements={
+            "allowed_genders": ["female"],
+            "requires_military_driving_license": True,
+        },
+    )
+    session.add_all([weapon_duty, inactive_duty, licensed_duty])
     session.flush()
 
     no_qualification = _soldier(session, team)
@@ -97,6 +109,20 @@ def seeded(admin_session):
         session, division, last_mitvahim_date=date.today() - timedelta(days=10)
     )
     structurally_ineligible = _soldier(session, team, gender="female")
+    licensed_female = _soldier(
+        session,
+        team,
+        gender="female",
+        has_military_driving_license=True,
+        military_driving_license_expiry=date.today() + timedelta(days=60),
+    )
+    expired_license_female = _soldier(
+        session,
+        team,
+        gender="female",
+        has_military_driving_license=True,
+        military_driving_license_expiry=date.today() - timedelta(days=1),
+    )
     unknown_gender = _soldier(session, division, gender=None)
     left_unit = _soldier(session, team, left_at=date.today() - timedelta(days=5))
     outside_scope = _soldier(session, other)
@@ -112,6 +138,8 @@ def seeded(admin_session):
         "qualified_no_duty": qualified_no_duty,
         "profile_qualified": profile_qualified,
         "structurally_ineligible": structurally_ineligible,
+        "licensed_female": licensed_female,
+        "expired_license_female": expired_license_female,
         "unknown_gender": unknown_gender,
         "left_unit": left_unit,
         "outside_scope": outside_scope,
@@ -134,6 +162,7 @@ def test_count_matches_list_for_admin_scope(admin_session, seeded) -> None:
             seeded["no_qualification"].id,
             seeded["expires_before_duty"].id,
             seeded["left_unit"].id,
+            seeded["licensed_female"].id,
             seeded["outside_scope"].id,
         },
     )
@@ -143,7 +172,12 @@ def test_count_matches_list_for_team_scope(admin_session, seeded) -> None:
     _assert_parity(
         admin_session,
         {seeded["team"].id},
-        {seeded["no_qualification"].id, seeded["expires_before_duty"].id, seeded["left_unit"].id},
+        {
+            seeded["no_qualification"].id,
+            seeded["expires_before_duty"].id,
+            seeded["left_unit"].id,
+            seeded["licensed_female"].id,
+        },
     )
 
 
@@ -151,12 +185,77 @@ def test_count_matches_list_for_overlapping_multi_root_scope(admin_session, seed
     _assert_parity(
         admin_session,
         {seeded["division"].id, seeded["team"].id},
-        {seeded["no_qualification"].id, seeded["expires_before_duty"].id, seeded["left_unit"].id},
+        {
+            seeded["no_qualification"].id,
+            seeded["expires_before_duty"].id,
+            seeded["left_unit"].id,
+            seeded["licensed_female"].id,
+        },
     )
 
 
 def test_count_matches_list_for_empty_scope(admin_session, seeded) -> None:
     _assert_parity(admin_session, set(), set())
+
+
+def test_count_row_profile_matches_named_structural_fields(admin_session, seeded) -> None:
+    rows = admin_session.execute(select(*svc._COUNT_SOLDIER_COLUMNS)).all()
+    assert rows
+    for row in rows:
+        assert svc._count_row_profile(row) == svc._structural_profile(row)
+
+
+class _RecordingSoldier:
+    """Answers every attribute with a value that passes, recording the name."""
+
+    _values = {
+        "gender": "male",
+        "rank": "סרן",
+        "mandatory_end_date": date.today() + timedelta(days=30),
+        "last_mitvahim_date": date.today(),
+        "last_alal_date": date.today(),
+        "is_officer": True,
+        "bahad1_graduate": True,
+        "has_military_driving_license": True,
+        "military_driving_license_expiry": date.today() + timedelta(days=30),
+    }
+
+    def __init__(self, *, is_officer: bool) -> None:
+        self.read: set[str] = set()
+        self._is_officer = is_officer
+
+    def __getattr__(self, name: str):
+        self.read.add(name)
+        if name == "is_officer":
+            return self._is_officer
+        return self._values.get(name)
+
+
+def test_structural_grouping_covers_every_field_is_eligible_reads() -> None:
+    from app.services.eligibility import DutyTypeRequirements, _is_eligible
+
+    strict = {
+        "allowed_genders": ["male"],
+        "requires_mitvahim": True,
+        "requires_alal": True,
+        "allowed_ranks": ["סרן"],
+        "allowed_service_types": ["חובה"],
+        "requires_bahad1": True,
+        "requires_military_driving_license": True,
+    }
+    read: set[str] = set()
+    for is_officer, extra in (
+        (False, {"officers_allowed": False}),
+        (True, {"enlisted_allowed": False}),
+        (True, {"rank_service_types": {"סרן": ["חובה"]}}),
+    ):
+        soldier = _RecordingSoldier(is_officer=is_officer)
+        requirements = DutyTypeRequirements.model_validate({**strict, **extra})
+        assert _is_eligible(
+            soldier, requirements, mitvahim_months=6, alal_months=3, today=date.today()
+        )
+        read |= soldier.read
+    assert read == set(svc._STRUCTURAL_ELIGIBILITY_FIELDS)
 
 
 def test_count_matches_list_when_enforcement_disabled(admin_session, seeded) -> None:
@@ -168,6 +267,7 @@ def test_count_matches_list_when_enforcement_disabled(admin_session, seeded) -> 
         {
             seeded["no_qualification"].id,
             seeded["left_unit"].id,
+            seeded["licensed_female"].id,
             seeded["outside_scope"].id,
         },
     )

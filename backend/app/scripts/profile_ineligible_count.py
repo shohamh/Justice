@@ -66,7 +66,9 @@ def _phases(session: Session, roots: set[uuid.UUID] | None, as_of: date) -> dict
     rows["soldiers"] = len(soldiers)
     weapon_ids = timed(
         "2 structural eligibility",
-        lambda: svc._weapon_eligible_soldier_ids(session, soldiers=soldiers, as_of=as_of),
+        lambda: svc._weapon_eligible_soldier_ids(
+            session, soldiers=soldiers, as_of=as_of, profile_key=svc._count_row_profile
+        ),
     )
     eligible = [soldier for soldier in soldiers if soldier.id in weapon_ids]
     rows["weapon eligible"] = len(eligible)
