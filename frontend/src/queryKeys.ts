@@ -9,6 +9,7 @@ export const queryKeys = {
   effectiveDuties: (soldierId: string, params?: Record<string, unknown>) =>
     ["effectiveDuties", soldierId, params ?? {}] as const,
   dutyTypes: () => ["dutyTypes"] as const,
+  levelTypes: () => ["levelTypes"] as const,
   dutyLocations: () => ["dutyLocations"] as const,
   mySwaps: () => ["swaps", "mine"] as const,
   incomingSwaps: () => ["swaps", "incoming"] as const,

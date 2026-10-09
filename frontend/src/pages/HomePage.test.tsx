@@ -458,6 +458,22 @@ describe("HomePage - required scoring data load errors", () => {
     expect(ineligibleSoldiersApi.getIneligibleSoldiers).toHaveBeenCalledWith("commander");
   });
 
+  it("requests the hierarchy level types once for the page and its ineligible-soldiers panel", async () => {
+    Object.assign(mockUser, {
+      role: "commander",
+      hierarchy_node_id: "node-1",
+      is_commander: true,
+      is_duty_manager: false,
+    });
+    vi.mocked(ineligibleSoldiersApi.getIneligibleSoldierCount).mockResolvedValue({ count: 1 });
+
+    renderHome();
+
+    await screen.findByTestId("panel-ineligible-soldiers");
+    expect(await screen.findByText("הteam שבאחריותך")).toBeInTheDocument();
+    expect(levelTypesApi.listLevelTypes).toHaveBeenCalledTimes(1);
+  });
+
   it("uses the shared admin ineligible count query", async () => {
     Object.assign(mockUser, {
       role: "admin",
