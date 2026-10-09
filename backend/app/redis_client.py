@@ -15,7 +15,21 @@ import redis
 
 from app.settings import get_settings
 
+# Every caller issues short commands (GET/SET/EXISTS/DEL/pipelines/PING; no
+# BLPOP, pub/sub or other long blocking reads), so a 1s bound per socket
+# operation is ample. Without it a hung (not refused) Redis would block the
+# request thread indefinitely -- refresh, login and logout included. A timeout
+# raises redis.TimeoutError (a RedisError), which the callers already handle
+# (e.g. app.auth.refresh_revocation fails open).
+SOCKET_TIMEOUT_SECONDS = 1
+SOCKET_CONNECT_TIMEOUT_SECONDS = 1
+
 
 @lru_cache(maxsize=1)
 def get_redis() -> redis.Redis:
-    return redis.Redis.from_url(get_settings().redis_url, decode_responses=True)
+    return redis.Redis.from_url(
+        get_settings().redis_url,
+        decode_responses=True,
+        socket_timeout=SOCKET_TIMEOUT_SECONDS,
+        socket_connect_timeout=SOCKET_CONNECT_TIMEOUT_SECONDS,
+    )
