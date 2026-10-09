@@ -540,7 +540,7 @@ No frontend change is justified, so no remedy (route-level prefetch, moduleprelo
 
 ## Follow-up batch 6 (FCP: fonts, nginx, early paint), 2026-10-09
 
-Three recommendations of the [FCP investigation](#fcp-investigation-throttled-2026-10-09), approved by the product owner: A. self-host Heebo; B. nginx with HTTP/2, better compression and explicit cache headers; C. paint a loading status before the JS has run. All three are kept. Commits: A `6e140eab`, B `e1668a03`, C `a0fe3a62`.
+Three recommendations of the [FCP investigation](#fcp-investigation-throttled-2026-10-09), approved by the product owner: A. self-host Heebo; B. nginx with HTTP/2, better compression and explicit cache headers; C. paint a loading status before the JS has run. All three are kept. Commits: A `6e140eab`, B `e1668a03`, C `a0fe3a62`; [fix round 1](#fix-round-1-2026-10-10): `7804d400` (nginx `.mjs`/`.ttf` types), `1f5be553` (all five Heebo subsets), `03b196be` and `031d2d6e` (no web font before the JS boots). **Final state, measured against `15a4adfa` in fix round 1: FCP 0.62-0.64 s (fast 4G) and 1.55-1.56 s (slow 4G) instead of 1.17-1.76 s and 2.54-3.74 s, with shell-visible and login-form-visible times unchanged.** The first capture below found a small slow-4G delay of the shell for A + C; fix round 1 found its cause and removed it.
 
 ### Method
 
@@ -549,9 +549,11 @@ Three recommendations of the [FCP investigation](#fcp-investigation-throttled-20
 - Scenarios: logged-out `/login`; returning user (refresh cookie from one unthrottled login per profile and origin) on `/` and `/transparency`.
 - 7 measured runs per cell plus one discarded warm-up run, builds interleaved within each run (base, fonts, fonts+placeholder, ...), strictly sequential, nothing else heavy running, about 2.2 GB free RAM. Backend: `app.scripts.profile_scale_server` on 8100, `justice_scale_fcp_scale` (20,120 soldiers verified), Redis, `LOKI_URL` unset, `TRANSPARENCY_READ_MODEL_ENABLED=true`, user 1000001. p95 of 7 samples is the maximum. Differences below about 10% are treated as noise.
 - B was not measured in the browser (the harness serves plain HTTP/1.1 and DevTools throttling adds latency per request, so it cannot show what HTTP/2 multiplexing changes); it was validated with `nginx -t` and a header/size check in the real nginx image, see B below.
-- Raw data: `docs/benchmarks/data/followup-b6-fcp-throttled.json` (summary rows and per-measurement metrics, no waterfalls), `docs/benchmarks/data/followup-b6-nginx-check.json`.
+- Raw data: `docs/benchmarks/data/followup-b6-fcp-throttled.json` (summary rows and per-measurement metrics, no waterfalls), `docs/benchmarks/data/followup-b6-nginx-check.json`, fix round 1: `docs/benchmarks/data/followup-b6-fixround.json`.
 
-### Results, cold cache (ms, p50 / p95)
+### Results of the first capture, cold cache (ms, p50 / p95)
+
+The A + C rows of this capture are superseded by [fix round 1](#fix-round-1-2026-10-10) (the measured builds had a font preload and a placeholder in Heebo, both changed since).
 
 | Profile | Page | FCP base | FCP fonts | FCP fonts+placeholder | Shell or login form visible: base | fonts | fonts+placeholder | LCP p50: base | fonts | fonts+placeholder |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -570,7 +572,7 @@ Other per-load values (cold p50): render-blocking stylesheets done fast 4G 912-9
 
 ### A. Self-hosted Heebo: kept (neutral, removes a third-party dependency)
 
-Change: `frontend/src/styles/globals.css` no longer `@import`s the Google Fonts stylesheet; it declares the faces itself, `font-display: swap`, with the Hebrew and Latin subsets for the weights the old stylesheet provided (300, 400, 500, 700, one face per weight as before, so `font-semibold` still renders with the 700 face; the font is variable, so all weights of a subset are one file). `frontend/index.html` preloads the Hebrew subset (`<link rel="preload" as="font" type="font/woff2" crossorigin>`). Files, in `frontend/public/fonts/` (copied unhashed to `dist/fonts/`; chosen over `src/assets/` because `index.html` must preload a stable URL and the existing Cinzel font already lives there; the file names carry the Google Fonts version `v28`, because `/fonts/` is served `immutable`, so a changed file must get a new name):
+Change: `frontend/src/styles/globals.css` no longer `@import`s the Google Fonts stylesheet; it declares the faces itself, `font-display: swap`, with the Hebrew and Latin subsets for the weights the old stylesheet provided (300, 400, 500, 700, one face per weight as before, so `font-semibold` still renders with the 700 face; the font is variable, so all weights of a subset are one file). `frontend/index.html` preloaded the Hebrew subset (`<link rel="preload" as="font" type="font/woff2" crossorigin>`; removed in fix round 1). Files, in `frontend/public/fonts/` (copied unhashed to `dist/fonts/`; chosen over `src/assets/` because `index.html` must preload a stable URL and the existing Cinzel font already lives there; the file names carry the Google Fonts version `v28`, because `/fonts/` is served `immutable`, so a changed file must get a new name):
 
 | File | Source URL | Bytes |
 |---|---|---|
@@ -578,9 +580,9 @@ Change: `frontend/src/styles/globals.css` no longer `@import`s the Google Fonts 
 | `Heebo-v28-latin.woff2` | `https://fonts.gstatic.com/s/heebo/v28/NGS6v5_NC0k9P9H2TbE.woff2` | 30,116 |
 | `Heebo-OFL.txt` | `https://raw.githubusercontent.com/google/fonts/main/ofl/heebo/OFL.txt` (SIL Open Font License 1.1, "Copyright 2014 The Heebo Project Authors") | 4,474 |
 
-The woff2 URLs and unicode ranges come from `https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700&display=swap` fetched with a Chrome User-Agent; both files start with the `wOF2` signature. Google's `latin-ext`, `math` and `symbols` subsets were not copied, so those characters now fall back to Arial. CSP: the only CSP in the repository is the backend's (`backend/app/middleware/security_headers.py`, `font-src 'self'`), which applies to backend responses, not to the SPA served by nginx; it never allowed the Google hosts, and nothing changes there.
+The woff2 URLs and unicode ranges come from `https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700&display=swap` fetched with a Chrome User-Agent; both files start with the `wOF2` signature. Google's `latin-ext`, `math` and `symbols` subsets were not copied at first (those characters fell back to Arial); fix round 1 added them. CSP: the only CSP in the repository is the backend's (`backend/app/middleware/security_headers.py`, `font-src 'self'`), which applies to backend responses, not to the SPA served by nginx; it never allowed the Google hosts, and nothing changes there.
 
-Result: FCP and LCP are unchanged within noise: fast 4G -1 to -2%, slow 4G +3 to +4% (+70 to +140 ms). The slow 4G increase has the same direction on all three pages and the `/login` ranges do not overlap (2520-2584 vs 2596-2728 ms), so it is probably real but small: the preloaded Hebrew subset (12 kB) now downloads alongside the JS, which then ends about 90 ms later at 1.6 Mbps. In exchange, the first paint is already in Heebo (7/7 vs 0/7 runs; on base the font arrived after the measured load, so users saw a font swap later), the render-blocking stylesheet chain ends 320-470 ms earlier (no second-origin CSS behind `index.css`), and the app no longer needs `fonts.googleapis.com` / `fonts.gstatic.com` at all, a connection this harness does not even emulate (DNS, TCP and TLS to a new origin) and one that blocks rendering until it fails on a network that cannot reach Google. Kept as neutral-and-removes-a-third-party-dependency, not as a speed-up.
+Result: FCP and LCP are unchanged within noise: fast 4G -1 to -2%, slow 4G +3 to +4% (+70 to +140 ms). The slow 4G increase has the same direction on all three pages and the `/login` ranges do not overlap (2520-2584 vs 2596-2728 ms), so it is probably real but small: the preloaded Hebrew subset (12 kB) now downloads alongside the JS, which then ends about 90 ms later at 1.6 Mbps. In exchange, the first paint is already in Heebo (7/7 vs 0/7 runs; on base the font arrived after the measured load, so users saw a font swap later), the render-blocking stylesheet chain ends 320-470 ms earlier (no second-origin CSS behind `index.css`), and the app no longer needs `fonts.googleapis.com` / `fonts.gstatic.com` at all, a connection this harness does not even emulate (DNS, TCP and TLS to a new origin) and one that blocks rendering until it fails on a network that cannot reach Google. Kept as neutral-and-removes-a-third-party-dependency, not as a speed-up. (Fix round 1: the slow 4G cost came from the preload; without it, self-hosting alone is neutral, and with the placeholder in a local font the first paint is no longer in Heebo.)
 
 ### B. nginx (`deploy/nginx.conf`): kept, **needs ops review before rollout**
 
@@ -595,14 +597,14 @@ Validation, in the locally present `nginx:1.27-alpine` (nginx/1.27.5), config an
 
 Ops review: check that nothing between the client and nginx strips ALPN (a TLS-terminating load balancer in front would need its own HTTP/2 setting), that the extra gzip CPU is acceptable, and the `no-cache` on HTML. Observation, not changed: `limit_req zone=api rate=10r/s burst=20 nodelay` per IP is close to one cold Home load (about 32 requests, most of them `/api/`); users behind one NAT or proxy address share that budget and could get 503s on a burst. With HTTP/2 the requests arrive faster, which makes the burst limit more likely to bite.
 
-`/pdfjs/pdf.worker.min.mjs` is served as `application/octet-stream` with `X-Content-Type-Options: nosniff` (stock `mime.types` has no `.mjs`); this was the same before the change and is not addressed here; if the worker is loaded as a module script from that URL in production, it needs a `types { application/javascript mjs; }` entry.
+`/pdfjs/pdf.worker.min.mjs` was served as `application/octet-stream` with `X-Content-Type-Options: nosniff` (stock `mime.types` has no `.mjs`). Fixed in fix round 1 (`7804d400`), see there.
 
 ### C. Early loading paint: kept (FCP earlier, shell not earlier)
 
 Change: `frontend/index.html` puts a static status inside `#root`: `<div data-testid="boot-placeholder" role="status" aria-live="polite" style="padding: 2rem; text-align: center">טוען...</div>`, the same text and box as `PageLoading`. It paints as soon as the stylesheet has loaded, before the module scripts have downloaded. React's first render replaces it. `ProtectedRoute` now renders `PageLoading` during the session restore instead of `null`, so the sequence for a returning user is placeholder -> identical React status -> shell with the status (route fallback) -> page, with no blank frame and no layout shift; the app's own loading states are unchanged. Decisions:
 
 - Neutral status, no nav skeleton: the auth state is unknown before JS, and a nav skeleton would flash on the login page. On `/login` the visitor now sees "טוען..." for about 0.45 s (fast 4G) / 1.1 s (slow 4G) before the form, instead of a blank page.
-- Theme: no extra code needed. The stylesheet is render-blocking, so the placeholder never paints before `globals.css` (body colours, `.dark body`), and the existing inline theme script in `<head>` sets `.dark` before `<body>` is parsed. It inherits the page font and colour like `PageLoading`.
+- Theme: no extra code needed. The stylesheet is render-blocking, so the placeholder never paints before `globals.css` (body colours, `.dark body`), and the existing inline theme script in `<head>` sets `.dark` before `<body>` is parsed. It inherits the page colour like `PageLoading` (font: see fix round 1).
 - CSP: the SPA has no CSP (nginx sets none; the inline theme script already relies on that), and the placeholder needs no script; it uses a `style` attribute only.
 - Tests: `frontend/src/bootPlaceholder.test.tsx` (the `#root` markup has the status role, `aria-live`, the `app.loading` text, no nav/header/aside and no script; its box matches `PageLoading`; `ProtectedRoute` shows the status while `authLoading`).
 
@@ -618,9 +620,76 @@ Result, fonts -> fonts+placeholder (cold p50):
 | Login form visible | 1085 -> 1104 | 2525 -> 2648 (+5%) |
 | Page content | +11 / -3 ms | +27 / +14 ms |
 
-FCP now measures the placeholder. It moves 0.55-1.1 s earlier on fast 4G and 1.05-2.0 s earlier on slow 4G, and warm FCP drops to 56-200 ms. **Nothing useful appears sooner:** the shell, the login form and the page content are unchanged within noise, and on slow 4G they are 2-5% (70-120 ms) later. The likely reason: the placeholder's "..." is a Latin character, so its paint makes the browser fetch the 30 kB Latin subset of Heebo while the JS is still downloading (slow 4G: Latin subset done at 2274 instead of 3211 ms, JS done 2519 instead of 2377 ms). This is the result the FCP investigation predicted for painting during the session restore. Do not read the FCP drop as a shell speed-up.
+FCP now measures the placeholder. It moves 0.55-1.1 s earlier on fast 4G and 1.05-2.0 s earlier on slow 4G, and warm FCP drops to 56-200 ms. **Nothing useful appears sooner:** the shell, the login form and the page content are unchanged within noise, and on slow 4G they are 2-5% (70-120 ms) later. The likely reason: the placeholder's "..." is a Latin character, so its paint makes the browser fetch the 30 kB Latin subset of Heebo while the JS is still downloading (slow 4G: Latin subset done at 2274 instead of 3211 ms, JS done 2519 instead of 2377 ms). This is the result the FCP investigation predicted for painting during the session restore. Do not read the FCP drop as a shell speed-up. (Superseded: fix round 1 confirmed the cause, a Heebo download before the JS boots, and removed the delay.)
 
-A + C together against base, shell visible: fast 4G Home 1626 -> 1691, Transparency 1728 -> 1670; slow 4G Home 3300 -> 3523 (+7%), Transparency 3285 -> 3543 (+8%); `/login` form slow 4G 2434 -> 2648 (+9%). Each is below the 10% noise threshold, but the slow 4G direction is the same everywhere: on a 1.6 Mbps link the two font files (42 kB) compete with the JS. If that matters more than the earlier first paint and the font being right on the first paint, the options are to drop the Hebrew preload or keep the placeholder free of Latin characters; neither was measured.
+A + C together against base, shell visible: fast 4G Home 1626 -> 1691, Transparency 1728 -> 1670; slow 4G Home 3300 -> 3523 (+7%), Transparency 3285 -> 3543 (+8%); `/login` form slow 4G 2434 -> 2648 (+9%). Each is below the 10% noise threshold, but the slow 4G direction is the same everywhere: on a 1.6 Mbps link the two font files (42 kB) compete with the JS. If that matters more than the earlier first paint and the font being right on the first paint, the options are to drop the Hebrew preload or keep the placeholder free of Latin characters; neither was measured. (Both measured in fix round 1; the delay is gone in the final state.)
+
+### Fix round 1, 2026-10-10
+
+Review follow-ups: a MIME problem in the nginx config, the slow-4G delay of A + C, and the missing Heebo subsets.
+
+#### nginx: `.mjs` and `.ttf` types (`7804d400`)
+
+The stock `mime.types` of `nginx:1.27-alpine` has no `mjs` and no `ttf` entry, so `/pdfjs/pdf.worker.min.mjs` (pdf.js loads it as a module worker from that fixed URL, `DocumentPreviewModal.tsx`) and KaTeX's `.ttf` fonts were served as `application/octet-stream`. A module worker with a non-JavaScript type is refused by browsers. Correction to the B section above: this was **not** introduced by batch 6. With the `15a4adfa` config the worker already got `application/octet-stream` *and* `nosniff` (the old nested location matched only `js|css|woff2?|png|svg|ico`, so `.mjs` inherited the server-level headers), checked in the same image. Fix: a `types { text/javascript mjs; font/ttf ttf; }` block after the `mime.types` include (nginx merges both). New check `deploy/tests/test_nginx_static_types.sh [dist]`: serves a build with `deploy/nginx.conf` in the local `nginx:1.27-alpine` image (throwaway certificate, nothing pulled; skips if the image is missing) and requests one file per extension the build contains, plus the pdf.js worker URL, asserting a matching Content-Type and `nosniff`. The build emits `css html js mjs svg ttf txt woff woff2` (no `json`, `map`, `wasm`, `png`, `ico` or `webmanifest`). Before the fix it failed on `.ttf` and `.mjs`; now every type passes (`.js` `application/javascript`, `.mjs` `text/javascript`, `.ttf` `font/ttf`, `.css` `text/css`, `.woff2`/`.woff` `font/woff2`/`font/woff`, `.svg` `image/svg+xml`, `.txt` `text/plain`, `.html` `text/html`), and `nginx -t` is still clean. No other type breaks under `nosniff`.
+
+#### All Heebo subsets (`1f5be553`)
+
+The Google stylesheet defined five subsets for Heebo: `hebrew`, `math`, `symbols`, `latin-ext`, `latin`. The three missing ones were downloaded from the same stylesheet's URLs and added with their unicode ranges, not preloaded (the browser fetches a subset only when a page uses a character in its range), so coverage matches the old behaviour:
+
+| File | Source URL | Bytes |
+|---|---|---|
+| `Heebo-v28-latin-ext.woff2` | `https://fonts.gstatic.com/s/heebo/v28/NGS6v5_NC0k9P9H4TbFzsQ.woff2` | 14,748 |
+| `Heebo-v28-math.woff2` | `https://fonts.gstatic.com/s/heebo/v28/NGS6v5_NC0k9P9GKTbFzsQ.woff2` | 23,740 |
+| `Heebo-v28-symbols.woff2` | `https://fonts.gstatic.com/s/heebo/v28/NGS6v5_NC0k9P9GYTbFzsQ.woff2` | 14,192 |
+
+All start with `wOF2`.
+
+#### The slow-4G delay of A + C: cause and fix (`03b196be`, `031d2d6e`)
+
+Three captures with the same harness, server and backend as above (7 runs + 1 discarded warm-up per cell, builds interleaved, one loopback origin per build on port 5174). Cold p50 of the shell (`/`, `/transparency`) or login form (`/login`) becoming visible, ms:
+
+Capture 1, dots of the placeholder moved to a local font (`03b196be`), with and without the Hebrew preload:
+
+| Profile | Page | base `15a4adfa` | batch-6 head `ec9a519e` | dots in Arial, preload | dots in Arial, no preload |
+|---|---|---|---|---|---|
+| fast 4G | /login | 1075 | 1095 | 1093 | 1080 |
+| fast 4G | / | 1611 | 1688 | 1665 | 1636 |
+| fast 4G | /transparency | 1676 | 1669 | 1670 | 1654 |
+| slow 4G | /login | 2439 | 2659 | 2528 | 2498 |
+| slow 4G | / | 3310 | 3509 | 3525 | 3445 |
+| slow 4G | /transparency | 3267 | 3614 | 3440 | 3397 |
+
+Moving the dots off Heebo moved the Latin subset download from ~1560 ms to ~2560 ms (after the JS) and recovered part of the delay; dropping the preload recovered more. The slow 4G JS still ended later than on base (2281-2299 ms base, 2384-2393 with preload, 2356-2364 without), and the `/login` ranges still did not overlap (base 2417-2468, no preload 2492-2508). So a consistent delay of 60-130 ms remained.
+
+Capture 2, culprit isolation: **A only** (all subsets, no preload, no placeholder, `ProtectedRoute` as on `15a4adfa`), **C only** (Google Fonts `@import` kept, placeholder with Arial dots, `ProtectedRoute` showing `PageLoading`), **A + C local** (no preload, the whole placeholder in Arial), and the no-preload build of capture 1:
+
+| Profile | Page | base | A only | C only | A + C local | A + C, Hebrew text in Heebo |
+|---|---|---|---|---|---|---|
+| fast 4G | /login | 1073 | 1071 | 1076 | 1066 | 1070 |
+| fast 4G | / | 1622 | 1626 | 1608 | 1648 | 1642 |
+| fast 4G | /transparency | 1676 | 1629 | 1678 | 1668 | 1656 |
+| slow 4G | /login | 2452 | 2454 | 2444 | 2449 | 2514 |
+| slow 4G | / | 3358 | 3322 | 3343 | 3353 | 3427 |
+| slow 4G | /transparency | 3349 | 3279 | 3361 | 3405 | 3734 |
+
+Static JS done (slow 4G): base 2285-2293, A only 2291-2294, C only 2286-2291, A + C local 2289-2297, A + C with Heebo text 2361-2373 ms. Neither A nor C alone causes the delay. It comes from any Heebo subset downloading before the JS has booted: the preload, or the placeholder's text rendered in Heebo (the Hebrew subset, 12 kB; earlier also the Latin one for the dots). On a 1.6 Mbps link those bytes share the line with the JS entry. FCP slow 4G: C only 1.96-1.99 s (its render-blocking Google CSS chain is still there), A + C local 1.56 s.
+
+Fix (`031d2d6e`): no font preload, and the whole placeholder uses Heebo's fallback font (`font-family: Arial, sans-serif`). Heebo is not loaded yet when React replaces the placeholder (with `font-display: swap`, `PageLoading` also renders in Arial until Heebo arrives), so the font does not change at that moment. The only visible font swap is when Heebo arrives, as on the base build. Tests: `bootPlaceholder.test.tsx` asserts that every text in the placeholder renders in a non-Heebo font, and `selfHostedFonts.test.ts` asserts that `index.html` preloads no font.
+
+Capture 3, final build (`031d2d6e`) against `15a4adfa`, cold (ms, p50; ranges are min-max of 7):
+
+| Profile | Page | FCP base -> final | Shell / login form visible, base -> final | LCP base -> final | Page content base -> final |
+|---|---|---|---|---|---|
+| fast 4G | /login | 1168 -> 636 | 1071 (1049-1077) -> 1070 (1052-1086) | 1168 -> 1152 | - |
+| fast 4G | / | 1708 -> 640 | 1584 (1574-2000) -> 1631 (1596-1653) | 3108 -> 3072 | 2461 -> 2486 |
+| fast 4G | /transparency | 1760 -> 624 | 1644 (1601-1740) -> 1622 (1593-1683) | 2568 -> 2532 | 2517 -> 2487 |
+| slow 4G | /login | 2540 -> 1560 | 2436 (2414-2450) -> 2444 (2424-2448) | 2540 -> 2520 | - |
+| slow 4G | / | 3736 -> 1560 | 3611 (3258-3655) -> 3352 (3301-3679) | 6216 -> 6188 | 5569 -> 5598 |
+| slow 4G | /transparency | 3484 -> 1552 | 3385 (3242-3650) -> 3343 (3306-3695) | 6468 -> 6260 | 6317 -> 6185 |
+
+Static JS done: fast 914-922 -> 918-931 ms, slow 2285-2290 -> 2294-2302 ms. Warm: FCP 48-200 ms (fast) and 52-152 ms (slow) instead of 172-984 and 196-1224 ms; warm shell unchanged (for example slow 4G Home 1193 -> 1215, Transparency 1049 -> 1053).
+
+Reading: shell-visible and login-form-visible times show no consistent direction against `15a4adfa` any more (differences of -7% to +3%, overlapping ranges, both signs on both profiles; Home's base is bimodal on slow 4G). FCP stays at the early-paint level (0.62-0.64 s fast 4G, 1.55-1.56 s slow 4G). The placeholder is what paints first, so the shell and the content still appear at the same time as before. Heebo is no longer on screen at FCP (0/7 runs): the Hebrew subset arrives at 1.23-1.34 s (fast) and 2.87-3.04 s (slow), after the JS, instead of not at all within the measured load on base.
 
 ### Caveats
 
