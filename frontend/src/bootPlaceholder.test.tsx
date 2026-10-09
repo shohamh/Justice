@@ -33,17 +33,16 @@ describe("static boot placeholder in index.html", () => {
     expect(container.querySelector("script")).toBeNull();
   });
 
-  it("needs no Heebo glyph outside the preloaded Hebrew subset before the JS runs", () => {
-    // Anything else (even the "..." of the text) would make the browser fetch the
-    // 30 kB Latin subset while the JS entry is still downloading.
+  it("renders in a local font, so painting it downloads no web font before the JS runs", () => {
+    // Measured: any Heebo subset fetched before the JS boots (preloaded, or pulled
+    // in by this text) competes with the JS entry and delays the shell on slow 4G.
     const container = document.createElement("div");
     container.innerHTML = rootMarkup();
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const nonHebrew = [...(node.textContent ?? "")].filter((ch) => !/[֐-׿]/.test(ch));
-      if (nonHebrew.length === 0) continue;
+      if (!node.textContent?.trim()) continue;
       const styled = (node.parentElement as HTMLElement).closest<HTMLElement>("[style*='font-family']");
-      expect(styled, `"${nonHebrew.join("")}" would render in Heebo`).not.toBeNull();
+      expect(styled, `"${node.textContent}" would render in Heebo`).not.toBeNull();
       expect(styled!.style.fontFamily).not.toMatch(/heebo/i);
     }
   });

@@ -48,12 +48,9 @@ describe("self-hosted Heebo", () => {
     expect(read("public/fonts/Heebo-OFL.txt").toString("utf8")).toContain("SIL OPEN FONT LICENSE Version 1.1");
   });
 
-  it("preloads the Hebrew subset from index.html as a CORS font request", () => {
-    const preload = indexHtml.match(/<link[^>]*rel="preload"[^>]*>/g)?.find((tag) => tag.includes("Heebo"));
-    expect(preload).toBeDefined();
-    expect(preload).toContain('href="/fonts/Heebo-v28-hebrew.woff2"');
-    expect(preload).toContain('as="font"');
-    expect(preload).toContain('type="font/woff2"');
-    expect(preload).toMatch(/\scrossorigin(\s|>|=)/);
+  it("does not preload any font: a font fetched before the JS boots delays the shell", () => {
+    // Measured in follow-up batch 6 (docs/benchmarks/2026-10-08-shell-load.md).
+    expect(indexHtml).not.toMatch(/<link[^>]*rel="preload"[^>]*as="font"/);
+    expect(indexHtml).not.toMatch(/<link[^>]*as="font"[^>]*rel="preload"/);
   });
 });

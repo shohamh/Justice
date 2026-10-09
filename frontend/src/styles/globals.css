@@ -4,7 +4,8 @@
    five subsets and unicode ranges, weights 300/400/500/700 as one face per
    weight (so font-semibold keeps matching the 700 face exactly as before).
    The browser downloads a subset only when the page uses a character in its
-   range; index.html preloads the Hebrew one. The file names carry the font
+   range (nothing is preloaded: a font fetched before the JS boots delays the
+   shell on slow connections). The file names carry the font
    version because /fonts is served unhashed with an immutable cache header:
    ship a changed file under a new name. */
 @font-face {

@@ -4,9 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- Hebrew subset of the self-hosted Heebo (see styles/globals.css): needed for the
-         first text on every page, so fetch it with the CSS instead of after it. -->
-    <link rel="preload" href="/fonts/Heebo-v28-hebrew.woff2" as="font" type="font/woff2" crossorigin />
     <title>Justice</title>
     <script>
       (function () {
@@ -23,10 +20,11 @@
          downloaded and the session restore has run; React's first render replaces
          it. Same text and box as components/PageLoading.tsx, which ProtectedRoute
          and the route fallback render next, so the swap is not visible. Neutral on
-         purpose (no nav chrome): the auth state is unknown until JS runs. The dots
-         use a local font so this paint needs only the preloaded Hebrew subset of
-         Heebo; in Heebo they would fetch the Latin subset while the JS downloads. -->
-    <div id="root"><div data-testid="boot-placeholder" role="status" aria-live="polite" style="padding: 2rem; text-align: center">טוען<span style="font-family: Arial, sans-serif">...</span></div></div>
+         purpose (no nav chrome): the auth state is unknown until JS runs. It uses
+         Heebo's own fallback font (Arial): a Heebo download started by this paint
+         competes with the JS entry and delays the shell on slow connections. Heebo
+         is not loaded yet when React replaces it either, so the font does not jump. -->
+    <div id="root"><div data-testid="boot-placeholder" role="status" aria-live="polite" style="padding: 2rem; text-align: center; font-family: Arial, sans-serif">טוען...</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
