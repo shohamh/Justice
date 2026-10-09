@@ -8,6 +8,7 @@ presented refresh token's ``jti`` and session family ``sid`` in Redis and
 """
 from __future__ import annotations
 
+import json
 import time
 import uuid
 
@@ -246,3 +247,94 @@ def test_logout_succeeds_when_store_unavailable(client, soldier, monkeypatch, ca
     assert r.status_code == 200 and r.json() == {"status": "ok"}
     _assert_cookie_deleted(r)
     assert any("revocation" in rec.message.lower() for rec in caplog.records)
+
+
+# --- login revokes the refresh cookie the browser presented -----------------------
+# Race being closed: a restore refresh for user A's cookie C1 is processed before
+# user B's login but answered after it, so the browser's last Set-Cookie is A's
+# rotated C2 and B's next refresh would silently run as A. Login now revokes the
+# presented C1's session (jti + sid), so C2 is dead and B is sent to /login instead.
+
+
+def _login_presenting(client: TestClient, personal_number: str, cookie: str, password: str = _PASSWORD):
+    client.cookies.clear()
+    r = client.post(
+        "/api/auth/login",
+        json={"personal_number": personal_number, "password": password},
+        headers={"Cookie": f"refresh_token={cookie}"},
+    )
+    client.cookies.clear()
+    return r
+
+
+@pytest.fixture
+def other_soldier(admin_session: Session):
+    s = create_soldier(admin_session, personal_number="7810002", password=_PASSWORD)
+    admin_session.commit()
+    return s
+
+
+def test_login_revokes_presented_cookie_session(client, soldier, other_soldier):
+    _, c1 = _login(client, soldier.personal_number)
+    _, other_device = _login(client, soldier.personal_number)
+    r = _refresh(client, c1)
+    assert r.status_code == 200
+    c2 = r.cookies.get("refresh_token")
+
+    r = _login_presenting(client, other_soldier.personal_number, c1)
+    assert r.status_code == 200
+    b_cookie = r.cookies.get("refresh_token")
+
+    r = _refresh(client, c2)
+    assert r.status_code == 401
+    assert r.json()["detail"] == "token_revoked"
+    assert _refresh(client, b_cookie).status_code == 200
+    # A's separate device session is untouched (per-session, no token_version bump).
+    assert _refresh(client, other_device).status_code == 200
+
+
+def test_failed_login_does_not_revoke_presented_cookie(client, soldier, other_soldier):
+    _, c1 = _login(client, soldier.personal_number)
+    r = _login_presenting(client, other_soldier.personal_number, c1, password="wrong-password")
+    assert r.status_code == 401
+    assert get_redis().keys("auth:refresh:revoked:*") == []
+    assert _refresh(client, c1).status_code == 200
+
+
+def test_login_with_garbage_cookie_is_ok_and_stores_nothing(client, soldier):
+    r = _login_presenting(client, soldier.personal_number, "garbage.token.value")
+    assert r.status_code == 200
+    assert r.cookies.get("refresh_token")
+    assert get_redis().keys("auth:refresh:revoked:*") == []
+
+
+def test_login_succeeds_when_store_unavailable(client, soldier, other_soldier, monkeypatch, caplog):
+    _, c1 = _login(client, soldier.personal_number)
+    monkeypatch.setattr(refresh_revocation, "get_redis", lambda: _BrokenRedis())
+    with caplog.at_level("WARNING", logger="app.auth"):
+        r = _login_presenting(client, other_soldier.personal_number, c1)
+    assert r.status_code == 200
+    assert r.cookies.get("refresh_token")
+    assert any("revocation" in rec.message.lower() for rec in caplog.records)
+
+
+def test_register_revokes_presented_cookie_session(client, soldier, admin_session):
+    from app.services.invite_codes import create_invite_code
+    from tests.helpers import create_node
+    from tests.integration.test_registration_routes import _payload, _setup_holding, _uid
+
+    _, c1 = _login(client, soldier.personal_number)
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+
+    client.cookies.clear()
+    r = client.post(
+        "/api/auth/register",
+        data={"payload": json.dumps(_payload(invite.code, node.id))},
+        headers={"Cookie": f"refresh_token={c1}"},
+    )
+    client.cookies.clear()
+    assert r.status_code == 200, r.text
+    assert _refresh(client, c1).status_code == 401
