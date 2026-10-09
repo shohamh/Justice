@@ -74,3 +74,10 @@ it("does not request it while public settings are still loading", async () => {
   await waitFor(() => expect(getAdminBugReportUnreadCount).toHaveBeenCalled());
   expect(getAdminErrorUnreadCount).not.toHaveBeenCalled();
 });
+
+it("does not request it when settings failed to load (empty map means unknown)", async () => {
+  mockPublicSettings = {};
+  renderPage();
+  await waitFor(() => expect(getAdminBugReportUnreadCount).toHaveBeenCalled());
+  expect(getAdminErrorUnreadCount).not.toHaveBeenCalled();
+});

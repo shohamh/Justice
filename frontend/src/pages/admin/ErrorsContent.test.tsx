@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ErrorsContent } from "./ErrorsContent";
@@ -210,16 +210,26 @@ it("clears each datetime picker with its small clear button", async () => {
   expect(from).toHaveValue("");
 });
 
-it("shows a not-configured notice and does not request errors when no log source is configured", async () => {
-  mockPublicSettings = { "errors.log_source_configured": false };
-  vi.mocked(bugReportsApi.listAdminErrors).mockClear();
-  try {
+describe("log source configuration", () => {
+  beforeEach(() => {
+    vi.mocked(bugReportsApi.listAdminErrors).mockReset().mockResolvedValue({ total: 0, items: [] });
+  });
+  afterEach(() => {
+    mockPublicSettings = { "errors.log_source_configured": true };
+  });
+
+  it("shows a not-configured notice and does not request errors when no log source is configured", async () => {
+    mockPublicSettings = { "errors.log_source_configured": false };
     renderContent();
     const root = await screen.findByTestId("admin-errors-content");
-    expect(screen.getByTestId("admin-errors-not-configured")).toBeInTheDocument();
     expect(root).toContainElement(screen.getByTestId("admin-errors-not-configured"));
     expect(bugReportsApi.listAdminErrors).not.toHaveBeenCalled();
-  } finally {
-    mockPublicSettings = { "errors.log_source_configured": true };
-  }
+  });
+
+  it("does not claim the source is unconfigured when settings failed to load (unknown state)", async () => {
+    mockPublicSettings = {};
+    renderContent();
+    await screen.findByTestId("admin-errors-content");
+    expect(screen.queryByTestId("admin-errors-not-configured")).not.toBeInTheDocument();
+  });
 });

@@ -95,4 +95,12 @@ describe("Layout admin unread polling", () => {
     await waitFor(() => expect(getAdminBugReportUnreadCount).toHaveBeenCalled());
     expect(getAdminErrorUnreadCount).not.toHaveBeenCalled();
   });
+
+  it("does not request it when settings failed to load (empty map means unknown)", async () => {
+    mockPublicSettings = {};
+    const { default: Layout } = await import("./Layout");
+    renderLayout(<Layout>children</Layout>);
+    await waitFor(() => expect(getAdminBugReportUnreadCount).toHaveBeenCalled());
+    expect(getAdminErrorUnreadCount).not.toHaveBeenCalled();
+  });
 });
