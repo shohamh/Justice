@@ -80,6 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true);
   const [authScopeReady, setAuthScopeReady] = useState(false);
   const authGeneration = useRef(0);
+  // Generation of a login whose credentials are still with the server (no token of
+  // its own installed yet); null otherwise.
+  const loginAwaitingToken = useRef<number | null>(null);
   const scopeTransitioning = useRef(true);
   const hasUser = user !== null;
 
@@ -99,6 +102,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handler = () => {
+      // While signed out, a login waiting for its token makes this event moot: it
+      // comes from an anonymous request (e.g. a startup request that waited on the
+      // session restore, went out without a token and 401'd). Handling it would bump
+      // the generation and silently drop the login's result. A login that installed
+      // its token is no longer "awaiting", and a signed-in user is always handled.
+      if (
+        userIdRef.current === null
+        && loginAwaitingToken.current !== null
+        && loginAwaitingToken.current === authGeneration.current
+      ) return;
       authGeneration.current += 1;
       setAuthLoading(false);
       scopeTransitioning.current = false;
@@ -135,8 +148,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthLoading(false);
     scopeTransitioning.current = true;
     let tokenChanged = false;
+    loginAwaitingToken.current = generation;
     try {
-      const r = await apiLogin(personal_number, password, remember_me);
+      let r: Awaited<ReturnType<typeof apiLogin>>;
+      try {
+        r = await apiLogin(personal_number, password, remember_me);
+      } finally {
+        if (loginAwaitingToken.current === generation) loginAwaitingToken.current = null;
+      }
       if (generation !== authGeneration.current) return;
       setAuthScopeReady(false);
       setAccessToken(r.access_token);
