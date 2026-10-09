@@ -458,3 +458,65 @@ Consequence: the "regression" in page-ready is mostly the shell badge reads movi
 3. Not recommended: eager-bundling pages or modulepreload of route chunks - Task 5 did not hurt cold loads (they got faster), so H1 gives nothing to fix there; the warm Transparency +300 ms is the open item.
 
 Caveats: single browser, c1 only, 5 runs; baseline frontend against HEAD backend got 401 on settings/public (pre-login) and 503 on errors/unread-count exactly like its original artifact, so no API-shape incompatibility was introduced. One warm-up run per build.
+
+## Follow-up batch 4 (concurrency), 2026-10-09
+
+Three open items: the ineligible count at c5 (missed target), `nav/counts` slower at c5 than at baseline, and warm Transparency content about 300 ms later since the lazy-routes commit. Setup as in Task 7b (profile server on 8100, `justice_scale_fcp_scale` with 20,120 soldiers verified, Redis, `LOKI_URL` unset, `TRANSPARENCY_READ_MODEL_ENABLED=true`, production build served by `vite preview` on 5174, user 1000001). Free RAM about 2.3 GB at the start; nothing else heavy ran during a capture. Python 3.12.1.
+
+### Items 7 and 8: one cause, GIL convoy behind five identical counts
+
+Micro-bench (scratch script, httpx, admin token; `server` = the profile server's `x-scale-server-ms`, medians, p95 in brackets). "seq" is 25 sequential requests from one client; "c5" is 10 rounds of 5 simultaneous requests per endpoint (barrier start), the profiler's `startBarrier` pattern.
+
+| Backend | Load | `ineligible-soldiers/count` server | `nav/counts` server |
+|---|---|---|---|
+| baseline `09a5b787` | seq | 728 (810) | 44 (75) |
+| branch HEAD `321a9b15` | seq | 235 (329) | 42 (75) |
+| HEAD | c5, `nav/counts` only | - | 91 (137) |
+| HEAD | c5, ineligible count only | 890 (1028) | - |
+| HEAD | c5, both together | 896 (1015) | **905 (1024)** |
+| baseline | c5, both together | 3270 (3732) | 167 (199) |
+| HEAD + single-flight (`f7b77ed6`) | c5, ineligible count only | 252 (289) | - |
+| HEAD + single-flight | c5, both together | 311 (413) | 329 (430) |
+
+- `nav/counts` code is unchanged on this branch (`git log 09a5b787..HEAD` lists no commit for the route, its service or the helpers it calls), and in isolation it costs the same at baseline and HEAD (44 vs 42 ms server, 33 statements, about 23-34 ms of database time; the slowest statement is the admin exemption count at 4.8 ms, so `EXPLAIN` had nothing to find). Its c5 slowdown is contention, not a slower query.
+- What it contends with: run alone at c5 it takes 91 ms; next to five simultaneous ineligible counts it takes 905 ms, and the extra time is inside statement execution (`dbMs` 867 ms). In-process (one thread timing `get_nav_counts` per statement while N threads run `count_ineligible_soldiers`, no HTTP): N=0 46 ms, N=1 601 ms, N=5 1954 ms, and trivial statements such as `SAVEPOINT` take 80-150 ms each under N=5. That is the GIL convoy: each of the 33 round trips releases the GIL for I/O and must win it back from CPU-bound count threads. `sys.setswitchinterval(0.001)` did not help (1918 ms), consistent with the coarse Windows wait timer.
+- Why `nav/counts` got slower than baseline at c5 although the count got faster: at baseline the shell's badge reads ran outside the measured window (bisect section), and in the HTTP burst the baseline backend's 3.2 s counts slowed `nav/counts` much less (167 ms). Why is not explained: the same in-process experiment on the baseline code gives 1951 ms at N=5, so the convoy exists on both code states. On this branch the shell fires `nav/counts` and the count together on every page load.
+- The ineligible count itself at c5: five identical CPU-bound computations (about 200 ms CPU each) serialize on the GIL, so each takes about 0.9 s.
+
+Change (`f7b77ed6`, `app/services/single_flight.py`, `count_ineligible_soldiers_coalesced`): per-process single-flight. Concurrent callers with the same key `(frozenset(roots) or None, as_of)` share one computation; the entry is removed when the computation ends (no cache, no staleness beyond the concurrent window); an exception reaches every waiter and the next call recomputes. Scope is part of the key, so callers with different scopes never share (test `test_coalesced_count_never_shares_between_different_scopes`). The count's result is unchanged (it still calls `count_ineligible_soldiers`; parity tests pass). Option (b), more CPU work removed, and (c), a TTL cache, were not needed.
+
+Profiler A/B, c5, scenarios Hierarchy and Calendar whole-org, 5 runs (25 samples per scenario and mode), in the order after (pass 1, preceded by a discarded 1-run warm-up), before (pass 1), before (pass 2), after (pass 2), both on the same production build and database. Artifacts: `docs/benchmarks/data/followup-b4-ineligible-c5-{before,after}-pass{1,2}.json`. Pooled over both scenarios (50 calls per cell), ms, pass 1 / pass 2:
+
+| Call (c5) | Mode | Before wall p50 (p95) | After wall p50 (p95) | Before server p50 | After server p50 |
+|---|---|---|---|---|---|
+| `ineligible-soldiers/count` | cold | 1553 (1718) / 1440 (1708) | **756 (948) / 786 (1282)** | 1164 / 1014 | 425 / 440 |
+| `ineligible-soldiers/count` | warm | 1303 (1731) / 1391 (1831) | 793 (950) / 725 (873) | 947 / 1083 | 431 / 408 |
+| `nav/counts` | cold | 1447 (1669) / 1362 (1655) | **742 (892) / 793 (1237)** | 1072 / 951 | 391 / 453 |
+| `nav/counts` | warm | 1168 (1669) / 1298 (1823) | 778 (920) / 648 (833) | 810 / 834 | 438 / 393 |
+
+Page ready p50, before -> after (pass 1 / pass 2): Hierarchy cold 3860 / 3782 -> 3134 / 3385, warm 3332 / 3331 -> 2771 / 2614; Calendar org cold 4480 / 4594 -> 3713 / 3729, warm 3809 / 3751 -> 3187 / 3148. FCP and selectorVisible did not change beyond noise (for example Hierarchy cold FCP 1068 / 1028 -> 1028 / 1144).
+
+Reading: the ineligible count at c5 cold is now 756-786 ms wall, under the 1.0 s target, in both passes; about 300 ms of that wall time is the `localhost` connection artifact described in Task 6. `nav/counts` at c5 roughly halves with the same change, without touching its code. The Task 7b success table is not updated: this is a two-scenario A/B, not a re-run of the full final matrix.
+
+Caveats: c5 here means five headless browsers started together on one machine, all with the same admin scope, which is the case single-flight helps most. Real users with different scopes, or requests that do not overlap, get no sharing; they still pay the full count (about 220-240 ms server alone). A follower waits as long as the leader takes; there is no separate timeout. Single process only (uvicorn workers or replicas each run their own computation).
+
+### Item 9: warm Transparency is not a lazy-chunk waterfall
+
+Harness: a scratch Playwright script (Chromium headless, 1366x768, c1), per run a new context from a logged-in storage state, one cold and one warm navigation to `/transparency`; per load the performance timeline (navigation, resource entries with start / requestStart / responseEnd / transferSize, FCP), the first DOM appearance of `sidebar` and `transparency-page` (MutationObserver), and Playwright's `selectorVisible` as the profiler measures it. 7 runs per build, builds interleaved, 1 discarded run. Same backend (HEAD + single-flight) for all builds. Builds: HEAD frontend (`321a9b15`), `a1a56cb4` (before route splitting) and `09a5b787` (baseline), the latter two from temporary worktrees (removed). Data: `docs/benchmarks/data/followup-b4-transparency-warm-trace.json`.
+
+Warm load, medians (ms from navigation start):
+
+| Base URL | Build | Document response end | `/api/me` end | Transparency chunk | Page in DOM | FCP | Playwright selectorVisible |
+|---|---|---|---|---|---|---|---|
+| `localhost` | HEAD | 320 | 690 | 691 -> 693 (cached) | 734 | 760 | 1205 (6 of 7 runs ~1205, 1 run 741) |
+| `localhost` | `a1a56cb4` (one bundle) | 326 | 700 | in entry | 711 | 728 | 745 (bimodal: 727-761 or 1223-1240) |
+| `localhost` | `09a5b787` | 6 | 404 | in entry | 412 | 424 | 897 |
+| `127.0.0.1` | HEAD | 8 | 95 | 96 -> 99 | 133 | 156 | 156 |
+| `127.0.0.1` | `09a5b787` | 9 | 130 | in entry | 139 | 152 | 181 |
+
+- The route chunk costs 2-20 ms on a warm load (TransparencyPage, recharts and katex chunks come from the cache right after `/api/me`), and the page appears about 40 ms after `/api/me` in both the split and the single-bundle build. The waterfall hypothesis is rejected: `a1a56cb4`, which has no route splitting, shows the page at the same time as HEAD (711 vs 734 ms) and the same FCP (728 vs 760 ms).
+- The selectorVisible jump (912 -> ~1210 ms in the bisect) is Playwright's polling: `locator.waitFor` re-checks on a back-off schedule that ends in 500 ms steps, so a page that appears at ~730 ms is seen at either ~730 or ~1210 ms depending on when the wait started; both earlier builds show the same two values. The in-page DOM mark is the reliable number.
+- The real difference to the baseline (page 412 -> 734 ms, FCP 424 -> 760 ms) is one connection setup: the warm document response ends at 6 ms at baseline and at 320 ms on HEAD and `a1a56cb4`. CDP (`Network.responseReceived`) shows why: every proxied `/api` response from `vite preview` carries `Connection: close` (http-proxy without a keep-alive agent; uvicorn itself sends none, checked with curl), so each API call closes its socket. Since Task 2/3 the shell badge reads (`nav/counts`, ineligible count, `algorithm/jobs`) run at the end of the cold load and use up the remaining idle sockets, so the warm navigation opens a new connection and pays the ~300 ms `localhost` connect stall (connect timing 309 ms on HEAD; connection reused at baseline). Over `127.0.0.1`, where there is no stall, HEAD and baseline are equal (page 133 vs 139 ms, FCP 156 vs 152 ms).
+- Production does not have this: nginx keeps client connections alive (`keepalive_timeout` default 75 s) and does not pass the upstream's `Connection` header on, and the `localhost` stall is a property of this machine.
+
+No frontend change is justified, so no remedy (route-level prefetch, modulepreload of the page chunk, eager chunks) was built or measured: there is no waterfall to remove, and the earlier FCP investigation showed that preloading route chunks at startup costs FCP. A profiler-side fix (base URL `127.0.0.1`, or record the DOM mark instead of a polled selector) would remove both artifacts from future captures; the profiler was not changed here.
