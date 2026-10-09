@@ -106,3 +106,55 @@ Measured in-process with `python -m app.scripts.profile_ineligible_count` (read-
 Decision gate: phase 1 was 77% of the baseline, so row 1 applied first. Loading rows instead of entities made phase 2 slower, because by-name attribute access on a SQLAlchemy `Row` costs more than on an entity. That left phase 2 at 61%, so row 2 applied next: group soldiers by the nine fields `_is_eligible` reads (44 distinct profiles at 20k) and build the group key positionally. The end-to-end median went from 577 to 156 ms (3.7x), under the 250 ms target. No cache was added. The count still matches `len(list_ineligible_soldiers(...))` on the scale database for every scope (admin 1 = 1, branch 1 = 1, group 0 = 0, team 0 = 0).
 
 Sanity check against the baseline: the in-process 577 ms sits below the 928 ms server median at c1, because the server number also includes auth, `_resolve_roots` and contention with the other shell requests of the same page load.
+
+## Per-page duplicates (Task 6), 2026-10-09
+
+Counted per page load in cold mode (warm mode matches unless noted). "Baseline" is the median per load in `shell-load-before-c1-20261008.json` (code `e03c9532`). "Before Task 6" is a fresh production-build capture after Tasks 2-5 (`31db05aa`, `JUSTICE_SCALE_RUNS=1`, c1). "After" is `docs/benchmarks/data/shell-load-t6-final-c1-20261008.json` (code `305c805b`, same procedure). The artifact strips query strings, so every remaining pair was checked against full request URLs with a separate Playwright trace of the same build.
+
+| Page | Baseline duplicates (requests) | Before Task 6 (requests) | After Task 6 (requests) | Kept, with reason |
+|---|---|---|---|---|
+| Home | settings/public x2, auth/refresh x2, duty-types x2, errors/unread-count x3, level-types x2, ranges x2, calendar/shifts x2 (39) | settings/public x2 (401, then 200), auth/refresh x2, duty-types x2, level-types x2, ranges x2, calendar/shifts x2 (36) | ranges x2, calendar/shifts x2 (32) | `calendar/shifts` and `ranges` are two different queries: the command calendar loads `?node_id=<scope>` and then `?soldier_id=<me>`, so the manager's own cross-unit duties appear (the `highlightSoldierId` merge in `UnitCalendar`). |
+| Hierarchy/Team | settings/public x2, auth/refresh x2, errors/unread-count x2 (16) | settings/public x2, auth/refresh x2 (14) | none (12) | Warm mode only: one `hierarchy/branches` with no status, a request of the previous page aborted by the navigation, not part of this load. |
+| Soldier detail | settings/public x2, auth/refresh x2, errors/unread-count x2, soldiers/roster x2 (20) | settings/public x2, auth/refresh x2, soldiers/roster x2 (18) | soldiers/roster x2 (16) | The second `soldiers/roster` is `?search=scale20-00001`: the profiler types the soldier's number into the roster filter before it opens the modal. |
+| Calendar whole-org | settings/public x2, auth/refresh x2, errors/unread-count x2 (18) | settings/public x2, auth/refresh x2 (16) | none (14) | - |
+| Calendar synthetic team | settings/public x2, auth/refresh x2, errors/unread-count x3, hierarchy/branches x2, calendar/shifts x2, ranges x2 (23) | settings/public x2, auth/refresh x2, hierarchy/branches x2, ranges x2, calendar/shifts x2 (20) | hierarchy/branches x2, ranges x2, calendar/shifts x2 (18) | All three follow the team selection: shifts and ranges for the new `node_id`, and `branches?parent_id=<parent>` to show the selected node in the picker. |
+| Transparency | settings/public x2, auth/refresh x2 (10) | settings/public x2, auth/refresh x2 (12) | none (10) | - |
+| HR sync review | settings/public x2, auth/refresh x2, errors/unread-count x2 (20) | settings/public x2, auth/refresh x2 (18) | none (16) | - |
+
+Baseline request counts are the Task 1 c1 cold medians; the other two columns are single runs.
+
+Single on the production build (dev-server React StrictMode doubles, not bugs): `/api/me`, Team `level-types` and `soldiers/ranks`, calendar `duty-types`. `errors/unread-count` was already gone after Task 2.
+
+Fixes:
+
+- `auth/refresh` x2 and `settings/public` 401 then 200 on every page (`552ac146`): session restore and the 401 handler each sent their own refresh, and `/settings/public` (requested by `App` before the token existed) went out unauthenticated. Both now share the client's single-flight `refreshAccessToken()`, and a request issued while that refresh is in flight waits for it. Two requests fewer on every page.
+- Home `level-types` x2 (`f3e205ae`): `useLevelTypes` kept per-component state. It is now a react-query hook on `queryKeys.levelTypes()` (5 min staleTime), and its `refresh()` refetches for every consumer.
+- Home `duty-types` x2 (`b4e9243f`): `UnitCalendar` fetched duty types itself. It and Home now use `useDutyTypes()` on the shared `queryKeys.dutyTypes()` key.
+- No `useSoldierRanks` hook: ranks are requested once per load on the production build.
+
+## Slow Home calls (Task 6)
+
+Admin user, Home cold, medians. "c1 before" is one run of `31db05aa` plus the duplicate fixes; "c5 before" is three runs of the same code at c5; the next two columns add the alerts fix, then the panel staging (three runs each, Home only). Wall time is the browser's; server and db come from the profile server's headers.
+
+| Endpoint | c1 before: wall / server / db (queries) | c5 before: wall / server | c5 + alerts fix: wall / server | c5 + staging: wall / server |
+|---|---|---|---|---|
+| `GET /api/command-dashboard/alerts` | 1549 / 1228 / 673 (16) | 4913 / 4396 | 2170 / 1799 | 2152 / 1677 |
+| `GET /api/hierarchy-transfers/pending` | 1332 / 25 / 7 (6) | 5130 / 358 | 2511 / 236 | 2164 / 618 |
+| `GET /api/soldiers/field-updates/pending/count` | 1220 / 9 / 4 (2) | 4990 / 368 | 2287 / 356 | 2102 / 582 |
+| `GET /api/constraints/pending/count` | 1027 / 187 / 33 (8) | 4984 / 993 | 2322 / 581 | 867 / 345 |
+| `GET /api/exemption-requests/pending/count` | 1027 / 187 / 94 (13) | 5085 / 1249 | 2388 / 548 | 1012 / 405 |
+| `GET /api/enrollment-requests/pending` | 996 / 637 / 610 (15) | 3750 / 1645 | 1652 / 836 | 846 / 354 |
+| `GET /api/swaps/pending` | 1012 / 208 / 16 (2) | 4808 / 2384 | 2200 / 1022 | 802 / 180 |
+| `GET /api/command-dashboard/upcoming` | 454 / 65 / 38 (13) | 1574 / 474 | 1104 / 603 | 1721 / 490 |
+| Home ready p50 (cold) | c1 5245 | 10417 | 7652 (c1: 4791) | 7479 (c1: 4809) |
+
+`alerts` is server-bound (1.2 s of 1.5 s at c1). In-process on the scale database (read-only, 5 runs) it took 1198 ms: ~395 ms to build 20,117 `Soldier` ORM entities (the same columns as rows: 43 ms), ~200 ms to build and send four `uuid[]` parameters of 20,116 ids (the expiring-exemption query executes in 0.8 ms but took 70-95 ms client-side), and the warning-score aggregate. `EXPLAIN (ANALYZE, BUFFERS)` of the aggregate: parallel seq scan of all 1,000,008 `duty_assignments`, partial and final hash aggregate to 20,008 groups (5 batches, under 1 MB spilled to temp), 339 ms execution. Fixes: rows instead of entities (`9673e871`) and a soldier-scope subquery instead of the id arrays (`ed96e360`). In-process 1198 -> 505 ms; server time c1 1228 -> 620-706 ms, c5 4396 -> 1799 ms; Home ready at c5 10417 -> 7652 ms. A 50-soldier team scope is unchanged (score sieve 6.4 vs 8.4 ms, identical results). The aggregate itself (~350 ms) stays: an organization-wide scope needs every soldier's all-time score and no index helps a full aggregate; the score-projection read path (setting `SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY`, off on this database) is the existing answer to that.
+
+`hierarchy-transfers/pending` and `field-updates/pending/count` are not server-bound (9-25 ms server for 1.2-1.3 s wall at c1). Playwright request timing on the same build showed them waiting ~760-790 ms in the browser before the request was sent: the command dashboard opened with 11 reads at once, and Chrome allows six HTTP/1.1 connections per host. `305c805b` moves upcoming, potential, own-potential summaries and the upcoming-ranges widget behind a second `useDashboardIdleGate` window, leaving alerts, approvals and the calendar in the first burst. The other approval reads gained most (c5: constraints 2322 -> 867 ms, swaps 2200 -> 802); transfers and field updates gained less (c1 842 -> 716 and 825 -> 685 ms; c5 2511 -> 2164 and 2287 -> 2102 ms) because one approval read still queues behind alerts and the calendar. Page ready did not change. Upcoming and potential now finish later (c5 1104 -> 1721 ms wall).
+
+Not fixed:
+
+- The warning-score aggregate (above).
+- `deploy/nginx.conf` serves HTTPS without `http2`, so production has the same six-connection queue; `listen 443 ssl http2;` would remove it. Its `limit_req` (10 r/s, burst 20, per client IP) is also close to one cold Home load (32 API requests in 4-5 s) and would be reached by users behind a shared NAT. Deployment configuration is outside this task.
+- The Home command calendar loads the scope window (`node_id`) and then the personal window (`soldier_id`) one after the other. Running them in parallel would take ~350 ms off the end of the page. They are not duplicates, so this is left for a separate change.
+- Measurement artifact: on this machine every new browser connection to `localhost:5174` waits ~300 ms before its request starts (Playwright `requestStart` ~300 ms on fresh connections, 0 on reused ones), consistent with an IPv6-then-IPv4 fallback for `localhost` against a server bound to 127.0.0.1. It adds to all wall times in these captures and does not exist in production.
