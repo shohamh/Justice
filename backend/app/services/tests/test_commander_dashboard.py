@@ -10,6 +10,7 @@ from app.db.models import (
     DutyType,
     ExemptionType,
     ScoreAdjustment,
+    Soldier,
     SoldierExemption,
     SoldierScoreProjection,
     SwapCandidate,
@@ -91,6 +92,33 @@ def test_alerts_reads_only_score_and_display_soldier_columns(admin_session):
     soldier_reads = [statement for statement in statements if "from soldiers" in statement]
     assert soldier_reads
     assert all("soldiers.password_hash" not in statement for statement in soldier_reads)
+
+
+def test_alerts_reads_soldiers_as_rows_not_orm_entities(admin_session):
+    """An organization-wide scope reads ~20k soldiers; hydrating them as ORM
+    entities dominated the request, so alerts must read plain column rows."""
+    node = create_node(admin_session, level="unit", name="alerts_row_read_test")
+    soldier = create_soldier(admin_session, personal_number="7949003", hierarchy_node_id=node.id)
+    soldier_id, node_id = soldier.id, node.id
+    _add_score_adjustment(admin_session, soldier_id, "-4.00")
+    admin_session.commit()
+    admin_session.expunge_all()
+
+    loaded_entities = []
+
+    def _on_load(target, _context):
+        loaded_entities.append(target)
+
+    event.listen(Soldier, "load", _on_load)
+    try:
+        result = alerts(admin_session, subtree_ids=[node_id])
+    finally:
+        event.remove(Soldier, "load", _on_load)
+
+    assert [alert["soldier_id"] for alert in result if alert["severity"] == "warning"] == [
+        soldier_id
+    ]
+    assert loaded_entities == []
 
 
 def test_summary_cards_counts_pending_approval_swaps(admin_session):

@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import and_, func, null, or_, select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -809,10 +810,20 @@ def _bool_setting(session: Session, key: str, default: bool) -> bool:
     return bool(value)
 
 
+class SoldierScoreRef(Protocol):
+    """What score reads need from a soldier: an ORM entity or a column row both fit."""
+
+    @property
+    def id(self) -> uuid.UUID: ...
+
+    @property
+    def enrolled_at(self) -> date: ...
+
+
 def commander_alert_warning_scores(
     session: Session,
     *,
-    soldiers: list[Soldier],
+    soldiers: Sequence[SoldierScoreRef],
     as_of: date,
 ) -> dict[uuid.UUID, Decimal]:
     """Return normalized below-threshold alert scores using the configured read path.
@@ -1961,7 +1972,7 @@ def backfill_score_projection(
 def commander_score_totals(
     session: Session,
     *,
-    soldiers: list[Soldier],
+    soldiers: Sequence[SoldierScoreRef],
     canonical_diagnostic_compare: bool = False,
     _gate_enabled: bool | None = None,
 ) -> CommanderScoreReadResult:

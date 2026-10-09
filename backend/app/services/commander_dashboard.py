@@ -6,7 +6,7 @@ from decimal import Decimal
 from statistics import mean, median, stdev
 
 from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session, load_only
+from sqlalchemy.orm import Session
 
 from app.db.models import (
     DutyAssignment,
@@ -377,11 +377,12 @@ def upcoming_duties(session: Session, *, subtree_ids: list[uuid.UUID], days: int
 
 
 def alerts(session: Session, *, subtree_ids: list[uuid.UUID]) -> list[dict]:
+    # Column rows, not ORM entities: building ~20k Soldier entities for an
+    # organization-wide scope cost ~0.4 s of the request on its own.
     soldiers = session.execute(
-        select(Soldier)
-        .options(load_only(Soldier.id, Soldier.full_name, Soldier.enrolled_at))
+        select(Soldier.id, Soldier.full_name, Soldier.enrolled_at)
         .where(Soldier.hierarchy_node_id.in_(subtree_ids), Soldier.left_at.is_(None))
-    ).scalars().all()
+    ).all()
     today = date.today()
     next_week = today + timedelta(days=7)
 
