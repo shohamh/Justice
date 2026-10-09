@@ -159,7 +159,130 @@ Not fixed:
 - The Home command calendar loads the scope window (`node_id`) and then the personal window (`soldier_id`) one after the other. Running them in parallel would take ~350 ms off the end of the page. They are not duplicates, so this is left for a separate change.
 - Measurement artifact: on this machine every new browser connection to `localhost:5174` waits ~300 ms before its request starts (Playwright `requestStart` ~300 ms on fresh connections, 0 on reused ones), consistent with an IPv6-then-IPv4 fallback for `localhost` against a server bound to 127.0.0.1. It adds to all wall times in these captures and does not exist in production.
 
-## After (final, Task 7b), 2026-10-09
+## Final (official), after follow-ups, 2026-10-10
+
+Matched re-run of the Task 1 matrix on the code at HEAD `161c9f7e`. **This is the official final run.** It repeats the Task 7b run ("earlier final", next section, code `2d5b9682`, `shell-load-final-*-20261009.json`) because 36 commits landed after that capture, among them the single-flight ineligible count with a 75 ms join window, query-invalidation fixes, auth hardening, the route fallback shell, self-hosted fonts with an early placeholder, and the nginx config. Every cell below reads `baseline -> final (earlier final)`.
+
+### Setup
+
+- Same procedure, database (`justice_scale_fcp_scale`, 20,120 soldiers and 1,000,008 assignments verified before the run), Redis, profile server on 8100 (`LOKI_URL` unset, `TRANSPARENCY_READ_MODEL_ENABLED=true`, the login rate limits were left at their defaults and never throttled a login), fresh production build of HEAD served by `vite preview` on 5174 (`VITE_BACKEND_URL=http://127.0.0.1:8100`), user 1000001, `localhost:5174` as base URL (so the ~300 ms new-connection stall of this machine is in both baseline and final). A discarded 1-run warm-up of every scenario (c1, then c5) preceded the measured runs; c1 then c5, strictly sequential, 5 runs each; no vitest or build during a capture.
+- Artifacts: `docs/benchmarks/data/shell-load-final2-c1-20261010.json` (70 measurements) and `shell-load-final2-c5-20261010.json` (350); every measurement reached readiness, exit code 0, no console or page errors, no response with status >= 400, no `errors/unread-count` request. They contain no password or database URL strings. Compare with `node frontend/scripts/summarize-scale-pages.mjs <final> <baseline>`.
+- **A first capture pair was discarded.** The first attempt of this same run (same build, same procedure) was disturbed by the machine: at c5 the Home scenario had batches at 14-22 s ready p50 and one batch of 108-126 s, with server time of trivial endpoints (`nav/counts`, `duty-types`) of 42-53 s and 7.7 s of browser long tasks, while c1 had outliers of 27 s (Calendar team cold) and 10 s. Two scenarios were affected and the others looked normal; the system log shows a Kernel-Power sleep-state event (506/566) at the time and Windows Update activity right after. The cause was not isolated. Because ready values of 100+ s say nothing about the code, that pair was removed (not committed) and the whole warm-up and c1 + c5 sequence was re-run once; the artifacts named above are that second pair, not selected cell by cell. No other re-run happened.
+- Machine: free RAM was 3.9 GB at the start of c1 and 3.0 GB at the start of the c5 capture (the earlier final started with 1.9-2.0 GB, the intermediate with 2.7 GB). Also running: Docker Desktop (about 1.9 GB WSL VM) with the other project containers, Windows Defender, Claude desktop, Everything, Syncthing. Nothing else heavy.
+- Bundle (from `vite build` of HEAD): entry `assets/index-DgKPN9xw.js` = 428.50 kB raw (428,502 bytes), 112.9 kB gzip (zlib level 6; vite prints 113.36 kB). The 20 assets referenced by `index.html` (entry, 18 modulepreloaded chunks, 1 stylesheet) are 932.7 kB raw and 264.3 kB gzip (earlier final: 19 assets, 857.7 kB / 244.2 kB). The eager set therefore grew by about 75 kB raw / 20 kB gzip since the earlier final (cause not isolated; follow-up commits added code to the shell and auth paths). The fonts are no longer preloaded, so they are not in this total.
+
+### Success criteria
+
+"Earlier final" is the Task 7b run on `2d5b9682`; the differences between it and "final" include real code changes, not only run-to-run variation.
+
+| Criterion | Baseline | Target | Earlier final | Final (official) | Result |
+|---|---|---|---|---|---|
+| `GET /api/admin/errors/unread-count` requests, Loki unset | 134 (c1), 836 (c5) | 0 | 0 / 0 | 0 (c1), 0 (c5). Responses with status >= 400 of any endpoint: baseline 199 / 1141, final 0 / 0 | Met |
+| Entry JS chunk, raw | 3,989 kB | <= 1.6 MB, heavy libraries in lazy chunks | 428.5 kB (113.0 kB gzip) | 428.5 kB (112.9 kB gzip); all eager assets 932.7 kB raw / 264.3 kB gzip | Met |
+| Requests per cold page load (Home / Calendar team / Calendar org / Hierarchy / HR sync / Soldier detail / Transparency) | 39 / 23 / 18-19 / 16-17 / 20 / 20-21 / 10 | no endpoint more than once per page load, except genuine refetches | 32 / 18 / 14 / 12 / 16 / 16 / 10 | 32 / 18 / 14 / 12 / 16 / 16 / 10 (unchanged; the documented exceptions are the same: Home `ranges` x2 and `calendar/shifts` x2, Calendar team `hierarchy/branches`, `ranges`, `calendar/shifts` x2, Soldier detail `soldiers/roster` x2) | Met, with those documented exceptions |
+| `ineligible-soldiers/count` c5 cold p50 (end to end) | 4144 ms wall, 3780 ms server (c1: 1229 / 917) | <= 1.0 s | 1396 / 1070 ms (c1: 623 / 317) | **1058 ms wall, 653 ms server** (c1: 487 / 328). Warm c5: 873 / 548 | **Missed on the end-to-end measure by 58 ms** (3.9x faster than baseline; the server time alone is below 1.0 s) |
+| FCP c5 cold p50, each page | 1512-1592 ms | <= 2.0 s | 1032-1144 ms (all 1064) | 404-448 ms (all pages 416 ms) | Met (already met at baseline) |
+| Page-ready p95, every page and mode, c1 and c5 | c1 cold 2.3-6.6 s, c5 cold 7.8-14.3 s | not worse than baseline | c1: 4 of 14 worse; c5: none | c1: 4 of 14 worse, the same four (Transparency cold 2266 -> 2278, Transparency warm 1352 -> 2182, Hierarchy warm 1842 -> 2688, HR sync warm 2065 -> 2502 ms). c5: none worse | **Missed** (c1; Transparency cold by only 12 ms) |
+
+Counts: 4 met, 2 missed (the same two as in the earlier final). Other numbers asked for:
+
+- Ineligible count, end to end, c5 cold p50: 1058 ms wall, 653 ms server (earlier final 1396 / 1070; baseline 4144 / 3780). The single-flight with a 75 ms join window is what moved it; follow-up batch 4 predicted 898-1013 ms in a two-scenario A/B, this full matrix gives 1058 ms, on the missed side. A part of the wall time is the ~300 ms `localhost` connection artifact described in Task 6.
+- `GET /api/nav/counts` per call (c5, wall / server p50): cold 560 / 226 baseline -> 1001 / 628 final (earlier final 1350 / 1038); warm 946 / 291 -> 868 / 573 (1290 / 964). It is still slower per call than baseline at c5 cold, but much closer; at c1 it is faster than baseline (cold 1073 / 750 -> 393 / 315).
+- Error-log requests: 0 in both artifacts.
+- Eager assets: see Setup. Requests per page load: cold as in the table; warm is the same except Hierarchy (12; baseline 13) and Soldier detail, an in-app modal (3 requests; baseline 4).
+
+### FCP
+
+What the profiler measures: Playwright's `first-contentful-paint` performance entry on a production build over loopback, cold (new browser context, empty caches) or warm (second navigation in the same context). The target (<= 2.0 s) was already met at baseline. In the final run cold FCP p50 is 404-448 ms at c5 (all pages 416 ms) and 352-376 ms at c1 (all pages 368 ms), against baseline 1512-1592 ms (c5) and 1216-1296 ms (c1) and 1032-1144 ms in the earlier final. The extra drop from the earlier final is the early placeholder (`a0fe3a62`, fix round 1 `031d2d6e`): the first thing painted is now the static "loading" status in `index.html`, so FCP is the placeholder's paint, about 0.4 s after navigation here, and about 0.6 s in the throttled harness (fast 4G 0.62-0.64 s, slow 4G 1.55-1.56 s, see Follow-up batch 6). **That placeholder does not show the shell or the page earlier.** Shell-visible time and page-content time, and with them the profiler's ready times, are separate quantities and are not moved by it (Follow-up batch 6 measured them unchanged within noise). Do not read the FCP column as "the app appears in 0.4 s": the user sees the shell at about the same time as before (throttled: about 1.7 s on fast 4G and 3.3 s on slow 4G for `/` and `/transparency`).
+
+Warm FCP of Hierarchy and HR sync at c1 is 32-40 ms: a warm navigation with a cached document paints the placeholder almost at once; for those two pages the p95 is 336 and 48 ms.
+
+### Per-page results (ms, baseline -> final (earlier final))
+
+c1, cold:
+
+| Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
+|---|---|---|---|---|---|
+| Home | 5917 -> 3994 (4994) | 6068 -> 4196 (5261) | 1272 -> 348 (884) | 1316 -> 356 (1208) | 39 -> 32 (32) |
+| Calendar (synthetic team) | 6302 -> 4640 (4785) | 6569 -> 4697 (5391) | 1292 -> 360 (852) | 1316 -> 372 (928) | 23 -> 18 (18) |
+| Calendar (whole org) | 4243 -> 2647 (3049) | 4413 -> 2689 (3587) | 1268 -> 364 (828) | 1316 -> 380 (1184) | 18 -> 14 (14) |
+| Hierarchy/Team | 4357 -> 2684 (2946) | 4487 -> 2791 (3139) | 1288 -> 368 (1024) | 1328 -> 392 (1172) | 16 -> 12 (12) |
+| HR sync review | 4154 -> 2735 (3077) | 4346 -> 2792 (3404) | 1216 -> 376 (880) | 1364 -> 388 (1200) | 20 -> 16 (16) |
+| Soldier detail | 5739 -> 4102 (4229) | 6521 -> 4229 (4477) | 1256 -> 372 (840) | 1412 -> 388 (1060) | 20 -> 16 (16) |
+| Transparency | 2214 -> 2245 (2496) | 2266 -> 2278 (2662) | 1296 -> 376 (900) | 1312 -> 384 (1028) | 10 -> 10 (10) |
+
+c1, warm:
+
+| Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
+|---|---|---|---|---|---|
+| Home | 5902 -> 4055 (4150) | 6174 -> 4105 (4417) | 712 -> 340 (432) | 756 -> 348 (760) | 39 -> 32 (32) |
+| Calendar (synthetic team) | 5905 -> 4574 (4410) | 6212 -> 4630 (4578) | 708 -> 344 (428) | 736 -> 364 (464) | 23 -> 18 (18) |
+| Calendar (whole org) | 3711 -> 2628 (2388) | 3727 -> 2789 (2397) | 528 -> 352 (432) | 584 -> 372 (508) | 18 -> 14 (14) |
+| Hierarchy/Team | 1829 -> 2391 (2355) | 1842 -> 2688 (2695) | 836 -> 32 (444) | 840 -> 336 (488) | 13 -> 12 (12) |
+| HR sync review | 2035 -> 2430 (2349) | 2065 -> 2502 (2422) | 724 -> 40 (452) | 748 -> 48 (464) | 16 -> 16 (16) |
+| Soldier detail | 1550 -> 1434 (1360) | 1604 -> 1562 (1500) | - | - | 4 -> 3 (3) |
+| Transparency | 1346 -> 2165 (2169) | 1352 -> 2182 (2197) | 436 -> 340 (760) | 440 -> 348 (776) | 10 -> 10 (10) |
+
+c5, cold:
+
+| Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
+|---|---|---|---|---|---|
+| Home | 14116 -> 7320 (7887) | 14259 -> 7820 (8077) | 1556 -> 420 (1076) | 1612 -> 444 (1320) | 39 -> 32 (32) |
+| Calendar (synthetic team) | 10920 -> 6165 (6932) | 11475 -> 6881 (7107) | 1564 -> 448 (1096) | 1896 -> 464 (1204) | 23 -> 18 (18) |
+| Calendar (whole org) | 8168 -> 3908 (4561) | 9199 -> 4278 (4700) | 1516 -> 416 (1064) | 1628 -> 424 (1276) | 19 -> 14 (14) |
+| Hierarchy/Team | 7589 -> 2939 (3963) | 8018 -> 3754 (4167) | 1592 -> 404 (1144) | 1696 -> 420 (1212) | 17 -> 12 (12) |
+| HR sync review | 7288 -> 3613 (4083) | 8390 -> 3926 (4202) | 1532 -> 400 (1060) | 1800 -> 472 (1132) | 20 -> 16 (16) |
+| Soldier detail | 9569 -> 5540 (6224) | 10046 -> 6156 (6908) | 1512 -> 412 (1032) | 1544 -> 452 (1500) | 21 -> 16 (16) |
+| Transparency | 2677 -> 3416 (3592) | 7790 -> 3926 (3725) | 1584 -> 416 (1056) | 1652 -> 444 (1148) | 10 -> 10 (10) |
+
+c5, warm:
+
+| Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
+|---|---|---|---|---|---|
+| Home | 13714 -> 7361 (7370) | 14144 -> 7555 (7740) | 1052 -> 448 (888) | 1116 -> 464 (944) | 39 -> 32 (32) |
+| Calendar (synthetic team) | 10050 -> 5483 (6042) | 11477 -> 6044 (6242) | 732 -> 140 (564) | 1124 -> 160 (592) | 23 -> 18 (18) |
+| Calendar (whole org) | 7733 -> 3262 (3696) | 9704 -> 3998 (4353) | 1048 -> 132 (612) | 1156 -> 404 (748) | 19 -> 14 (14) |
+| Hierarchy/Team | 2164 -> 3028 (3361) | 6639 -> 3426 (3470) | 860 -> 80 (564) | 1240 -> 152 (616) | 13 -> 12 (12) |
+| HR sync review | 3701 -> 2838 (3466) | 6159 -> 3424 (3827) | 748 -> 108 (552) | 1140 -> 140 (592) | 20 -> 16 (16) |
+| Soldier detail | 2512 -> 2465 (2443) | 2839 -> 2716 (2693) | - | - | 4 -> 3 (3) |
+| Transparency | 1618 -> 2881 (3171) | 5202 -> 3317 (3210) | 508 -> 388 (848) | 4244 -> 416 (900) | 10 -> 10 (10) |
+
+### The four c1 page-ready p95 items
+
+The earlier final reported 4 of 14 scenario/modes with a worse c1 p95 than baseline. Re-checked in this run (c1, ready p50 / p95, ms; marker = page marker visible; quiet = last API response; calls = share of the 5 runs in which `nav/counts`, the ineligible count and `algorithm/jobs` are inside the measured window; they are 0 of 5 in the baseline and 5 of 5 in both later captures):
+
+| Scenario / mode | Baseline p50 / p95 | Earlier final p50 / p95 | Final p50 / p95 | Persists? | Marker visible (base -> earlier -> final) | API quiet (base -> earlier -> final) |
+|---|---|---|---|---|---|---|
+| Transparency cold | 2214 / 2266 | 2496 / 2662 | 2245 / 2278 | Yes, but at +1% (p50 +31 ms, p95 +12 ms) | 1659 -> 927 -> 1271 | 2209 -> 2492 -> 2240 |
+| Transparency warm | 1346 / 1352 | 2169 / 2197 | 2165 / 2182 | Yes (+61% p50) | 909 -> 1210 -> 1201 | 1343 -> 2165 -> 2161 |
+| Hierarchy warm | 1829 / 1842 | 2355 / 2695 | 2391 / 2688 | Yes (+31% p50) | 1268 -> 903 -> 909 | 1825 -> 2349 -> 2387 |
+| HR sync warm | 2035 / 2065 | 2349 / 2422 | 2430 / 2502 | Yes (+19% p50) | 831 -> 902 -> 907 | 2029 -> 2344 -> 2425 |
+
+All four persist; this run does not show them fixed. Nothing in the data indicates a product regression: the page markers are as early as before or earlier (Hierarchy warm 1268 -> 909 ms), and the added time is the shell's navigation reads now falling inside the measurement window plus the ~300 ms `localhost` new-connection stall, as the [bisect](#regression-bisect-page-ready-at-c1-2026-10-09) and [Follow-up batch 4, item 9](#item-9-warm-transparency-is-not-a-lazy-chunk-waterfall) explain (a measurement-window artifact, not a slower page). The profiler still records no per-request start offsets, so that explanation is code reading plus the window composition above, not a direct test. At c5 the three p50 increases against baseline (Transparency cold 2677 -> 3416, Transparency warm 1618 -> 2881, Hierarchy warm 2164 -> 3028) also persist; the c5 p95 values are better than baseline everywhere because the baseline p95s were outlier-inflated.
+
+### Known limitations / open items
+
+- Navigation-count badges can lag by up to 15 s in three panels: `DutyHistoryPanel`, `ExemptionsPanel`, `UnifiedSoldierModal`.
+- Single-flight (`count_ineligible_soldiers_coalesced`) is per process: multiple uvicorn workers or replicas share nothing and each computes its own count.
+- The slowapi limiter's Redis connection has no socket timeout; a slow or hung Redis can therefore stall the requests the limiter guards.
+- Refresh-cookie persistence: a non-"remember me" session cookie becomes a 30-day cookie after the first refresh.
+- gzip over JSON responses in nginx: note for ops: compression of JSON responses carries BREACH considerations.
+- UTC-date patterns remain in `UpcomingRangesWidget.test.tsx` and `ConstraintWarningIcon.tsx`.
+- The benchmark JSON files add about 3.3 MB of bulk to the repository per run pair.
+- The nginx change (`deploy/nginx.conf`) needs ops review before rollout: HTTP/2 behind a load balancer, gzip CPU cost, and `limit_req` 10 r/s burst 20 against about 32 requests for a cold Home load.
+- Eager assets grew from 244 to 264 kB gzip after the earlier final; not investigated.
+
+### Caveats
+
+- Local single-machine measurement: production build served by `vite preview` over loopback against a profile server (with timing headers) and a local Postgres, one capture pair per code state, other applications running. Not a production-capacity result. The machine disturbed the first attempt (see Setup), so single cells, and especially the c5 p95 of 5 runs (which is the maximum), carry noise.
+- Every new connection to `localhost:5174` waits about 300 ms before its request starts; it inflates wall times in baseline and final alike and does not exist in production.
+- FCP is the placeholder's paint now; see the FCP section.
+
+## Earlier final (before follow-ups), Task 7b, 2026-10-09
+
+The text below is the official run of the previous revision of this document; the official run is now the section above. Its numbers appear in the tables above as the second value in brackets.
+
+
 
 Matched re-run of the Task 1 matrix on the final code. This is the official "after". It repeats the earlier capture (Task 7, `shell-load-after-*-20261008.json`, code `46d6d67c`, called "intermediate" below) because three code commits landed after that capture: `16d902a4` (logging label for deliberate 5xx responses), `d2283607` (the Team page no longer refetches hierarchy branches on a hidden page) and `6d12dd49` (the katex chunk is no longer a static import of the entry).
 
