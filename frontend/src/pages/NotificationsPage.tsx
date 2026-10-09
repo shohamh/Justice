@@ -39,6 +39,7 @@ export default function NotificationsPage() {
     try {
       await markRead(id);
       await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationsUnreadCount() });
     } catch (err) {
       setActionError(translateApiError(err, t, "שגיאה בסימון ההתראה כנקראה"));
     }
@@ -48,6 +49,7 @@ export default function NotificationsPage() {
     try {
       await markAllRead();
       await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationsUnreadCount() });
     } catch (err) {
       setActionError(translateApiError(err, t, "שגיאה בסימון כל ההתראות כנקראו"));
     }
@@ -57,6 +59,7 @@ export default function NotificationsPage() {
     try {
       await deleteNotification(id);
       await queryClient.invalidateQueries({ queryKey: queryKeys.notificationsList() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationsUnreadCount() });
     } catch (err) {
       setActionError(translateApiError(err, t, "שגיאה במחיקת ההתראה"));
     }

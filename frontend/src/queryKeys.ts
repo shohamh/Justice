@@ -70,6 +70,7 @@ export const queryKeys = {
   notificationPreferences: () => ["notifications", "preferences"] as const,
   commanderScopes: () => ["notifications", "commanderScopes"] as const,
   hierarchyTreeVisible: () => ["hierarchy", "tree", "visible"] as const,
+  notificationsUnreadCount: () => ["notifications", "unread-count"] as const,
   notificationsList: () => ["notifications", "list"] as const,
   notifications: (filter: string, offset: number) => ["notifications", "list", filter, offset] as const,
   announceScope: () => ["notifications", "announceScope"] as const,

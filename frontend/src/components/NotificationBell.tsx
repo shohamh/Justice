@@ -10,7 +10,7 @@ import { Check, Eye, X, Trash2 } from "lucide-react";
 import { useBugReportModal } from "../contexts/BugReportModalContext";
 import { getNotificationTitle } from "./notifications/NotificationDetails";
 
-const UNREAD_COUNT_KEY = ["notifications", "unread-count"] as const;
+const UNREAD_COUNT_KEY = queryKeys.notificationsUnreadCount();
 
 export default function NotificationBell() {
   const { t } = useTranslation();
