@@ -1,3 +1,4 @@
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 
 import { changePassword as apiChangePassword, fetchMe, login as apiLogin, logout as apiLogout, Me } from "../api/auth";
@@ -45,8 +46,29 @@ async function restoreSession(): Promise<Me | null> {
   }
 }
 
+/** The provider may be mounted without a QueryClient (unit tests); then there is no cache to clear. */
+function useOptionalQueryClient(): QueryClient | null {
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- useQueryClient is a plain context read; it throws without a provider
+    return useQueryClient();
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<Me | null>(null);
+  const queryClient = useOptionalQueryClient();
+  const [user, setUserState] = useState<Me | null>(null);
+  const userIdRef = useRef<string | null>(null);
+  // Cached query data belongs to one identity: drop it on logout and when a
+  // different user signs in. Refreshing the same user keeps the cache.
+  const setUser = useCallback((next: Me | null) => {
+    const previousId = userIdRef.current;
+    const nextId = next?.id ?? null;
+    if (previousId !== null && previousId !== nextId) queryClient?.clear();
+    userIdRef.current = nextId;
+    setUserState(next);
+  }, [queryClient]);
   const [authLoading, setAuthLoading] = useState(true);
   const [authScopeReady, setAuthScopeReady] = useState(false);
   const authGeneration = useRef(0);
@@ -65,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => {
         if (generation === authGeneration.current) setAuthLoading(false);
       });
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     const handler = () => {
@@ -78,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("auth:session-expired", handler);
     return () => window.removeEventListener("auth:session-expired", handler);
-  }, []);
+  }, [setUser]);
 
   // `user` is otherwise only refreshed on login/mount — any server-side change to
   // this soldier's own record (enrollment approved, a profile field-update request
@@ -98,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }).catch(() => {});
     }, 60000);
     return () => clearInterval(interval);
-  }, [hasUser]);
+  }, [hasUser, setUser]);
 
   const login = useCallback(async (personal_number: string, password: string, remember_me = false) => {
     const generation = ++authGeneration.current;
@@ -123,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw error;
     }
-  }, []);
+  }, [setUser]);
 
   const loginWithToken = useCallback(async (token: string) => {
     const generation = ++authGeneration.current;
@@ -144,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw error;
     }
-  }, []);
+  }, [setUser]);
 
   const logout = useCallback(async () => {
     const generation = ++authGeneration.current;
@@ -160,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         scopeTransitioning.current = false;
       }
     }
-  }, []);
+  }, [setUser]);
 
   const changePassword = useCallback(async (current: string, next: string) => {
     const generation = ++authGeneration.current;
@@ -184,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw error;
     }
-  }, []);
+  }, [setUser]);
 
   const refreshMe = useCallback(async () => {
     const generation = ++authGeneration.current;
@@ -204,7 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw error;
     }
-  }, []);
+  }, [setUser]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

@@ -1,5 +1,6 @@
 import { render, screen, act } from "@testing-library/react";
-import { AuthProvider, useAuth } from "./AuthContext";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { AuthProvider, useAuth, type AuthContextValue } from "./AuthContext";
 
 const mockRefresh = vi.fn();
 const mockFetchMe = vi.fn();
@@ -8,8 +9,12 @@ vi.mock("../api/client", () => ({
   api: { post: (...args: unknown[]) => mockRefresh(...args) },
   setAccessToken: vi.fn(),
 }));
+const mockLogout = vi.fn();
+const mockLogin = vi.fn();
 vi.mock("../api/auth", () => ({
   fetchMe: (...args: unknown[]) => mockFetchMe(...args),
+  logout: (...args: unknown[]) => mockLogout(...args),
+  login: (...args: unknown[]) => mockLogin(...args),
 }));
 
 function Probe() {
@@ -122,5 +127,61 @@ describe("AuthContext — restoring the session on mount", () => {
 
     expect(screen.getByTestId("session").textContent).toBe("out");
     expect(mockRefresh.mock.calls.length).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("AuthContext — query cache is scoped to one identity", () => {
+  const CACHE_KEY = ["notifications", "unread-count"];
+  let auth: AuthContextValue;
+  let queryClient: QueryClient;
+
+  function Capture() {
+    auth = useAuth();
+    return null;
+  }
+
+  async function mountSignedIn(userId: string) {
+    mockRefresh.mockResolvedValue({ data: { access_token: "t" } });
+    mockFetchMe.mockResolvedValue({ id: userId });
+    queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider><Capture /></AuthProvider>
+      </QueryClientProvider>,
+    );
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(auth.user?.id).toBe(userId);
+    queryClient.setQueryData(CACHE_KEY, { count: 7 });
+  }
+
+  beforeEach(() => {
+    mockRefresh.mockReset();
+    mockFetchMe.mockReset();
+    mockLogout.mockReset().mockResolvedValue(undefined);
+    mockLogin.mockReset();
+  });
+
+  it("drops cached query data on logout", async () => {
+    await mountSignedIn("1");
+    await act(async () => { await auth.logout(); });
+    expect(auth.user).toBeNull();
+    expect(queryClient.getQueryData(CACHE_KEY)).toBeUndefined();
+  });
+
+  it("drops cached query data when a different user signs in", async () => {
+    await mountSignedIn("1");
+    mockLogin.mockResolvedValue({ access_token: "t2" });
+    mockFetchMe.mockResolvedValue({ id: "2" });
+    await act(async () => { await auth.login("222", "pw"); });
+    expect(auth.user?.id).toBe("2");
+    expect(queryClient.getQueryData(CACHE_KEY)).toBeUndefined();
+  });
+
+  it("keeps cached query data when the same user is refreshed", async () => {
+    await mountSignedIn("1");
+    mockFetchMe.mockResolvedValue({ id: "1", enrollment_pending: false });
+    await act(async () => { await auth.refreshMe(); });
+    expect(auth.user?.id).toBe("1");
+    expect(queryClient.getQueryData(CACHE_KEY)).toEqual({ count: 7 });
   });
 });
