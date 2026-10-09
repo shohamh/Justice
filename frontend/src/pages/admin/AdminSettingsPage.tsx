@@ -13,6 +13,7 @@ import { ErrorsContent } from "./ErrorsContent";
 import { getAdminBugReportUnreadCount, getAdminErrorUnreadCount } from "../../api/bugReports";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { useErrorLogSourceConfigured } from "../../hooks/useErrorLogSource";
 
 export const ADMIN_SETTINGS_TAB_ORDER = ["settings", "invite-codes", "changelog", "bug-reports", "errors", "audit-log", "hr-sync", "identity-conflicts", "exchange-calendar-sync"] as const;
 
@@ -23,7 +24,8 @@ export default function AdminSettingsPage() {
   const activeTab = raw >= 0 && raw < ADMIN_SETTINGS_TAB_ORDER.length ? raw : 0;
   const setTab = (i: number) => setSearchParams({ tab: String(i) }, { replace: true });
   const queryClient = useQueryClient();
-  const errorUnread = useQuery({ queryKey: ["admin-errors-unread"], queryFn: getAdminErrorUnreadCount, enabled: activeTab >= 0 });
+  const errorLogConfigured = useErrorLogSourceConfigured();
+  const errorUnread = useQuery({ queryKey: ["admin-errors-unread"], queryFn: getAdminErrorUnreadCount, enabled: activeTab >= 0 && errorLogConfigured === true, retry: false });
   const bugUnread = useQuery({ queryKey: ["admin-bug-reports-unread"], queryFn: getAdminBugReportUnreadCount, enabled: activeTab >= 0 });
 
   useEffect(() => {

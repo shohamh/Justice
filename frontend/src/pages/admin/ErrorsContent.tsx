@@ -5,6 +5,7 @@ import { Check, Copy, ClipboardCopy } from "lucide-react";
 import { clearAdminErrors, listAdminErrors, markAdminErrorsRead, markAllAdminErrorsRead, type ErrorLogEntry, type PaginatedErrorLogs } from "../../api/bugReports";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import SoldierLink from "../../components/SoldierLink";
+import { useErrorLogSourceConfigured } from "../../hooks/useErrorLogSource";
 
 function buildErrorReport(entry: ErrorLogEntry): string {
   const prompt = `This is a ${entry.source} error in my app, here are its details. Investigate it and fix it.`;
@@ -31,9 +32,12 @@ export function ErrorsContent() {
   const [clearThrough, setClearThrough] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
   const queryClient = useQueryClient();
+  const configured = useErrorLogSourceConfigured();
   const queryKey = ["admin-errors", source, page, from, to];
   const query = useQuery({
     queryKey,
+    enabled: configured !== false,
+    retry: false,
     queryFn: () => listAdminErrors({ source: source || undefined, offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, from: from ? new Date(from).toISOString() : undefined, to: to ? new Date(to).toISOString() : undefined }),
   });
   const items = useMemo(() => query.data?.items ?? [], [query.data?.items]);
@@ -64,6 +68,14 @@ export function ErrorsContent() {
     setClearThrough("");
     await query.refetch();
     void queryClient.invalidateQueries({ queryKey: ["admin-errors-unread"] });
+  }
+
+  if (configured === false) {
+    return (
+      <div dir="rtl" data-testid="admin-errors-content">
+        <p className="text-sm text-gray-500 p-4" data-testid="admin-errors-not-configured">{label("admin_errors.not_configured", "מקור יומני השגיאות אינו מוגדר בשרת זה")}</p>
+      </div>
+    );
   }
 
   return (

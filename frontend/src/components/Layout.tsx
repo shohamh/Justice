@@ -9,6 +9,7 @@ import UnifiedNav from "./UnifiedNav";
 import HelpModal from "./HelpModal";
 import HeaderSearch from "./HeaderSearch";
 import { usePublicSettings } from "../hooks/usePublicSettings";
+import { useErrorLogSourceConfigured } from "../hooks/useErrorLogSource";
 import JusticeLogo from "./JusticeLogo";
 import BugReportTrigger from "./BugReportTrigger";
 import { getAdminBugReportUnreadCount, getAdminErrorUnreadCount } from "../api/bugReports";
@@ -24,7 +25,15 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
     theme === "dark" ? "מצב תאורה: כהה (לחץ למעבר לפי מערכת)" :
     "מצב תאורה: לפי מערכת (לחץ למעבר לבהיר)";
   const isAdmin = user?.role === "admin";
-  const errorUnread = useQuery({ queryKey: ["admin-errors-unread"], queryFn: getAdminErrorUnreadCount, enabled: isAdmin, refetchInterval: 30000 });
+  const errorLogConfigured = useErrorLogSourceConfigured();
+  const errorUnread = useQuery({
+    queryKey: ["admin-errors-unread"],
+    queryFn: getAdminErrorUnreadCount,
+    enabled: isAdmin && errorLogConfigured === true,
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
   const bugUnread = useQuery({ queryKey: ["admin-bug-reports-unread"], queryFn: getAdminBugReportUnreadCount, enabled: isAdmin, refetchInterval: 30000 });
   const adminUnread = (errorUnread.data ?? 0) + (bugUnread.data ?? 0);
   const [helpOpen, setHelpOpen] = useState(false);

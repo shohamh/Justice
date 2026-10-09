@@ -13,6 +13,11 @@ vi.mock("../../api/bugReports", async () => ({
   clearAdminErrors: vi.fn().mockResolvedValue(undefined),
 }));
 
+let mockPublicSettings: Record<string, unknown> | null = { "errors.log_source_configured": true };
+vi.mock("../../hooks/usePublicSettings", () => ({
+  usePublicSettings: () => mockPublicSettings,
+}));
+
 vi.mock("../../components/SoldierLink", () => ({
   default: ({ name }: { id: string; name: string }) => <span data-testid="error-soldier-link">{name}</span>,
 }));
@@ -203,4 +208,18 @@ it("clears each datetime picker with its small clear button", async () => {
   const clear = await screen.findByRole("button", { name: "נקה תאריך התחלה" });
   fireEvent.click(clear);
   expect(from).toHaveValue("");
+});
+
+it("shows a not-configured notice and does not request errors when no log source is configured", async () => {
+  mockPublicSettings = { "errors.log_source_configured": false };
+  vi.mocked(bugReportsApi.listAdminErrors).mockClear();
+  try {
+    renderContent();
+    const root = await screen.findByTestId("admin-errors-content");
+    expect(screen.getByTestId("admin-errors-not-configured")).toBeInTheDocument();
+    expect(root).toContainElement(screen.getByTestId("admin-errors-not-configured"));
+    expect(bugReportsApi.listAdminErrors).not.toHaveBeenCalled();
+  } finally {
+    mockPublicSettings = { "errors.log_source_configured": true };
+  }
 });
