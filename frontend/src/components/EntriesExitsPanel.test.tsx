@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import EntriesExitsPanel from "./EntriesExitsPanel";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
+import { dateToLocalIso } from "../utils/formatDate";
 import type { SoldierWithStatus } from "../api/commanderDashboard";
 
 vi.mock("react-i18next", () => ({
@@ -31,6 +32,10 @@ vi.mock("./HierarchyNodePickerModal", () => ({
 }));
 vi.mock("../api/exemptions", () => ({ grantExemption: vi.fn() }));
 vi.mock("../api/dutyConfig", () => ({ listExemptionTypes: vi.fn().mockResolvedValue([]) }));
+
+// Instants straddling local/UTC midnight; the first is 2026-10-10 00:30 in
+// Asia/Jerusalem (UTC+3) but still 2026-10-09 in UTC.
+const RELEASE_TEST_INSTANTS = ["2026-10-09T21:30:00Z", "2026-10-09T12:00:00Z", "2026-10-10T00:00:00Z"];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -114,7 +119,7 @@ describe("EntriesExitsPanel - move flow", () => {
 });
 
 describe("EntriesExitsPanel - release flow", () => {
-  it("clicking release opens a modal with a date field defaulting to today, then submits that date", async () => {
+  it.each(RELEASE_TEST_INSTANTS)("clicking release opens a modal with a date field defaulting to the local today, then submits that date (now=%s)", async (nowIso) => {
     const { softDeleteSoldier } = await import("../api/soldiers");
     const soldier = {
       id: "s1",
@@ -135,9 +140,16 @@ describe("EntriesExitsPanel - release flow", () => {
       </SoldierModalProvider>
     );
 
-    fireEvent.click(screen.getByText("command_dashboard.release"));
+    // Pin the clock inside the Israel local-midnight..UTC-midnight window so the
+    // test proves the default is the LOCAL date (not the UTC date).
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(nowIso) });
+    try {
+      fireEvent.click(screen.getByText("command_dashboard.release"));
+    } finally {
+      vi.useRealTimers();
+    }
 
-    const [todayY, todayM, todayD] = new Date().toISOString().slice(0, 10).split("-");
+    const [todayY, todayM, todayD] = dateToLocalIso(new Date(nowIso)).split("-");
     const dateInput = await screen.findByTestId("release-date-input");
     expect(dateInput).toHaveValue(`${todayD}/${todayM}/${todayY}`);
 
