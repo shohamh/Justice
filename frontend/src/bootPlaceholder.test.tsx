@@ -33,6 +33,21 @@ describe("static boot placeholder in index.html", () => {
     expect(container.querySelector("script")).toBeNull();
   });
 
+  it("needs no Heebo glyph outside the preloaded Hebrew subset before the JS runs", () => {
+    // Anything else (even the "..." of the text) would make the browser fetch the
+    // 30 kB Latin subset while the JS entry is still downloading.
+    const container = document.createElement("div");
+    container.innerHTML = rootMarkup();
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const nonHebrew = [...(node.textContent ?? "")].filter((ch) => !/[֐-׿]/.test(ch));
+      if (nonHebrew.length === 0) continue;
+      const styled = (node.parentElement as HTMLElement).closest<HTMLElement>("[style*='font-family']");
+      expect(styled, `"${nonHebrew.join("")}" would render in Heebo`).not.toBeNull();
+      expect(styled!.style.fontFamily).not.toMatch(/heebo/i);
+    }
+  });
+
   it("looks like PageLoading so React's first render swaps it without a visible jump", async () => {
     const { default: PageLoading } = await import("./components/PageLoading");
     render(<PageLoading />);

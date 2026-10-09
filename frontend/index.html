@@ -23,8 +23,10 @@
          downloaded and the session restore has run; React's first render replaces
          it. Same text and box as components/PageLoading.tsx, which ProtectedRoute
          and the route fallback render next, so the swap is not visible. Neutral on
-         purpose (no nav chrome): the auth state is unknown until JS runs. -->
-    <div id="root"><div data-testid="boot-placeholder" role="status" aria-live="polite" style="padding: 2rem; text-align: center">טוען...</div></div>
+         purpose (no nav chrome): the auth state is unknown until JS runs. The dots
+         use a local font so this paint needs only the preloaded Hebrew subset of
+         Heebo; in Heebo they would fetch the Latin subset while the JS downloads. -->
+    <div id="root"><div data-testid="boot-placeholder" role="status" aria-live="polite" style="padding: 2rem; text-align: center">טוען<span style="font-family: Arial, sans-serif">...</span></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
