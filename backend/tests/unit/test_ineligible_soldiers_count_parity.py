@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -231,31 +232,88 @@ class _RecordingSoldier:
         return self._values.get(name)
 
 
-def test_structural_grouping_covers_every_field_is_eligible_reads() -> None:
-    from app.services.eligibility import DutyTypeRequirements, _is_eligible
+# How the guard enables each DutyTypeRequirements field. Fields whose default
+# is a disabled bool are enabled generically; collections need a sample value
+# the recording soldier satisfies. Variant fields restrict the soldier pool
+# (or replace another filter), so each runs in its own pass.
+_ENABLE_VALUES: dict[str, Any] = {
+    "allowed_genders": ["male"],
+    "allowed_ranks": ["סרן"],
+    "allowed_service_types": ["חובה"],
+}
+# field -> (value, is_officer of the soldier that must still pass)
+_VARIANT_VALUES: dict[str, tuple[Any, bool]] = {
+    "officers_allowed": (False, False),
+    "enlisted_allowed": (False, True),
+    "rank_service_types": ({"סרן": ["חובה"]}, True),
+}
 
-    strict = {
-        "allowed_genders": ["male"],
-        "requires_mitvahim": True,
-        "requires_alal": True,
-        "allowed_ranks": ["סרן"],
-        "allowed_service_types": ["חובה"],
-        "requires_bahad1": True,
-        "requires_military_driving_license": True,
-    }
+
+def _requirement_passes() -> tuple[dict[str, Any], list[str]]:
+    """Return (strict base requirements, fields the guard cannot enable)."""
+    from app.services.eligibility import DutyTypeRequirements
+
+    base: dict[str, Any] = {}
+    unknown: list[str] = []
+    for name, info in DutyTypeRequirements.model_fields.items():
+        if name in _VARIANT_VALUES:
+            continue
+        if name in _ENABLE_VALUES:
+            base[name] = _ENABLE_VALUES[name]
+        elif info.default is False:
+            base[name] = True
+        else:
+            unknown.append(name)
+    return base, unknown
+
+
+def _soldier_fields_read(is_eligible) -> set[str]:
+    from app.services.eligibility import DutyTypeRequirements
+
+    base, _ = _requirement_passes()
     read: set[str] = set()
-    for is_officer, extra in (
-        (False, {"officers_allowed": False}),
-        (True, {"enlisted_allowed": False}),
-        (True, {"rank_service_types": {"סרן": ["חובה"]}}),
-    ):
+    passes = [(False, {})] + [
+        (is_officer, {name: value}) for name, (value, is_officer) in _VARIANT_VALUES.items()
+    ]
+    for is_officer, extra in passes:
         soldier = _RecordingSoldier(is_officer=is_officer)
-        requirements = DutyTypeRequirements.model_validate({**strict, **extra})
-        assert _is_eligible(
+        requirements = DutyTypeRequirements.model_validate({**base, **extra})
+        assert is_eligible(
             soldier, requirements, mitvahim_months=6, alal_months=3, today=date.today()
         )
         read |= soldier.read
+    return read
+
+
+def test_guard_knows_how_to_enable_every_requirement_field() -> None:
+    from app.services.eligibility import DutyTypeRequirements
+
+    _, unknown = _requirement_passes()
+    assert not unknown, (
+        f"DutyTypeRequirements fields {unknown} are not covered by the parity guard. "
+        "Teach _ENABLE_VALUES/_VARIANT_VALUES how to enable them so the guard sees "
+        "which Soldier attributes they read, and update "
+        "_STRUCTURAL_ELIGIBILITY_FIELDS if they read a new one."
+    )
+    assert set(DutyTypeRequirements.model_fields) >= set(_VARIANT_VALUES)
+
+
+def test_structural_grouping_covers_every_field_is_eligible_reads() -> None:
+    from app.services.eligibility import _is_eligible
+
+    read = _soldier_fields_read(_is_eligible)
     assert read == set(svc._STRUCTURAL_ELIGIBILITY_FIELDS)
+
+
+def test_guard_fails_when_eligibility_reads_an_unlisted_soldier_field() -> None:
+    from app.services.eligibility import _is_eligible
+
+    def reads_new_attribute(soldier, *args, **kwargs):
+        _ = soldier.some_new_soldier_attribute
+        return _is_eligible(soldier, *args, **kwargs)
+
+    read = _soldier_fields_read(reads_new_attribute)
+    assert read - set(svc._STRUCTURAL_ELIGIBILITY_FIELDS) == {"some_new_soldier_attribute"}
 
 
 def test_count_matches_list_when_enforcement_disabled(admin_session, seeded) -> None:

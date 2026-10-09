@@ -70,6 +70,10 @@ def validate_rank_track_compatibility(rank: str | None, is_career: bool) -> None
 
 
 class DutyTypeRequirements(BaseModel):
+    # NOTE: a new requirement flag that reads a Soldier attribute not yet used
+    # here must also be added to ``_STRUCTURAL_ELIGIBILITY_FIELDS`` in
+    # ineligible_soldiers.py (and taught to the guard test in
+    # tests/unit/test_ineligible_soldiers_count_parity.py).
     allowed_genders: list[str] = []
     requires_mitvahim: bool = False
     requires_alal: bool = False
