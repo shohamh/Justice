@@ -61,8 +61,11 @@ vi.mock("../api/levelTypes");
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
+// HomePage calls the idle gate twice per render: first for the secondary reads,
+// then for the lower command panels. Tests can hold the second one closed.
+const idleGates = vi.hoisted(() => ({ call: 0, lowerPanelsOpen: true }));
 vi.mock("../hooks/useDashboardIdleGate", () => ({
-  useDashboardIdleGate: () => true,
+  useDashboardIdleGate: () => (idleGates.call++ % 2 === 0 ? true : idleGates.lowerPanelsOpen),
 }));
 
 const mockUser = {
@@ -96,6 +99,8 @@ vi.mock("../auth/AuthContext", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  idleGates.call = 0;
+  idleGates.lowerPanelsOpen = true;
   Object.assign(mockUser, {
     id: "soldier-1",
     full_name: "חייל בדיקה",
@@ -472,6 +477,30 @@ describe("HomePage - required scoring data load errors", () => {
     await screen.findByTestId("panel-ineligible-soldiers");
     expect(await screen.findByText("הteam שבאחריותך")).toBeInTheDocument();
     expect(levelTypesApi.listLevelTypes).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads alerts, approvals and the calendar scope first and defers the lower command panels", async () => {
+    Object.assign(mockUser, {
+      role: "commander",
+      hierarchy_node_id: "node-1",
+      is_commander: true,
+      is_duty_manager: false,
+    });
+    idleGates.lowerPanelsOpen = false;
+
+    renderHome();
+
+    await waitFor(() => {
+      expect(commandDashboardApi.getAlerts).toHaveBeenCalled();
+      expect(hierarchyTransfersApi.listPendingTransferRequests).toHaveBeenCalled();
+      expect(soldiersApi.getPendingFieldUpdateCount).toHaveBeenCalled();
+      expect(enrollmentApi.listPendingEnrollments).toHaveBeenCalled();
+      expect(mockFetchMyCommandScope).toHaveBeenCalled();
+    });
+    expect(await screen.findByTestId("command-unit-calendar")).toBeInTheDocument();
+    expect(commandDashboardApi.getUpcoming).not.toHaveBeenCalled();
+    expect(commandDashboardApi.getPotential).not.toHaveBeenCalled();
+    expect(potentialApi.getPotentialSummary).not.toHaveBeenCalled();
   });
 
   it("uses the shared admin ineligible count query", async () => {
