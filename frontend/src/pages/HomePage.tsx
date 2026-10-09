@@ -28,7 +28,7 @@ import { getTransparencyAuthorizationScope } from "../api/auth";
 import { isCommandScopeAvailable } from "../auth/dashboardRoles";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
-import { listDutyTypes, listLocations } from "../api/dutyConfig";
+import { listLocations } from "../api/dutyConfig";
 import { listMySwaps, listPendingSwaps } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { SettingsMap, getSystemSettings } from "../api/systemSettings";
@@ -48,6 +48,7 @@ import {
 } from "../api/commanderDashboard";
 import { getPotentialSummary as getNodePotentialSummary, type PotentialSummary } from "../api/potential";
 import { useLevelTypes } from "../hooks/useLevelTypes";
+import { useDutyTypes } from "../hooks/useDutyTypes";
 import { useAdminIneligibleSoldierCount } from "../hooks/useAdminIneligibleSoldierCount";
 import { useDashboardIdleGate } from "../hooks/useDashboardIdleGate";
 
@@ -143,7 +144,7 @@ export default function HomePage() {
   });
   const duties = useMemo(() => dutiesQuery.data ?? [], [dutiesQuery.data]);
 
-  const typesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const typesQuery = useDutyTypes();
   const typeNames = Object.fromEntries(
     (Array.isArray(typesQuery.data) ? typesQuery.data : []).map((t) => [t.id, t.name]),
   );
