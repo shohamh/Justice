@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listDutyTypes } from "../api/dutyConfig";
 import { queryKeys } from "../queryKeys";
 
-/** Duty types change only on the duty-config page, which invalidates this key. */
+/** Duty types change on the duty-config page and via the inline create modal; both invalidate this key. */
 export const DUTY_TYPES_STALE_TIME_MS = 300_000;
 
 /**

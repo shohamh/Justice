@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useModalBackClose } from "../hooks/useModalBackClose";
@@ -17,6 +18,7 @@ import TimeInput from "./TimeInput";
 import { translateApiError } from "../utils/translateApiError";
 import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { isRankTrackFlexible } from "../constants/ranks";
+import { queryKeys } from "../queryKeys";
 
 type Reqs = NonNullable<DutyType["requirements"]>;
 
@@ -30,6 +32,7 @@ interface Props {
 export default function DutyTypeFormModal({ initial, initialName, onSaved, onClose }: Props) {
   useModalBackClose(onClose);
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [name, setName] = useState(initial?.name ?? initialName ?? "");
   const [score, setScore] = useState(initial?.score_per_day ?? "1.00");
   const [reserveRatio, setReserveRatio] = useState(initial?.reserve_ratio ?? "0.000");
@@ -137,6 +140,9 @@ export default function DutyTypeFormModal({ initial, initialName, onSaved, onClo
           }
         }
       }
+      // The modal is also opened inline (shift templates, import review), not only from the
+      // duty-config page; useDutyTypes caches for minutes, so drop it as soon as a save lands.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dutyTypes() });
       onSaved(dt);
     } catch (err: unknown) {
       setError(translateApiError(err, t, initial ? "שגיאה בעדכון סוג התורנות" : "שגיאה ביצירת סוג התורנות"));
