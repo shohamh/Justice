@@ -397,3 +397,64 @@ Also checked:
 - DevTools-style throttling applies latency per request and does not model TCP slow start, DNS, TLS or the connection setup to Google Fonts; the Google Fonts requests went over the real internet with the throttling on top.
 - 7 runs per cell; p95 is the maximum of 7 and is sensitive to single outliers (for example Home slow 4G `after` 4420 ms, Login fast 4G `after` 1604 ms). The exploratory captures were separate sessions, so compare variants only with the `6d12dd49` column of the same capture.
 - FCP on the code-split builds is a loading text for returning users; use the shell-visible times for user-perceived speed.
+
+## Regression bisect: page-ready at c1, 2026-10-09
+
+Measurement only, no application code changed. Frontend of each commit built separately; ONE fixed backend (branch HEAD, `profile_scale_server` on 8100, 20,120 soldiers); profiler from HEAD; c1, RUNS=5 after a RUNS=1 warm-up; scenarios transparency, hierarchy, hr-sync-review, calendar (control). Two passes: pass 1 in order 09a5b787, a1a56cb4, 31db05aa, HEAD; pass 2 in the reverse order. Free RAM was 1.7-2.1 GB throughout (low but stable). Numbers are `pass1 / pass2`; the passes agree within ~5%.
+
+| Scenario | Mode | Commit | pageReady p50 pass1 / pass2 (ms) | pageReady p95 (p1 / p2) | selectorVisible p50 (p1 / p2) | FCP p50 (p1 / p2) | API requests |
+|---|---|---|---|---|---|---|---|
+| Transparency | cold | 09a5b787 | 2251 / 2285 | 2291 / 2317 | 1674 / 1720 | 1296 / 1344 | 10 |
+| Transparency | cold | a1a56cb4 | 3373 / 3194 | 3649 / 3418 | 1894 / 1828 | 1504 / 1452 | 12 |
+| Transparency | cold | 31db05aa | 2410 / 2439 | 2928 / 2621 | 901 / 883 | 892 / 872 | 12 |
+| Transparency | cold | HEAD | 2559 / 2411 | 2898 / 2548 | 996 / 870 | 984 / 828 | 10 |
+| Transparency | warm | 09a5b787 | 1426 / 1336 | 1444 / 1411 | 912 / 899 | 464 / 420 | 10 |
+| Transparency | warm | a1a56cb4 | 2426 / 2485 | 2651 / 2749 | 732 / 737 | 704 / 720 | 12 |
+| Transparency | warm | 31db05aa | 2399 / 2389 | 2451 / 2426 | 1211 / 1214 | 756 / 748 | 12 |
+| Transparency | warm | HEAD | 2147 / 2154 | 2194 / 2192 | 1227 / 1221 | 772 / 776 | 10 |
+| Hierarchy (/team) | cold | 09a5b787 | 3709 / 3671 | 4064 / 3739 | 1677 / 1721 | 1284 / 1340 | 16 |
+| Hierarchy (/team) | cold | a1a56cb4 | 3395 / 3353 | 3614 / 3420 | 1836 / 1806 | 1456 / 1380 | 14 |
+| Hierarchy (/team) | cold | 31db05aa | 2733 / 2723 | 2936 / 3431 | 842 / 917 | 828 / 872 | 14 |
+| Hierarchy (/team) | cold | HEAD | 2718 / 3048 | 2915 / 3188 | 870 / 976 | 844 / 952 | 12 |
+| Hierarchy (/team) | warm | 09a5b787 | 1869 / 1851 | 1876 / 1862 | 1246 / 1242 | 832 / 816 | 13 |
+| Hierarchy (/team) | warm | a1a56cb4 | 2768 / 2713 | 2883 / 2794 | 1273 / 1263 | 800 / 792 | 15 |
+| Hierarchy (/team) | warm | 31db05aa | 2363 / 2387 | 2493 / 2460 | 468 / 472 | 452 / 456 | 15 |
+| Hierarchy (/team) | warm | HEAD | 2399 / 2459 | 2478 / 2568 | 909 / 913 | 448 / 468 | 12 |
+| HR sync review | cold | 09a5b787 | 3782 / 3628 | 3842 / 3790 | 1695 / 1704 | 1336 / 1284 | 20 |
+| HR sync review | cold | a1a56cb4 | 3703 / 3628 | 3822 / 3765 | 1749 / 1785 | 1332 / 1360 | 18 |
+| HR sync review | cold | 31db05aa | 2970 / 2985 | 3156 / 3183 | 820 / 855 | 816 / 792 | 18 |
+| HR sync review | cold | HEAD | 3157 / 3043 | 3326 / 3274 | 907 / 850 | 904 / 840 | 16 |
+| HR sync review | warm | 09a5b787 | 1827 / 1842 | 2048 / 1973 | 968 / 1009 | 588 / 576 | 16 |
+| HR sync review | warm | a1a56cb4 | 2869 / 2701 | 2914 / 2787 | 980 / 974 | 528 / 524 | 18 |
+| HR sync review | warm | 31db05aa | 2610 / 2655 | 2995 / 2751 | 917 / 885 | 432 / 412 | 18 |
+| HR sync review | warm | HEAD | 2350 / 2468 | 2404 / 2475 | 900 / 896 | 416 / 472 | 16 |
+| Calendar (control) | cold | 09a5b787 | 3658 / 3680 | 3913 / 4075 | 1802 / 1770 | 1300 / 1292 | 18 |
+| Calendar (control) | cold | a1a56cb4 | 3413 / 3318 | 3520 / 3814 | 1865 / 1864 | 1376 / 1368 | 16 |
+| Calendar (control) | cold | 31db05aa | 2725 / 2753 | 2996 / 2759 | 1202 / 1159 | 812 / 772 | 16 |
+| Calendar (control) | cold | HEAD | 3076 / 3218 | 3516 / 3924 | 1277 / 1285 | 848 / 828 | 14 |
+| Calendar (control) | warm | 09a5b787 | 3060 / 3056 | 3098 / 3112 | 995 / 1005 | 528 / 540 | 18 |
+| Calendar (control) | warm | a1a56cb4 | 2758 / 2606 | 2870 / 2763 | 1576 / 1111 | 736 / 700 | 16 |
+| Calendar (control) | warm | 31db05aa | 2427 / 2409 | 2473 / 2469 | 1090 / 1047 | 424 / 448 | 16 |
+| Calendar (control) | warm | HEAD | 2270 / 2286 | 2503 / 2362 | 991 / 995 | 444 / 432 | 14 |
+
+### Which step regressed
+- **09a5b787 -> a1a56cb4 (Task 2 + Task 3) introduced the warm regression.** Warm page-ready: Transparency 1426/1336 -> 2426/2485 (+75-85%), Hierarchy 1869/1851 -> 2768/2713 (+46%), HR sync 1827/1842 -> 2869/2701 (+50-57%). Cold Transparency 2251/2285 -> 3373/3194 (+40-50%). selectorVisible and FCP did NOT get slower (warm Transparency selector 912 -> 732; warm FCP +240 ms is within build-to-build variation of the entry), so the page content appears no later; only the tail of the measured window grew.
+- **a1a56cb4 -> 31db05aa (Task 5, lazy routes + chunk splitting) did not cause it; it helped cold.** Cold Transparency 3373 -> 2410, cold FCP 1504 -> 892, cold selectorVisible 1894 -> 901. Warm is unchanged (2426 -> 2399). No route-chunk waterfall effect visible on loopback: FCP and selectorVisible fell, they did not rise. H1 rejected.
+- **31db05aa -> HEAD (Task 6 + later)**: roughly neutral to slightly better (warm Transparency 2399 -> 2147, request count 12 -> 10, `/api/me` + duplicate `settings/public`/`auth/refresh`/`level-types` gone). H3 rejected as cause.
+- Control (calendar) improves monotonically (warm 3060/3056 -> 2286/2270), so the machine did not drift.
+
+### Cause: H2 (nav/shell gate timing), plus an artifact of the measurement window
+Requests inside the measured window (warm Transparency, count per run / median ms):
+- 09a5b787 (10 requests): bug-reports/unread-count, **admin/errors/unread-count (503, retried)**, me, unseen-count, notifications/unread-count, transparency/page, settings/public x2, auth/refresh x2. NOT present: `/api/nav/counts`, `/api/ranges/ineligible-soldiers/count`, `/api/algorithm/jobs`.
+- a1a56cb4 and 31db05aa (12 requests): same minus errors/unread-count (Task 2/3 gate it on error-log being configured and set retry false), PLUS `nav/counts` (170-322 ms; 586-614 ms on /team), `ranges/ineligible-soldiers/count` (268-317; ~590-620 on /team) and `algorithm/jobs` (339-358; 377-562 on /team).
+- HEAD (10 requests): these three still in the window; the duplicates are gone.
+So in the baseline the three slow shell reads (UnifiedNav, behind its settle gate: gate opens when no query is in flight, or after a 1.2 s deadline) started AFTER the profiler's 500 ms API-quiet period had already closed, so they were never counted. The baseline's failing `errors/unread-count` (503, default retry with 1/2/4 s backoff) kept `useIsFetching() > 0` so the gate stayed shut until the 1.2 s deadline. Task 2/3 removed that 503 retry loop (and cut other requests), so the gate now opens as soon as the page's own queries finish, which is inside the quiet period; the 3 reads (~300-600 ms each, they run concurrently on one loopback backend) then extend the window by about their duration plus the 500 ms quiet time (+~1.0 s warm). This inference of why the baseline gate stayed closed is from reading the code and the 503 counts in the artifacts (134 503s in the baseline artifact), not from an instrumented trace.
+
+Consequence: the "regression" is mostly the shell badge reads moving into the measured window, not additional work (the baseline artifact simply did not see them) and not slower content (selectorVisible/FCP did not rise). It is still a real change in when the badge requests fire (earlier, concurrent with the tail of page load), and it contends with the page's own tail requests (e.g. /team `hierarchy/branches` stays ~330-370 ms).
+
+### Recommendation (not implemented)
+1. Keep the nav counts / ineligible count / algorithm jobs behind a deliberately later gate: after page-ready, e.g. `requestIdleCallback` plus a minimum ~700 ms after the last in-flight query (longer than the profiler's 500 ms quiet window), rather than "as soon as nothing is fetching". Expected effect: warm page-ready returns to ~1.3-1.4 s Transparency, ~1.8 s Hierarchy/HR sync (baseline-comparable, and with the Task 5/6 gains maybe lower); badges appear ~0.3-0.7 s later. Risk: badge staleness on first paint; keep an immediate fetch when the user opens the nav drawer.
+2. Alternatively (or additionally) make the profiler's end condition wait for the shell badge reads so before/after are comparable, and report both "content ready" (selectorVisible) and "all requests settled" - the honest metric is selectorVisible/FCP, which improved or stayed flat except warm Transparency selector (912 -> 1227 at 31db05aa/HEAD, +300 ms, appears with Task 5 lazy loading; cold improved, so re-check before acting).
+3. Not recommended: eager-bundling pages or modulepreload of route chunks - Task 5 did not hurt (cold got faster), so H1 gives nothing to fix.
+
+Caveats: single browser, c1 only, 5 runs; baseline frontend against HEAD backend got 401 on settings/public (pre-login) and 503 on errors/unread-count exactly like its original artifact, so no API-shape incompatibility was introduced. One warm-up run per build.
