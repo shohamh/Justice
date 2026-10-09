@@ -411,3 +411,129 @@ describe("FairnessComponentsCard", () => {
     expect(within(modal).getAllByText("14%").length).toBeGreaterThan(0);
   });
 });
+
+describe("FairnessComponentsCard large groups", () => {
+  function largeGroup(count: number): scoringApi.FairnessComponents {
+    return {
+      components: [{
+        soldier_count: count,
+        duty_type_ids: ["dt1"],
+        duty_type_names: ["שמירה"],
+        duty_types: [{ id: "dt1", name: "שמירה" }],
+        soldiers: Array.from({ length: count }, (_, i) => ({
+          soldier_id: `s${i}`,
+          full_name: `חייל ${i}`,
+          burden_share: i / (count * 10),
+          eligible_type_count: 1,
+          eligible_duty_type_ids: ["dt1"],
+        })),
+        burden_share: { mean: 0.05, cv: 0.2, stddev: 0.01, min: 0, max: 0.1, count },
+      }],
+      exempt_from_all: { count: 0, soldiers: [] },
+    };
+  }
+  const rows = () => screen.getAllByTestId("fairness-candidate-row");
+  const rankTexts = () => rows().map((r) => r.querySelector("span")?.textContent);
+
+  it("shows the top 30 and bottom 30 of a big selected group with the hidden middle marked", () => {
+    render(<FairnessComponentsCard data={largeGroup(450)} activeGroupKeys={new Set(["comp_0"])} />);
+
+    expect(rows()).toHaveLength(60);
+    expect(screen.getByText("חייל 0")).toBeInTheDocument(); // rank 1
+    expect(screen.getByText("חייל 29")).toBeInTheDocument(); // rank 30
+    expect(screen.queryByText("חייל 30")).not.toBeInTheDocument();
+    expect(screen.queryByText("חייל 419")).not.toBeInTheDocument();
+    expect(screen.getByText("חייל 420")).toBeInTheDocument(); // rank 421 = first of bottom 30
+    expect(screen.getByText("חייל 449")).toBeInTheDocument(); // rank 450
+    expect(screen.getByTestId("fairness-candidates-gap")).toHaveTextContent("390");
+    expect(screen.getByText("טען עוד מלמעלה")).toBeInTheDocument();
+    expect(screen.getByText("טען עוד מלמטה")).toBeInTheDocument();
+  });
+
+  it("renders the two load controls as real buttons", () => {
+    render(<FairnessComponentsCard data={largeGroup(450)} activeGroupKeys={new Set(["comp_0"])} />);
+
+    expect(screen.getByRole("button", { name: "טען עוד מלמעלה" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "טען עוד מלמטה" })).toBeInTheDocument();
+  });
+
+  it("טען עוד מלמעלה extends the top block downward and keeps real ranks", () => {
+    render(<FairnessComponentsCard data={largeGroup(450)} activeGroupKeys={new Set(["comp_0"])} />);
+
+    fireEvent.click(screen.getByText("טען עוד מלמעלה"));
+
+    expect(rows()).toHaveLength(110);
+    expect(screen.getByText("חייל 79")).toBeInTheDocument(); // top block now ranks 1..80
+    expect(screen.queryByText("חייל 80")).not.toBeInTheDocument();
+    expect(screen.getByTestId("fairness-candidates-gap")).toHaveTextContent("340");
+  });
+
+  it("טען עוד מלמטה extends the bottom block upward and keeps real ranks", () => {
+    render(<FairnessComponentsCard data={largeGroup(450)} activeGroupKeys={new Set(["comp_0"])} />);
+
+    fireEvent.click(screen.getByText("טען עוד מלמטה"));
+
+    expect(rows()).toHaveLength(110);
+    expect(screen.getByText("חייל 370")).toBeInTheDocument(); // bottom block now ranks 371..450
+    expect(screen.queryByText("חייל 369")).not.toBeInTheDocument();
+    expect(rankTexts()[rankTexts().length - 1]).toBe("450");
+    expect(screen.getByTestId("fairness-candidates-gap")).toHaveTextContent("340");
+  });
+
+  it("merges into one contiguous list and drops both buttons once nothing is left to load", () => {
+    render(<FairnessComponentsCard data={largeGroup(100)} activeGroupKeys={new Set(["comp_0"])} />);
+    expect(rows()).toHaveLength(60);
+
+    fireEvent.click(screen.getByText("טען עוד מלמעלה")); // only 40 hidden; loads them all
+
+    expect(rows()).toHaveLength(100);
+    expect(rankTexts()).toEqual(Array.from({ length: 100 }, (_, i) => String(i + 1)));
+    expect(screen.queryByText("טען עוד מלמעלה")).not.toBeInTheDocument();
+    expect(screen.queryByText("טען עוד מלמטה")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("fairness-candidates-gap")).not.toBeInTheDocument();
+  });
+
+  it("shows a group of 60 or fewer as one plain list with no buttons", () => {
+    render(<FairnessComponentsCard data={largeGroup(60)} activeGroupKeys={new Set(["comp_0"])} />);
+
+    expect(rows()).toHaveLength(60);
+    expect(screen.queryByText("טען עוד מלמעלה")).not.toBeInTheDocument();
+    expect(screen.queryByText("טען עוד מלמטה")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("fairness-candidates-gap")).not.toBeInTheDocument();
+  });
+
+  it("searches soldiers by name across the whole group, keeping each match's real rank", () => {
+    render(<FairnessComponentsCard data={largeGroup(450)} activeGroupKeys={new Set(["comp_0"])} />);
+
+    fireEvent.change(screen.getByTestId("fairness-candidates-search"), { target: { value: "חייל 449" } });
+
+    expect(screen.getByTestId("fairness-candidates-count")).toHaveTextContent("תוצאה אחת");
+    expect(rows()).toHaveLength(1);
+    expect(within(rows()[0]).getByText("450")).toBeInTheDocument(); // real rank, not 1
+  });
+
+  it("applies the top/bottom split to a big search result set and resets it when the search changes", () => {
+    render(<FairnessComponentsCard data={largeGroup(450)} activeGroupKeys={new Set(["comp_0"])} />);
+    const search = screen.getByTestId("fairness-candidates-search");
+
+    // "חייל 4" matches 4, 40-49 and 400-449 = 61 soldiers: one more than 30+30.
+    fireEvent.change(search, { target: { value: "חייל 4" } });
+    expect(rows()).toHaveLength(60);
+    expect(screen.getByTestId("fairness-candidates-gap")).toHaveTextContent("1");
+    fireEvent.click(screen.getByText("טען עוד מלמעלה"));
+    expect(rows()).toHaveLength(61);
+    expect(screen.queryByText("טען עוד מלמעלה")).not.toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "חייל" } });
+    expect(rows()).toHaveLength(60); // back to the initial 30 + 30
+  });
+
+  it("says so when no soldier matches the search", () => {
+    render(<FairnessComponentsCard data={largeGroup(20)} activeGroupKeys={new Set(["comp_0"])} />);
+
+    fireEvent.change(screen.getByTestId("fairness-candidates-search"), { target: { value: "אין כזה" } });
+
+    expect(screen.getByTestId("fairness-candidates-no-match")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("fairness-candidate-row")).toHaveLength(0);
+  });
+});
