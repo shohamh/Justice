@@ -103,13 +103,13 @@ Measured in-process with `python -m app.scripts.profile_ineligible_count` (read-
 | 5 duty eligibility | 15 | 15 | 16 |
 | `count_ineligible_soldiers` end to end | 577 | 278 | 156 |
 
-Decision gate: phase 1 was 77% of the baseline, so row 1 applied first. Loading rows instead of entities made phase 2 slower, because by-name attribute access on a SQLAlchemy `Row` costs more than on an entity. That left phase 2 at 61%, so row 2 applied next: group soldiers by the nine fields `_is_eligible` reads (44 distinct profiles at 20k) and build the group key positionally. The end-to-end median went from 577 to 156 ms (3.7x), under the 250 ms target. No cache was added. The count still matches `len(list_ineligible_soldiers(...))` on the scale database for every scope (admin 1 = 1, branch 1 = 1, group 0 = 0, team 0 = 0).
+Decision gate: phase 1 was 77% of the baseline, so row 1 applied first. Loading rows instead of entities made phase 2 slower, because by-name attribute access on a SQLAlchemy `Row` costs more than on an entity. That left phase 2 at 61%, so row 2 applied next: group soldiers by the nine fields `_is_eligible` reads (44 distinct profiles at 20k) and build the group key positionally. The end-to-end median went from 577 to 156 ms (3.7x), This is an in-process figure (no auth, no network, no other requests); the end-to-end result of the same code is in the Task 7 section: c5 cold p50 1481 ms wall / 1146 ms server against the 1.0 s target, which was missed. No cache was added. The count still matches `len(list_ineligible_soldiers(...))` on the scale database for every scope (admin 1 = 1, branch 1 = 1, group 0 = 0, team 0 = 0).
 
 Sanity check against the baseline: the in-process 577 ms sits below the 928 ms server median at c1, because the server number also includes auth, `_resolve_roots` and contention with the other shell requests of the same page load.
 
 ## Per-page duplicates (Task 6), 2026-10-09
 
-Counted per page load in cold mode (warm mode matches unless noted). "Baseline" is the median per load in `shell-load-before-c1-20261008.json` (code `e03c9532`). "Before Task 6" is a fresh production-build capture after Tasks 2-5 (`31db05aa`, `JUSTICE_SCALE_RUNS=1`, c1). "After" is `docs/benchmarks/data/shell-load-t6-final-c1-20261008.json` (code `305c805b`, same procedure). The artifact strips query strings, so every remaining pair was checked against full request URLs with a separate Playwright trace of the same build.
+Counted per page load in cold mode. Warm mode has the same request lists for the page-load scenarios, except Hierarchy (one extra aborted request, below) and Soldier detail, where warm is an in-app modal opened on an already loaded Team page, not a page load: it makes 3 requests (`soldiers/:id`, `soldiers/ranks`, `soldiers/:id/score`; 4 at baseline) and is not comparable with the 16-20 of the cold load. "Baseline" is the median per load in `shell-load-before-c1-20261008.json` (code `e03c9532`). "Before Task 6" is a fresh production-build capture after Tasks 2-5 (`31db05aa`, `JUSTICE_SCALE_RUNS=1`, c1). "After" is `docs/benchmarks/data/shell-load-t6-final-c1-20261008.json` (code `305c805b`, same procedure). That capture was taken while vitest was running on the same machine, so its timings are noisy and are not used anywhere in this document; only its request counts are. The artifact strips query strings, so every remaining pair was checked against full request URLs with a separate Playwright trace of the same build.
 
 | Page | Baseline duplicates (requests) | Before Task 6 (requests) | After Task 6 (requests) | Kept, with reason |
 |---|---|---|---|---|
@@ -121,7 +121,7 @@ Counted per page load in cold mode (warm mode matches unless noted). "Baseline" 
 | Transparency | settings/public x2, auth/refresh x2 (10) | settings/public x2, auth/refresh x2 (12) | none (10) | - |
 | HR sync review | settings/public x2, auth/refresh x2, errors/unread-count x2 (20) | settings/public x2, auth/refresh x2 (18) | none (16) | - |
 
-Baseline request counts are the Task 1 c1 cold medians; the other two columns are single runs.
+Baseline request counts are the Task 1 c1 cold medians; the other two columns are single runs. Transparency shows 12 requests in the "before Task 6" column against 10 at baseline and 10 after; the cause of the two extra requests is not established (that capture was a single run and its artifact was not kept, and both later captures, including the Task 7 matrix, show 10), so treat the 12 as an unexplained single-run observation.
 
 Single on the production build (dev-server React StrictMode doubles, not bugs): `/api/me`, Team `level-types` and `soldiers/ranks`, calendar `duty-types`. `errors/unread-count` was already gone after Task 2.
 
@@ -150,7 +150,7 @@ Admin user, Home cold, medians. "c1 before" is one run of `31db05aa` plus the du
 
 `alerts` is server-bound (1.2 s of 1.5 s at c1). In-process on the scale database (read-only, 5 runs) it took 1198 ms: ~395 ms to build 20,117 `Soldier` ORM entities (the same columns as rows: 43 ms), ~200 ms to build and send four `uuid[]` parameters of 20,116 ids (the expiring-exemption query executes in 0.8 ms but took 70-95 ms client-side), and the warning-score aggregate. `EXPLAIN (ANALYZE, BUFFERS)` of the aggregate: parallel seq scan of all 1,000,008 `duty_assignments`, partial and final hash aggregate to 20,008 groups (5 batches, under 1 MB spilled to temp), 339 ms execution. Fixes: rows instead of entities (`9673e871`) and a soldier-scope subquery instead of the id arrays (`ed96e360`). In-process 1198 -> 505 ms; server time c1 1228 -> 620-706 ms, c5 4396 -> 1799 ms; Home ready at c5 10417 -> 7652 ms. A 50-soldier team scope is unchanged (score sieve 6.4 vs 8.4 ms, identical results). The aggregate itself (~350 ms) stays: an organization-wide scope needs every soldier's all-time score and no index helps a full aggregate; the score-projection read path (setting `SCORE_PROJECTION_COMMANDER_READS_ENABLED_KEY`, off on this database) is the existing answer to that.
 
-`hierarchy-transfers/pending` and `field-updates/pending/count` are not server-bound (9-25 ms server for 1.2-1.3 s wall at c1). Playwright request timing on the same build showed them waiting ~760-790 ms in the browser before the request was sent: the command dashboard opened with 11 reads at once, and Chrome allows six HTTP/1.1 connections per host. `305c805b` moves upcoming, potential, own-potential summaries and the upcoming-ranges widget behind a second `useDashboardIdleGate` window, leaving alerts, approvals and the calendar in the first burst. The other approval reads gained most (c5: constraints 2322 -> 867 ms, swaps 2200 -> 802); transfers and field updates gained less (c1 842 -> 716 and 825 -> 685 ms; c5 2511 -> 2164 and 2287 -> 2102 ms) because one approval read still queues behind alerts and the calendar. Page ready did not change. Upcoming and potential now finish later (c5 1104 -> 1721 ms wall).
+`hierarchy-transfers/pending` and `field-updates/pending/count` are not server-bound (9-25 ms server for 1.2-1.3 s wall at c1). Playwright request timing on the same build showed them waiting ~760-790 ms in the browser before the request was sent: the command dashboard opened with 11 reads at once, and Chrome allows six HTTP/1.1 connections per host. `305c805b` moves upcoming, potential, own-potential summaries and the upcoming-ranges widget behind a second `useDashboardIdleGate` window, leaving alerts, approvals and the calendar in the first burst. The other approval reads gained most (c5: constraints 2322 -> 867 ms, swaps 2200 -> 802); transfers and field updates gained less (c1 842 -> 716 and 825 -> 685 ms; c5 2511 -> 2164 and 2287 -> 2102 ms) because one approval read still queues behind alerts and the calendar. These two gains are within run-to-run variance: in the same runs the transfers server time went from 236 to 618 ms, a change in the other direction that is larger than the wall-time gain, and the wall times moved by 8-17%. Treat them as no measurable change. Page ready did not change. Upcoming and potential now finish later (c5 1104 -> 1721 ms wall).
 
 Not fixed:
 
@@ -158,3 +158,101 @@ Not fixed:
 - `deploy/nginx.conf` serves HTTPS without `http2`, so production has the same six-connection queue; `listen 443 ssl http2;` would remove it. Its `limit_req` (10 r/s, burst 20, per client IP) is also close to one cold Home load (32 API requests in 4-5 s) and would be reached by users behind a shared NAT. Deployment configuration is outside this task.
 - The Home command calendar loads the scope window (`node_id`) and then the personal window (`soldier_id`) one after the other. Running them in parallel would take ~350 ms off the end of the page. They are not duplicates, so this is left for a separate change.
 - Measurement artifact: on this machine every new browser connection to `localhost:5174` waits ~300 ms before its request starts (Playwright `requestStart` ~300 ms on fresh connections, 0 on reused ones), consistent with an IPv6-then-IPv4 fallback for `localhost` against a server bound to 127.0.0.1. It adds to all wall times in these captures and does not exist in production.
+
+## After (Task 7), 2026-10-09
+
+Matched re-run of the Task 1 matrix on the final code.
+
+### Setup
+
+- Code measured: `46d6d67c`. Application code is identical to `305c805b`; the commits on top only add documentation and the `t6-final` artifact.
+- Same procedure, database (`justice_scale_fcp_scale`, 20,120 soldiers, 1,000,008 assignments verified before the run), Redis, profile server on 8100 (`LOKI_URL` unset, `TRANSPARENCY_READ_MODEL_ENABLED=true`), production build served by `vite preview` on 5174, user 1000001, `localhost:5174` as base URL. A discarded 1-run warm-up of every scenario (c1, then c5) preceded the measured runs; no vitest or build ran during a capture. c1 then c5, strictly sequential, 5 runs each.
+- Entry chunk `assets/index-DEVk5xgm.js` = 428.60 kB raw (428,598 bytes), 113.46 kB gzip (baseline 3,989.42 kB / 1,099.94 kB gzip). `fullcalendar`, `recharts`, `react-pdf`, `katex` and `markdown` are separate chunks, next to one chunk per page.
+- Artifacts: `docs/benchmarks/data/shell-load-after-c1-20261008.json` (70 measurements) and `shell-load-after-c5-20261008.json` (350 measurements); every measurement reached readiness, exit code 0. They contain no password or database URL strings. Compare with `node frontend/scripts/summarize-scale-pages.mjs <after> <before>`.
+- Single capture pair, no re-runs. Free memory was about 2.7 GB of 16 GB when the run started; other applications were running as in the baseline (Docker Desktop with the other project containers, Firefox, WhatsApp, Claude desktop, Windows Defender).
+
+### Success criteria
+
+| Criterion | Baseline | Target | Measured | Result |
+|---|---|---|---|---|
+| `GET /api/admin/errors/unread-count` requests, Loki unset | 134 (c1), 836 (c5) | 0 | 0 (c1), 0 (c5) | Met |
+| Entry JS chunk, raw | 3,989 kB | <= 1.6 MB, heavy libraries in lazy chunks | 428.6 kB (113.5 kB gzip); heavy libraries in separate chunks | Met |
+| Requests per cold page load | home 39, calendar team 23, calendar org 18-19, hierarchy 16-17, hr-sync 20, soldier detail 20-21, transparency 10 | no endpoint more than once per page load, except genuine refetches | home 32, calendar team 18, calendar org 14, hierarchy 12, hr-sync 16, soldier detail 16, transparency 10. Remaining pairs: Home `ranges` x2 and `calendar/shifts` x2; Calendar team `hierarchy/branches`, `ranges`, `calendar/shifts` x2; Soldier detail `soldiers/roster` x2 (all analysed in the Task 6 section as different queries or profiler steps); warm Hierarchy one aborted `hierarchy/branches` of the previous page | Met, with those documented exceptions |
+| `ineligible-soldiers/count` c5 cold p50 (end to end) | 4144 ms wall, 3780 ms server (c1: 1219 / 901) | <= 1.0 s | 1481 ms wall, 1146 ms server (c1: 601 / 282) | **Missed** |
+| FCP c5 cold p50, each page | 1512-1592 ms | <= 2.0 s | 1040-1168 ms (all pages together 1124 ms) | Met (already met at baseline) |
+| Page-ready p95, every page, c1 and c5 | c1 cold 2.3-6.6 s, c5 cold 7.8-14.3 s | not worse than baseline | c5: no page worse (all 14 scenario/modes lower or equal). c1: 4 of 14 worse: Transparency cold 2266 -> 2536, Transparency warm 1352 -> 2218, Hierarchy warm 1842 -> 2658, HR sync warm 2065 -> 2501 ms | **Missed** (c1) |
+
+Counts: 4 met, 2 missed.
+
+Ineligible count in more detail (cold, 200 responses, wall / server p50): c1 1219 / 901 -> 601 / 282 ms, c5 4144 / 3780 -> 1481 / 1146 ms; warm c5 4556 / 3703 -> 1345 / 1011 ms. The in-process figure from Task 4 (156 ms) does not carry over to the page load: at c5 five browsers hit one backend with other shell reads running, and the server time is 1.1 s. At c5 the database part is 783-846 ms of it (17 queries, same as before, 2490-2602 ms at baseline).
+
+FCP: the target was met at baseline (the 3.4-3.8 s seen earlier was Vite dev-server overhead, see the Setup section above). After the changes, cold FCP p50 is lower on every page at both concurrencies (c1 1272 -> 864 ms across pages, c5 1536 -> 1124 ms; per page 340-480 ms lower) and the c5 p95 values are lower or equal, so the cold reduction is larger than the baseline's own run-to-run spread, but it is one capture pair on one machine and this experiment does not isolate its cause (the entry chunk shrank, which is consistent with it). Warm FCP is lower on the other pages and higher on Transparency (c1 436 -> 772, c5 508 -> 840 ms) and slightly on Home at c1 (712 -> 772 ms).
+
+### Per-page results (ms, baseline -> after)
+
+c1, cold:
+
+| Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
+|---|---|---|---|---|---|
+| Home | 5917 -> 5020 | 6068 -> 5064 | 1272 -> 856 | 1316 -> 956 | 39 -> 32 |
+| Calendar (synthetic team) | 6302 -> 5113 | 6569 -> 5277 | 1292 -> 848 | 1316 -> 1252 | 23 -> 18 |
+| Calendar (whole org) | 4243 -> 3287 | 4413 -> 3342 | 1268 -> 912 | 1316 -> 956 | 18 -> 14 |
+| Hierarchy/Team | 4357 -> 2757 | 4487 -> 2893 | 1288 -> 836 | 1328 -> 952 | 16 -> 12 |
+| HR sync review | 4154 -> 3008 | 4346 -> 3506 | 1216 -> 828 | 1364 -> 1244 | 20 -> 16 |
+| Soldier detail | 5739 -> 4170 | 6521 -> 4284 | 1256 -> 884 | 1412 -> 1012 | 20 -> 16 |
+| Transparency | 2214 -> 2523 | 2266 -> 2536 | 1296 -> 944 | 1312 -> 952 | 10 -> 10 |
+
+c1, warm:
+
+| Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
+|---|---|---|---|---|---|
+| Home | 5902 -> 4112 | 6174 -> 4661 | 712 -> 772 | 756 -> 792 | 39 -> 32 |
+| Calendar (synthetic team) | 5905 -> 4210 | 6212 -> 4233 | 708 -> 428 | 736 -> 436 | 23 -> 18 |
+| Calendar (whole org) | 3711 -> 2379 | 3727 -> 2461 | 528 -> 440 | 584 -> 508 | 18 -> 14 |
+| Hierarchy/Team | 1829 -> 2396 | 1842 -> 2658 | 836 -> 460 | 840 -> 724 | 13 -> 13 |
+| HR sync review | 2035 -> 2437 | 2065 -> 2501 | 724 -> 412 | 748 -> 468 | 16 -> 16 |
+| Soldier detail (in-app modal) | 1550 -> 1356 | 1604 -> 1480 | - | - | 4 -> 3 |
+| Transparency | 1346 -> 2116 | 1352 -> 2218 | 436 -> 772 | 440 -> 776 | 10 -> 10 |
+
+c5, cold:
+
+| Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
+|---|---|---|---|---|---|
+| Home | 14116 -> 7731 | 14259 -> 7918 | 1556 -> 1124 | 1612 -> 1180 | 39 -> 32 |
+| Calendar (synthetic team) | 10920 -> 6872 | 11475 -> 7166 | 1564 -> 1120 | 1896 -> 1248 | 23 -> 18 |
+| Calendar (whole org) | 8168 -> 4607 | 9199 -> 4753 | 1516 -> 1140 | 1628 -> 1248 | 19 -> 14 |
+| Hierarchy/Team | 7589 -> 4015 | 8018 -> 4160 | 1592 -> 1120 | 1696 -> 1216 | 17 -> 12 |
+| HR sync review | 7288 -> 4196 | 8390 -> 4471 | 1532 -> 1040 | 1800 -> 1532 | 20 -> 16 |
+| Soldier detail | 9569 -> 6187 | 10046 -> 6660 | 1512 -> 1072 | 1544 -> 1152 | 21 -> 16 |
+| Transparency | 2677 -> 3691 | 7790 -> 3921 | 1584 -> 1168 | 1652 -> 1576 | 10 -> 10 |
+
+c5, warm:
+
+| Page | Ready p50 | Ready p95 | FCP p50 | FCP p95 | Requests |
+|---|---|---|---|---|---|
+| Home | 13714 -> 7248 | 14144 -> 7470 | 1052 -> 908 | 1116 -> 952 | 39 -> 32 |
+| Calendar (synthetic team) | 10050 -> 6070 | 11477 -> 6487 | 732 -> 560 | 1124 -> 616 | 23 -> 18 |
+| Calendar (whole org) | 7733 -> 4133 | 9704 -> 4383 | 1048 -> 600 | 1156 -> 648 | 19 -> 14 |
+| Hierarchy/Team | 2164 -> 3211 | 6639 -> 3538 | 860 -> 644 | 1240 -> 704 | 13 -> 13 |
+| HR sync review | 3701 -> 3525 | 6159 -> 3599 | 748 -> 584 | 1140 -> 648 | 20 -> 16 |
+| Soldier detail (in-app modal) | 2512 -> 2547 | 2839 -> 2760 | - | - | 4 -> 3 |
+| Transparency | 1618 -> 3218 | 5202 -> 3347 | 508 -> 840 | 4244 -> 880 | 10 -> 10 |
+
+### What got worse
+
+Page-ready p50 is higher after on: Transparency (c1 cold 2214 -> 2523, c1 warm 1346 -> 2116, c5 cold 2677 -> 3691, c5 warm 1618 -> 3218 ms), Hierarchy warm (c1 1829 -> 2396, c5 2164 -> 3211 ms) and HR sync warm at c1 (2035 -> 2437 ms). Soldier detail warm at c5 is flat (2512 -> 2547 ms). Every other page and mode is lower, (Home cold 15% lower at c1 and 45% at c5; the cold Calendar, Hierarchy, HR sync and Soldier detail pages 19-37% at c1 and 35-47% at c5). Several baseline c5 p95 values were inflated by outliers (Transparency cold 7790, Hierarchy warm 6639, Transparency warm 5202 ms), so the c5 p95 improvements on those pages come from removing the outliers while the p50 got worse.
+
+What the data shows: "page ready" is the later of the page marker and a quiet period without API traffic. On the pages that got worse, the time at which the page's own marker becomes visible did not rise as much as the quiet time (Transparency c1 cold: marker 1659 -> 957 ms, quiet 2209 -> 2520 ms; c1 warm: marker 909 -> 1212 ms, quiet 1343 -> 2112 ms). The request lists differ: in the baseline Transparency window (10 requests) there was no `nav/counts`, `ineligible-soldiers/count` or `algorithm/jobs` call; in the after window they are present, started at about 280-330 ms and taking 1.1-1.2 s each at c5, and they end after the Transparency read itself. The navigation reads in `UnifiedNav` are gated on other queries settling (`navReadsEnabled`); the likely explanation is that, with the error-log calls and their retries gone, the gate now opens early enough for these three reads to land inside the measured window, where before they started after the page had been declared quiet. That is a hypothesis from the request timeline and the source, not tested by a separate experiment. If it is right, part of the cost moved into the measurement window rather than appeared. It does not explain the later marker on warm Transparency (c1 909 -> 1212 ms, c5 946 -> 1282 ms), which stays unexplained.
+
+Other measured regressions:
+
+- `GET /api/nav/counts` at c5 got slower per call: 564 -> 1380 ms wall, 228 -> 1061 ms server (c1 improved: 1031 -> 454 wall, 713 -> 276 server). The after run completes this call in all 325 page loads (baseline: 253 of 325), and it now runs concurrently with the ineligible count and the page's own reads under 5 browsers. The cause is not isolated; it is the next lead for shell cost at c5.
+- Warm FCP on Transparency and (c1) Home, above.
+
+Cheap shell calls got much cheaper on the wall clock at c1: `GET /api/me` 362 -> 47 ms, `notifications/unread-count` 346 -> 26 ms (server time 47 -> 36 and 27 -> 16 ms). The server share is small, so most of the baseline wall time of those calls was outside the handler; with fewer concurrent requests per page this is consistent with fewer new connections hitting the ~300 ms `localhost` connection stall described under the Task 6 section, but that was not tested.
+
+### Caveats
+
+- Local single-machine measurement: production build served by `vite preview` over loopback against a profile server (with timing headers) and a local Postgres, one capture pair, with other applications running and about 2.7 GB of free memory. It is not a production-capacity result; values are comparable only with the baseline taken on the same setup and carry run-to-run noise, especially at c5.
+- Every new browser connection to `localhost:5174` waits about 300 ms before its request starts (found in Task 6). It is a measurement artifact that inflates wall times in both the baseline and these runs; it does not exist in production.
+- The `ineligible-soldiers/count` target (1.0 s) was missed by about 0.5 s at c5; the remaining server time is 1.1 s, of which about 0.8 s is database time. Further work would need a different read path or a cache with an invalidation rule, which the plan reserved for when a pure query optimization was not enough.
