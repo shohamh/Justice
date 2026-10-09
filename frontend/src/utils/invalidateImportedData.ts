@@ -9,7 +9,9 @@ import { queryKeys } from "../queryKeys";
  * soldier exemptions/exemption requests, personal constraints, field updates,
  * enrollment requests, swap requests, range locations/events/assignments/
  * qualifications/excusals, system settings, bug reports and rank-advancement
- * intervals. Derived reads (scoring, potential, command dashboard, nav badge
+ * intervals. The import wizard's own queries (`["import"]`: its duty-type and node
+ * pickers and session lists) are included so a second import sees what the first
+ * one created. Derived reads (scoring, potential, command dashboard, nav badge
  * counts) follow from those writes. Level types, algorithm jobs and
  * notifications are not written by the import and are left alone.
  *
@@ -43,6 +45,7 @@ export function invalidateImportedData(queryClient: QueryClient): void {
     queryKeys.potentialAll(),
     queryKeys.commandDashboardAll(),
     queryKeys.navCountsAll(),
+    queryKeys.importAll(),
   ];
   for (const queryKey of families) {
     void queryClient.invalidateQueries({ queryKey });

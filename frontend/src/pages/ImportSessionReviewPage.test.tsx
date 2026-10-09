@@ -276,6 +276,7 @@ describe("ImportSessionReviewPage", () => {
       queryKeys.commandDashboardSoldiers(),
       queryKeys.myBugReports(),
       queryKeys.rankLadder(),
+      queryKeys.importSessions("active"),
     ];
     const unrelated: (readonly unknown[])[] = [
       queryKeys.algorithmJobs(50, 0),
@@ -283,9 +284,19 @@ describe("ImportSessionReviewPage", () => {
       queryKeys.levelTypes(),
     ];
     for (const key of [...affected, ...unrelated]) lastQueryClient.setQueryData(key, []);
+    // The wizard's own pickers are mounted (active), so invalidation shows up as a
+    // refetch: a second import must see the duty types and nodes the first created.
+    await waitFor(() => expect(importSessionsApi.listDutyTypesForImport).toHaveBeenCalled());
+    await waitFor(() => expect(importSessionsApi.listNodesForImport).toHaveBeenCalled());
+    const dutyTypeFetches = vi.mocked(importSessionsApi.listDutyTypesForImport).mock.calls.length;
+    const nodeFetches = vi.mocked(importSessionsApi.listNodesForImport).mock.calls.length;
 
     fireEvent.click(screen.getByText("אשר וייבא"));
     await screen.findByText(/נוצרו: 2/);
+    await waitFor(() => {
+      expect(vi.mocked(importSessionsApi.listDutyTypesForImport).mock.calls.length).toBeGreaterThan(dutyTypeFetches);
+      expect(vi.mocked(importSessionsApi.listNodesForImport).mock.calls.length).toBeGreaterThan(nodeFetches);
+    });
 
     for (const key of affected) {
       expect(lastQueryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(true);

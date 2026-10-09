@@ -113,6 +113,8 @@ export const queryKeys = {
       : (["potential", "burdenShareGap", authorizationScope, referenceDate] as const),
   burdenShareBreakdown: (soldierId: string) => ["scoring", "burdenShareBreakdown", soldierId] as const,
   inviteCodes: () => ["inviteCodes"] as const,
+  /** Every import-wizard query: session lists/details and the wizard's pickers. */
+  importAll: () => ["import"] as const,
   importSessionsList: () => ["import", "sessions"] as const,
   importSessions: (statusFilter?: string) => ["import", "sessions", statusFilter ?? "active"] as const,
   importSessionDetail: (sessionId: string) => ["import", "session", sessionId] as const,
