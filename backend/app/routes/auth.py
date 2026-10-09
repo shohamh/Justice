@@ -14,6 +14,7 @@ from sqlalchemy import select, update as sa_update, case as sa_case
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+from app.auth import refresh_revocation
 from app.auth.deps import get_current_user
 from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
 from app.auth.password import hash_password, verify_password
@@ -310,6 +311,10 @@ def refresh(
         ) from exc
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="wrong_token_type")
+    # Revoked at logout (this exact token, or its login session). Fails open if
+    # Redis is down -- see app.auth.refresh_revocation.
+    if refresh_revocation.is_revoked(payload):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token_revoked")
 
     soldier = session.get(Soldier, uuid.UUID(payload["sub"]))
     if soldier is None or soldier.left_at is not None:
@@ -324,7 +329,14 @@ def refresh(
     settings = get_settings()
     _warn_if_insecure_cookie_mismatch(request, settings)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
+    # Rotation keeps the login session id so a logout of this session also
+    # revokes the rotated token. Legacy tokens (no sid) start a new session.
+    sid = payload.get("sid")
+    refresh = issue_refresh_token(
+        user_id=soldier.id,
+        token_version=soldier.token_version,
+        session_id=sid if isinstance(sid, str) and sid else None,
+    )
     response.set_cookie(
         key="refresh_token",
         value=refresh,
@@ -338,7 +350,26 @@ def refresh(
 
 
 @router.post("/logout")
-def logout(response: Response, user: Soldier = Depends(get_current_user)) -> dict[str, str]:
+def logout(
+    request: Request, response: Response, user: Soldier = Depends(get_current_user)
+) -> dict[str, str]:
+    """Log out this browser: revoke its refresh token server-side, delete the cookie.
+
+    Revocation is per token/session (jti + sid), never a token_version bump,
+    so the user's other devices stay signed in. A missing, expired, garbage or
+    non-refresh cookie has nothing to revoke and is not an error. The cookie is
+    revoked even if it belongs to a different user than the access token: this
+    browser is logging out and is about to drop that cookie anyway. A store
+    failure is logged inside ``revoke`` and never fails the logout.
+    """
+    cookie = request.cookies.get("refresh_token")
+    if cookie:
+        try:
+            payload = decode_token(cookie)
+        except InvalidToken:
+            payload = None
+        if payload is not None and payload.get("type") == "refresh":
+            refresh_revocation.revoke(payload)
     response.delete_cookie(key="refresh_token", path="/api/auth")
     return {"status": "ok"}
 
