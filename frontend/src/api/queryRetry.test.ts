@@ -13,6 +13,9 @@ describe("shouldRetryQuery", () => {
       expect(shouldRetryQuery(0, httpError(status))).toBe(false);
     }
   });
+  it("does not retry a cancelled request", () => {
+    expect(shouldRetryQuery(0, new AxiosError("canceled", "ERR_CANCELED"))).toBe(false);
+  });
   it("retries network errors and gateway errors, at most twice", () => {
     expect(shouldRetryQuery(0, new AxiosError("Network Error"))).toBe(true);
     expect(shouldRetryQuery(1, httpError(502))).toBe(true);

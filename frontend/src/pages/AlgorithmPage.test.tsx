@@ -8,6 +8,7 @@ import type { AlgorithmJob } from "../api/algorithm";
 import * as dutyConfigApi from "../api/dutyConfig";
 import * as soldiersApi from "../api/soldiers";
 import * as shiftsApi from "../api/shifts";
+import { queryKeys } from "../queryKeys";
 import { AlgorithmSeenProvider } from "../contexts/AlgorithmSeenContext";
 
 vi.mock("react-i18next", () => ({
@@ -47,10 +48,13 @@ vi.mock("../api/shifts", async () => {
   return { ...actual, listShifts: vi.fn() };
 });
 
+let lastQueryClient: QueryClient;
+
 function renderPage(initialJobId?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  lastQueryClient = queryClient;
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
@@ -180,5 +184,26 @@ describe("AlgorithmPage - returned job review", () => {
     expect(await screen.findByTestId("algorithm-job-review-returned-job-42")).toBeVisible();
     expect(await screen.findByTestId("algorithm-proposal-review")).toBeVisible();
     expect(screen.getByTestId("algorithm-proposal-returned-assignment-1")).toBeVisible();
+  });
+});
+
+describe("AlgorithmPage - shared jobs cache", () => {
+  it("cancelling a run also invalidates the shell badge's (50, 0) jobs query", async () => {
+    const running = { ...job, status: "running" as const, seen: false };
+    vi.mocked(algorithmApi.listJobs).mockResolvedValue({ items: [running], total: 1 });
+    vi.mocked(algorithmApi.pollJob).mockResolvedValue({
+      id: "job-1", status: "running", mode: "shadow", planning_start: "2026-01-01", planning_end: "2026-01-02",
+      started_at: null, finished_at: null, error_message: null, progress_message: null,
+      solver_metrics: {}, relaxed: [], reasons: [], batch_results: [], result_metadata: null, proposals: [],
+    } as AlgorithmJob);
+    vi.mocked(algorithmApi.cancelJob).mockResolvedValue(undefined);
+
+    renderPage();
+    lastQueryClient.setQueryData(queryKeys.algorithmJobs(50, 0), { items: [running], total: 1 });
+    fireEvent.click(await screen.findByText(/01\.01\.2026/));
+    fireEvent.click(await screen.findByText("algorithm.cancel_btn"));
+
+    await waitFor(() => expect(algorithmApi.cancelJob).toHaveBeenCalledWith("job-1"));
+    await waitFor(() => expect(lastQueryClient.getQueryState(queryKeys.algorithmJobs(50, 0))?.isInvalidated).toBe(true));
   });
 });

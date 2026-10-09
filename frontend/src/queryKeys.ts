@@ -94,6 +94,8 @@ export const queryKeys = {
   shiftTemplatesAll: () => ["shiftTemplates", "all"] as const,
   shiftsList: () => ["shifts", "list"] as const,
   shifts: (params?: Record<string, unknown>) => ["shifts", "list", params ?? {}] as const,
+  /** Prefix of every algorithmJobs(limit, offset) variant: use it after anything that changes a job. */
+  algorithmJobsAll: () => ["algorithm", "jobs"] as const,
   algorithmJobs: (limit: number, offset: number) => ["algorithm", "jobs", limit, offset] as const,
   algorithmJob: (jobId: string) => ["algorithm", "job", jobId] as const,
   soldierDetail: (soldierId: string) => ["soldiers", "detail", soldierId] as const,
