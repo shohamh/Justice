@@ -61,11 +61,33 @@ vi.mock("../api/levelTypes");
 vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
-// HomePage calls the idle gate twice per render: first for the secondary reads,
-// then for the lower command panels. Tests can hold the second one closed.
-const idleGates = vi.hoisted(() => ({ call: 0, lowerPanelsOpen: true }));
-vi.mock("../hooks/useDashboardIdleGate", () => ({
-  useDashboardIdleGate: () => (idleGates.call++ % 2 === 0 ? true : idleGates.lowerPanelsOpen),
+// HomePage uses two chained idle gates: "secondary" (the first dashboard reads) and
+// "lower" (the panels further down). The mock identifies each gate by the order its
+// call site first mounts (stable hook order), not by a per-render call counter, and
+// returns `enabled && open[name]` like the real gate. Tests open/close a gate by
+// flipping `open.<name>` and re-rendering. `mounted` lets a test assert that HomePage
+// still uses exactly two gates, so adding or removing one fails loudly instead of
+// silently shifting which gate a flag controls.
+const idleGates = vi.hoisted(() => ({
+  names: ["secondary", "lower"] as const,
+  mounted: 0,
+  open: { secondary: true, lower: true },
+}));
+vi.mock("../hooks/useDashboardIdleGate", async () => {
+  const { useRef } = await import("react");
+  return {
+    useDashboardIdleGate: (enabled: boolean) => {
+      const slot = useRef<number | null>(null);
+      if (slot.current === null) slot.current = idleGates.mounted++ % idleGates.names.length;
+      return enabled && idleGates.open[idleGates.names[slot.current]];
+    },
+  };
+});
+
+// Mocked per test: the real hook keeps a module-level cache that cannot be reset.
+const publicSettingsState = vi.hoisted(() => ({ value: {} as Record<string, unknown> | null }));
+vi.mock("../hooks/usePublicSettings", () => ({
+  usePublicSettings: () => publicSettingsState.value,
 }));
 
 const mockUser = {
@@ -99,8 +121,10 @@ vi.mock("../auth/AuthContext", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  idleGates.call = 0;
-  idleGates.lowerPanelsOpen = true;
+  idleGates.mounted = 0;
+  idleGates.open.secondary = true;
+  idleGates.open.lower = true;
+  publicSettingsState.value = {};
   Object.assign(mockUser, {
     id: "soldier-1",
     full_name: "חייל בדיקה",
@@ -182,15 +206,19 @@ beforeEach(() => {
 
 function renderHome() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(
+  // A fresh element each time: React bails out of re-rendering an identical element.
+  const tree = () => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <SoldierModalProvider>
           <HomePage />
         </SoldierModalProvider>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const result = render(tree());
+  // Re-render the same tree so a flipped idle gate is picked up.
+  return Object.assign(result, { rerenderHome: () => result.rerender(tree()) });
 }
 
 describe("HomePage - required scoring data load errors", () => {
@@ -486,7 +514,7 @@ describe("HomePage - required scoring data load errors", () => {
       is_commander: true,
       is_duty_manager: false,
     });
-    idleGates.lowerPanelsOpen = false;
+    idleGates.open.lower = false;
 
     renderHome();
 
@@ -501,6 +529,86 @@ describe("HomePage - required scoring data load errors", () => {
     expect(commandDashboardApi.getUpcoming).not.toHaveBeenCalled();
     expect(commandDashboardApi.getPotential).not.toHaveBeenCalled();
     expect(potentialApi.getPotentialSummary).not.toHaveBeenCalled();
+  });
+
+  it("uses exactly two idle gates (the gate mock identifies them by mount order)", async () => {
+    renderHome();
+    await screen.findByTestId("personal-unit-calendar");
+    expect(idleGates.mounted).toBe(2);
+  });
+
+  describe("deferred reads by idle gate", () => {
+    const rangePage = { items: [], next_cursor: null } as unknown as Awaited<ReturnType<typeof rangesApi.getRangePage>>;
+
+    beforeEach(() => {
+      Object.assign(mockUser, {
+        role: "commander",
+        hierarchy_node_id: "node-1",
+        is_commander: true,
+        is_duty_manager: false,
+      });
+      publicSettingsState.value = { "mitvachim.enabled": true };
+      vi.mocked(rangesApi.getRangePage).mockResolvedValue(rangePage);
+    });
+
+    it("requests nothing from the secondary or lower groups until the secondary gate opens", async () => {
+      idleGates.open.secondary = false;
+      idleGates.open.lower = false;
+      const view = renderHome();
+      // Give any wrongly enabled query a chance to fire.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(commandDashboardApi.getAlerts).not.toHaveBeenCalled();
+      expect(mockFetchMyCommandScope).not.toHaveBeenCalled();
+      expect(commandDashboardApi.getUpcoming).not.toHaveBeenCalled();
+      expect(commandDashboardApi.getPotential).not.toHaveBeenCalled();
+      expect(rangesApi.getRangePage).not.toHaveBeenCalled();
+
+      idleGates.open.secondary = true;
+      view.rerenderHome();
+      await waitFor(() => expect(commandDashboardApi.getAlerts).toHaveBeenCalled());
+      expect(mockFetchMyCommandScope).toHaveBeenCalled();
+      // The lower gate is still closed, so the lower panels stay deferred.
+      expect(commandDashboardApi.getUpcoming).not.toHaveBeenCalled();
+      expect(commandDashboardApi.getPotential).not.toHaveBeenCalled();
+      expect(rangesApi.getRangePage).not.toHaveBeenCalled();
+    });
+
+    it("defers the upcoming-ranges widget with the lower panels and requests it once the lower gate opens", async () => {
+      idleGates.open.lower = false;
+      const view = renderHome();
+      await waitFor(() => expect(commandDashboardApi.getAlerts).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(rangesApi.getRangePage).not.toHaveBeenCalled();
+      expect(commandDashboardApi.getUpcoming).not.toHaveBeenCalled();
+      expect(commandDashboardApi.getPotential).not.toHaveBeenCalled();
+
+      idleGates.open.lower = true;
+      view.rerenderHome();
+      await waitFor(() => expect(rangesApi.getRangePage).toHaveBeenCalled());
+      await waitFor(() => expect(commandDashboardApi.getUpcoming).toHaveBeenCalled());
+      await waitFor(() => expect(commandDashboardApi.getPotential).toHaveBeenCalled());
+    });
+
+    it("does not request the ranges widget at all when the mitvachim feature is disabled", async () => {
+      publicSettingsState.value = { "mitvachim.enabled": false };
+      renderHome();
+      await waitFor(() => expect(commandDashboardApi.getUpcoming).toHaveBeenCalled());
+      expect(rangesApi.getRangePage).not.toHaveBeenCalled();
+    });
+
+    it("a non-command user's ranges widget waits only for the secondary gate", async () => {
+      Object.assign(mockUser, { role: "soldier", is_commander: false, hierarchy_node_id: "node-1" });
+      idleGates.open.secondary = false;
+      idleGates.open.lower = false;
+      const view = renderHome();
+      await screen.findByTestId("personal-unit-calendar");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(rangesApi.getRangePage).not.toHaveBeenCalled();
+
+      idleGates.open.secondary = true;
+      view.rerenderHome();
+      await waitFor(() => expect(rangesApi.getRangePage).toHaveBeenCalled());
+    });
   });
 
   it("uses the shared admin ineligible count query", async () => {
