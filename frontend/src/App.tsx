@@ -9,7 +9,7 @@ import { BugReportModalProvider } from "./contexts/BugReportModalContext";
 import { usePublicSettings } from "./hooks/usePublicSettings";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
-import PageLoading from "./components/PageLoading";
+import RouteFallback from "./components/RouteFallback";
 const ApprovalsPage = lazy(() => import("./pages/ApprovalsPage"));
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 const HomePage = lazy(() => import("./pages/HomePage"));
@@ -84,7 +84,7 @@ export default function App() {
         <ThemeProvider>
           <SoldierModalProvider>
             <BugReportModalProvider>
-              <Suspense fallback={<PageLoading />}>
+              <Suspense fallback={<RouteFallback />}>
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/register" element={<RegisterPage />} />

@@ -38,6 +38,12 @@ vi.mock("./api/telegram", () => ({
   getTelegramStatus: vi.fn(() => new Promise(() => {})),
 }));
 
+// The lazy-route Suspense fallback renders the app shell (Layout) for signed-in
+// users; routing tests don't need its providers/data fetching.
+vi.mock("./components/Layout", () => ({
+  default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
 const mockUsePublicSettings = vi.fn();
 vi.mock("./hooks/usePublicSettings", () => ({
   usePublicSettings: () => mockUsePublicSettings(),
