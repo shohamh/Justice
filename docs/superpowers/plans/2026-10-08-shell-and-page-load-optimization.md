@@ -647,7 +647,7 @@ Run `npm test` and `npm run typecheck`. Expected: pass. Re-run the Step 1 reques
 ### Task 7: Matched after-measurement and write-up
 
 **Files:**
-- Create: `docs/benchmarks/data/shell-load-after-c1-20261008.json`, `docs/benchmarks/data/shell-load-after-c5-20261008.json`
+- Create: `shell-load-after-c1-20261008.json`, `shell-load-after-c5-20261008.json` under `docs/benchmarks/data/` (raw capture removed from the working tree on 2026-10-10, still in git history at commit d94e064e)
 - Modify: `docs/benchmarks/2026-10-08-shell-load.md`, `docs/superpowers/plans/2026-09-30-scale-page-optimizations.md` (add a short section linking the write-up), `docs/superpowers/specs/2026-10-08-shell-and-page-load-design.md` (fill the "result" column)
 
 - [ ] **Step 1: Rebuild and restart exactly as Task 1 steps 4-5**
@@ -656,11 +656,11 @@ Same database, same dataset, same profile server, production build of the final 
 
 - [ ] **Step 2: Capture c1 and c5, five runs, all scenarios**
 
-Same environment variables as Task 1 step 6, outputs `shell-load-after-c1-20261008.json` and `shell-load-after-c5-20261008.json`. Expected: both exit 0 with every scenario/mode ready.
+Same environment variables as Task 1 step 6, outputs `shell-load-after-c1-20261008.json` and `shell-load-after-c5-20261008.json`. Expected: both exit 0 with every scenario/mode ready. (raw captures removed from the working tree on 2026-10-10, still in git history at commit d94e064e.)
 
 - [ ] **Step 3: Compare**
 
-Run `node frontend/scripts/summarize-scale-pages.mjs docs/benchmarks/data/shell-load-after-c5-20261008.json docs/benchmarks/data/shell-load-before-c5-20261008.json` (and for c1). Also count `GET /api/admin/errors/unread-count` entries in the after artifacts (expected 0) and read the entry chunk sizes.
+Run `node frontend/scripts/summarize-scale-pages.mjs <after-c5.json> docs/benchmarks/data/shell-load-before-c5-20261008.json` (and for c1). Also count `GET /api/admin/errors/unread-count` entries in the after artifacts (expected 0) and read the entry chunk sizes.
 
 - [ ] **Step 4: Write the result**
 
