@@ -50,10 +50,16 @@ _LOCKOUT_THRESHOLD = 10
 _LOCKOUT_MINUTES = 15
 
 
+def refresh_cookie_max_age(settings, persist: bool) -> int | None:
+    """Cookie Max-Age: the remembered lifetime when persistent, else a session cookie."""
+    return settings.refresh_token_days * 24 * 3600 if persist else None
+
+
 class LoginRequest(BaseModel):
     personal_number: str = Field(pattern=r"^[0-9]{7,8}$")
     password: str = Field(min_length=1, max_length=200)
-    remember_me: bool = False
+    # Remembered by default; only an explicit false gives a session login.
+    remember_me: bool = True
 
 
 class LoginResponse(BaseModel):
@@ -336,7 +342,7 @@ def login(
     response.set_cookie(
         key="refresh_token",
         value=refresh,
-        max_age=settings.refresh_token_days * 24 * 3600 if body.remember_me else None,
+        max_age=refresh_cookie_max_age(settings, body.remember_me),
         httponly=True,
         secure=get_settings().cookie_secure,
         samesite="strict",
@@ -392,7 +398,7 @@ def refresh(
     response.set_cookie(
         key="refresh_token",
         value=refresh,
-        max_age=settings.refresh_token_days * 24 * 3600 if persist else None,
+        max_age=refresh_cookie_max_age(settings, persist),
         httponly=True,
         secure=settings.cookie_secure,
         samesite="strict",
@@ -580,7 +586,7 @@ async def register(
     )
     response.set_cookie(
         key="refresh_token", value=refresh,
-        max_age=settings.refresh_token_days * 24 * 3600,
+        max_age=refresh_cookie_max_age(settings, True),
         httponly=True, secure=get_settings().cookie_secure, samesite="strict", path="/api/auth",
     )
     if sso_context is not None:

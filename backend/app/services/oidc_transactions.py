@@ -34,15 +34,27 @@ def hash_secret(value: str) -> str:
 class ConsumedTransaction:
     nonce: str = field(repr=False)
     code_verifier: str = field(repr=False)
+    # The login page's "remember me" choice, taken from the verified browser token.
+    remember: bool = True
+
+
+# The choice rides inside the browser cookie token. Only its hash is stored, and the
+# callback compares that hash before reading the prefix, so a browser cannot flip the
+# choice by editing the cookie (the edited token would not match the stored hash).
+_REMEMBER_PREFIX = "r1."
+_SESSION_PREFIX = "r0."
 
 
 def begin_transaction(
-    session: Session, client: OidcClient, *, now: datetime | None = None
+    session: Session, client: OidcClient, *, now: datetime | None = None, remember: bool = True
 ) -> tuple[AuthorizationRequest, str]:
-    """Start a login; returns the authorization request and the browser cookie token."""
+    """Start a login; returns the authorization request and the browser cookie token.
+
+    ``remember=False`` (login page "remember me" unticked) is bound into the token.
+    """
     now = now or datetime.now(timezone.utc)
     request = client.start()
-    browser_token = secrets.token_urlsafe(32)
+    browser_token = (_REMEMBER_PREFIX if remember else _SESSION_PREFIX) + secrets.token_urlsafe(32)
     session.execute(delete(OidcTransaction).where(OidcTransaction.expires_at < now - _PURGE_AFTER))
     session.add(
         OidcTransaction(
@@ -79,4 +91,8 @@ def consume_transaction(
     browser_hash, nonce, code_verifier = row
     if not browser_token or not hmac.compare_digest(browser_hash, hash_secret(browser_token)):
         raise OidcError("browser_mismatch")
-    return ConsumedTransaction(nonce=nonce, code_verifier=code_verifier)
+    return ConsumedTransaction(
+        nonce=nonce,
+        code_verifier=code_verifier,
+        remember=not browser_token.startswith(_SESSION_PREFIX),
+    )

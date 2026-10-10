@@ -20,7 +20,7 @@ from app.audit.writer import write_audit
 from app.auth.jwt_tokens import issue_access_token, issue_refresh_token  # noqa: F401
 from app.db.session import get_session
 from app.rate_limit import limiter
-from app.routes.auth import _client_context
+from app.routes.auth import _client_context, refresh_cookie_max_age
 from app.services import oidc_login, oidc_registration
 from app.services.oidc import OidcClient, OidcError, get_oidc_client
 from app.services.oidc_transactions import begin_transaction, consume_transaction
@@ -81,7 +81,10 @@ def oidc_start(
     if client is None:
         return JSONResponse({"detail": "not_found"}, status_code=404)
     try:
-        auth_request, browser_token = begin_transaction(session, client)
+        # The login page appends remember=0 when "remember me" is unticked; anything
+        # else (including no parameter) keeps the remembered default.
+        remember = request.query_params.get("remember") != "0"
+        auth_request, browser_token = begin_transaction(session, client, remember=remember)
     except OidcError as exc:
         _logger.warning("oidc start failed: %s", exc.code)
         return _denied()
@@ -156,16 +159,19 @@ def oidc_callback(
         entity_id=soldier.id,
         context={**_client_context(request), **({"linked": True} if result.linked else {})},
     )
-    # Session cookie below (no max_age): keep it a session cookie across refreshes.
+    # The choice made at /start travels in the browser-bound transaction, never in
+    # this request's query string. Remembered -> persistent cookie; else a session
+    # cookie with the short sliding token lifetime.
+    persist = consumed.remember
     refresh = issue_refresh_token(
-        user_id=soldier.id, token_version=soldier.token_version, persist=False
+        user_id=soldier.id, token_version=soldier.token_version, persist=persist
     )
     session.commit()
     redirect = _redirect(_frontend(SUCCESS_PATH))
     redirect.delete_cookie(TRANSACTION_COOKIE, path=COOKIE_PATH)
     redirect.set_cookie(
-        key="refresh_token", value=refresh, httponly=True, secure=settings.cookie_secure,
-        samesite="strict", path="/api/auth",
+        key="refresh_token", value=refresh, max_age=refresh_cookie_max_age(settings, persist),
+        httponly=True, secure=settings.cookie_secure, samesite="strict", path="/api/auth",
     )
     return redirect
 

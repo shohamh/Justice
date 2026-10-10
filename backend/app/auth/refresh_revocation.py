@@ -6,14 +6,15 @@ Instead, logout records the presented token's identifiers here and
 ``/auth/refresh`` rejects them:
 
 - ``jti`` -- the exact token presented at logout. TTL = the token's remaining
-  lifetime (capped at ``refresh_token_days``); after that the JWT is expired
+  lifetime (capped at the longest configured token lifetime); after that the JWT is expired
   anyway, so the key can go.
 - ``sid`` -- the login session the token belongs to (inherited on rotation).
   A refresh processed just *before* the logout rotates C1 -> C2, and its
   response can still reach the browser after logout deleted the cookie; C2 has
   a new jti but the same sid, so it is rejected too. Any token in that family
-  was issued no later than ~now and lives at most ``refresh_token_days``, so the
-  sid key lives ``refresh_token_days`` plus a small margin.
+  was issued no later than ~now and lives at most the longest configured lifetime (``refresh_token_days``
+  for remembered logins, the shorter ``session_refresh_token_hours`` otherwise),
+  so the sid key lives that maximum plus a small margin.
 
 Store: Redis -- the same store the login rate limiter (app.rate_limit) and the
 other cross-replica state (app.redis_client) already require, so no new
@@ -48,6 +49,12 @@ _PREFIX = "auth:refresh:revoked:"
 SESSION_TTL_MARGIN_SECONDS = 300
 
 
+def max_token_lifetime_seconds() -> int:
+    """Longest lifetime any refresh token can be issued with (persistent or session)."""
+    settings = get_settings()
+    return max(settings.refresh_token_days * 24 * 3600, settings.session_refresh_token_hours * 3600)
+
+
 def _claim(payload: Mapping[str, Any], name: str) -> str | None:
     value = payload.get(name)
     if isinstance(value, str) and value:
@@ -69,7 +76,7 @@ def revoke(payload: Mapping[str, Any]) -> None:
     sid = _claim(payload, "sid")
     if jti is None and sid is None:
         return  # legacy token: nothing to key on
-    max_lifetime = get_settings().refresh_token_days * 24 * 3600
+    max_lifetime = max_token_lifetime_seconds()
     try:
         exp = int(payload.get("exp", 0))
     except (TypeError, ValueError):
