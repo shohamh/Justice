@@ -574,7 +574,10 @@ async def register(
     # Registration signs the new soldier in: retire the session this browser had.
     _revoke_presented_refresh_cookie(request)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
+    # Register's cookie sets max_age below, so it is persistent.
+    refresh = issue_refresh_token(
+        user_id=soldier.id, token_version=soldier.token_version, persist=True
+    )
     response.set_cookie(
         key="refresh_token", value=refresh,
         max_age=settings.refresh_token_days * 24 * 3600,
