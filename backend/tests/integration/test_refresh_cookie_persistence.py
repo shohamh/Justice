@@ -1,6 +1,6 @@
-"""A session login (no "remember me") stays a session cookie across refresh rotations.
+"""An unticked "remember me" login stays a session cookie across refresh rotations.
 
-``/auth/refresh`` used to always set a 30-day Max-Age, so one refresh turned a
+``/auth/refresh`` used to always set a persistent Max-Age, so one refresh turned a
 browser-session login into a persistent one. The ``persist`` claim carries the
 login's choice across rotations; tokens without the claim stay persistent.
 """
@@ -66,7 +66,7 @@ def soldier(admin_session: Session):
 
 
 def test_session_login_stays_session_cookie_across_two_rotations(client, soldier):
-    login = _login(client, soldier.personal_number)
+    login = _login(client, soldier.personal_number, remember_me=False)
     assert _is_session_cookie(login)
     cookie = login.cookies.get("refresh_token")
     assert decode_token(cookie)["persist"] is False
@@ -127,7 +127,7 @@ def test_register_cookie_stays_persistent_through_refresh(client, admin_session)
     assert _has_max_age(_refresh(client, cookie))
 
 
-def test_oidc_login_cookie_is_session_and_stays_session_through_refresh(
+def test_oidc_login_cookie_is_remembered_by_default_and_stays_so_through_refresh(
     client, admin_session
 ):
     from app.services.oidc import OidcClient
@@ -145,7 +145,7 @@ def test_oidc_login_cookie_is_session_and_stays_session_through_refresh(
     finally:
         client.app.dependency_overrides.pop(oidc_dep(), None)
     assert response.status_code == 303
-    assert _is_session_cookie(response)
+    assert _has_max_age(response)
     cookie = response.cookies.get("refresh_token")
-    assert decode_token(cookie)["persist"] is False
-    assert _is_session_cookie(_refresh(client, cookie))
+    assert decode_token(cookie)["persist"] is True
+    assert _has_max_age(_refresh(client, cookie))

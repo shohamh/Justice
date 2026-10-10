@@ -84,7 +84,11 @@ class Settings(StorageSettings):
     jwt_secret: str = Field(alias="JWT_SECRET", min_length=32)
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_minutes: int = Field(default=15, alias="ACCESS_TOKEN_MINUTES")
-    refresh_token_days: int = Field(default=30, alias="REFRESH_TOKEN_DAYS")
+    # "Remember me" (default) sessions: sliding 90-day refresh token + persistent cookie.
+    refresh_token_days: int = Field(default=90, ge=1, alias="REFRESH_TOKEN_DAYS")
+    # Unticked "remember me": session cookie AND a short sliding JWT lifetime, so a
+    # browser that restores session cookies (or a copied cookie) cannot outlive it.
+    session_refresh_token_hours: int = Field(default=12, ge=1, alias="SESSION_REFRESH_TOKEN_HOURS")
     allowed_origins: str = Field(default="http://localhost:5173", alias="ALLOWED_ORIGINS")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     login_rate_limit: str = Field(default="10/5minutes", alias="LOGIN_RATE_LIMIT")

@@ -143,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [hasUser, setUser]);
 
-  const login = useCallback(async (personal_number: string, password: string, remember_me = false) => {
+  const login = useCallback(async (personal_number: string, password: string, remember_me = true) => {
     const generation = ++authGeneration.current;
     setAuthLoading(false);
     scopeTransitioning.current = true;

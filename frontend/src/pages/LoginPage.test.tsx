@@ -43,6 +43,44 @@ async function submitValidLogin(initialEntry: { pathname: string; state?: unknow
   return originalOrigin;
 }
 
+describe("remember me", () => {
+  async function submit() {
+    mockLogin.mockResolvedValueOnce(undefined);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fireEvent.change(screen.getByTestId("personal-number-input"), { target: { value: "123" } });
+    fireEvent.change(screen.getByTestId("password-input"), { target: { value: "password" } });
+    fireEvent.submit(screen.getByTestId("login-form"));
+    await waitFor(() => expect(mockLogin).toHaveBeenCalledTimes(1));
+  }
+
+  it("is ticked by default and logs in with remember_me true", async () => {
+    await submit();
+    expect(screen.getByTestId("remember-me-checkbox")).toBeChecked();
+    expect(mockLogin).toHaveBeenCalledWith("123", "password", true);
+  });
+
+  it("logs in with remember_me false when unticked", async () => {
+    mockLogin.mockResolvedValueOnce(undefined);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId("remember-me-checkbox"));
+    fireEvent.change(screen.getByTestId("personal-number-input"), { target: { value: "123" } });
+    fireEvent.change(screen.getByTestId("password-input"), { target: { value: "password" } });
+    fireEvent.submit(screen.getByTestId("login-form"));
+    await waitFor(() => expect(mockLogin).toHaveBeenCalledWith("123", "password", false));
+  });
+
+  it("SSO button carries the choice: true by default, false when unticked", async () => {
+    vi.mocked(authApi.fetchOidcStatus).mockResolvedValue(true);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    const sso = await screen.findByTestId("sso-login-button");
+    fireEvent.click(sso);
+    expect(authApi.startSsoLogin).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByTestId("remember-me-checkbox"));
+    fireEvent.click(sso);
+    expect(authApi.startSsoLogin).toHaveBeenLastCalledWith(false);
+  });
+});
+
 describe("password login return target", () => {
   it("persists a saved internal path with its query and hash for AppGate", async () => {
     const originalOrigin = await submitValidLogin({
@@ -218,7 +256,7 @@ describe("SSO login", () => {
     );
     fireEvent.click(await screen.findByTestId("sso-login-button"));
     expect(authApi.startSsoLogin).toHaveBeenCalledTimes(1);
-    expect(authApi.startSsoLogin).toHaveBeenCalledWith();
+    expect(authApi.startSsoLogin).toHaveBeenCalledWith(true);
     vi.mocked(authApi.startSsoLogin).mockReset();
   });
 
@@ -230,7 +268,7 @@ describe("SSO login", () => {
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
     fireEvent.click(await screen.findByTestId("sso-login-button"));
 
-    expect(authApi.startSsoLogin).toHaveBeenCalledWith();
+    expect(authApi.startSsoLogin).toHaveBeenCalledWith(true);
     setItem.mockRestore();
   });
 

@@ -112,3 +112,20 @@ def test_begin_purges_long_expired_rows(admin_session, oidc_client):
     admin_session.commit()
     rows = admin_session.execute(select(OidcTransaction)).scalars().all()
     assert len(rows) == 1 and rows[0].nonce != old_request.nonce
+
+
+@pytest.mark.parametrize("remember", [True, False])
+def test_remember_choice_is_bound_to_the_browser_token(admin_session, oidc_client, remember):
+    request, browser = begin_transaction(admin_session, oidc_client, remember=remember)
+    admin_session.commit()
+    consumed = consume_transaction(admin_session, state=request.state, browser_token=browser)
+    assert consumed.remember is remember
+
+
+def test_remember_choice_cannot_be_flipped_by_editing_the_browser_token(admin_session, oidc_client):
+    request, browser = begin_transaction(admin_session, oidc_client, remember=False)
+    admin_session.commit()
+    forged = "r1." + browser.split(".", 1)[1]
+    with pytest.raises(OidcError) as excinfo:
+        consume_transaction(admin_session, state=request.state, browser_token=forged)
+    assert excinfo.value.code == "browser_mismatch"

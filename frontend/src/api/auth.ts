@@ -102,7 +102,7 @@ export interface RegisterPayload {
   personal_constraints: object[];
 }
 
-export async function login(personal_number: string, password: string, remember_me = false): Promise<LoginResponse> {
+export async function login(personal_number: string, password: string, remember_me = true): Promise<LoginResponse> {
   const r = await api.post<LoginResponse>("/auth/login", { personal_number, password, remember_me });
   return r.data;
 }
@@ -176,9 +176,13 @@ export async function fetchOidcStatus(): Promise<boolean> {
   }
 }
 
-/** Top-level browser navigation (the provider flow needs cookies and redirects, not XHR). */
-export function startSsoLogin(): void {
-  window.location.assign(OIDC_START_PATH);
+/**
+ * Top-level browser navigation (the provider flow needs cookies and redirects, not XHR).
+ * An unticked "remember me" is sent as ?remember=0; the server binds it to the
+ * login transaction. Remembered (default) adds nothing to the URL.
+ */
+export function startSsoLogin(rememberMe = true): void {
+  window.location.assign(rememberMe ? OIDC_START_PATH : `${OIDC_START_PATH}?remember=0`);
 }
 
 export interface OidcRegistrationContext {

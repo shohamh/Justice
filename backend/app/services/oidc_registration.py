@@ -18,6 +18,14 @@ from app.db.models import OidcRegistrationContext
 from app.services.oidc_transactions import hash_secret
 
 _PURGE_AFTER = timedelta(days=1)
+REMEMBER_PREFIX = "r1."
+SESSION_PREFIX = "r0."
+
+
+def token_remembers(token: str | None) -> bool:
+    """Choice carried by a cookie token. Call only for a token ``get_active_context``
+    accepted (its hash matched); tokens from before this prefix existed count as remembered."""
+    return not (token or "").startswith(SESSION_PREFIX)
 
 
 def create_context(
@@ -29,8 +37,13 @@ def create_context(
     ad_username: str,
     ttl_seconds: int,
     now: datetime | None = None,
+    remember: bool = True,
 ) -> str:
-    """Store a context (superseding any unconsumed one for the subject); returns the cookie token."""
+    """Store a context (superseding any unconsumed one for the subject); returns the cookie token.
+
+    The login page's "remember me" choice is a prefix of the token (only its hash is
+    stored and looked up), so a client cannot change it without losing the context.
+    """
     now = now or datetime.now(timezone.utc)
     session.execute(
         delete(OidcRegistrationContext).where(
@@ -42,7 +55,7 @@ def create_context(
             )
         )
     )
-    token = secrets.token_urlsafe(32)
+    token = (REMEMBER_PREFIX if remember else SESSION_PREFIX) + secrets.token_urlsafe(32)
     session.add(
         OidcRegistrationContext(
             token_hash=hash_secret(token),
