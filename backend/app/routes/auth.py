@@ -5,6 +5,7 @@ import time
 import uuid
 from datetime import UTC, date, datetime as _dt, timedelta as _td
 
+import redis
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from typing import Annotated, Literal
 from limits import parse as parse_rate_limit
@@ -156,8 +157,24 @@ def _enforce_invite_code_guess_limit(request: Request) -> None:
     """
     limit = parse_rate_limit(get_settings().invite_code_rate_limit)
     identifier = get_remote_address(request)
-    if not limiter.limiter.hit(limit, "invite-code-guess", identifier):
-        reset_time, _ = limiter.limiter.get_window_stats(limit, "invite-code-guess", identifier)
+    try:
+        allowed = limiter.limiter.hit(limit, "invite-code-guess", identifier)
+        if not allowed:
+            reset_time, _ = limiter.limiter.get_window_stats(
+                limit, "invite-code-guess", identifier
+            )
+    except redis.RedisError:
+        # These calls bypass slowapi's own error handling, so mirror it: switch
+        # the limiter to its in-memory fallback (per process) instead of a 500.
+        # The decorated routes probe Redis and flip it back once it recovers.
+        _logger.warning("invite-code guess limiter: Redis unavailable, using in-memory fallback")
+        limiter._storage_dead = True
+        allowed = limiter.limiter.hit(limit, "invite-code-guess", identifier)
+        if not allowed:
+            reset_time, _ = limiter.limiter.get_window_stats(
+                limit, "invite-code-guess", identifier
+            )
+    if not allowed:
         retry_after = max(0, int(reset_time - time.time()))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
