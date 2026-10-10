@@ -8,6 +8,8 @@ by `release-dev-to-master`.
 
 ## Unreleased
 
+## 2026-10-10 (released)
+
 ### Remember me by default: 90-day logins, short sliding sessions when unticked, SSO follows the checkbox (`feat/remember-me-90-days`, 2026-10-10)
 Docs: none
 - Behavior: "remember me" is ON by default everywhere (login page already ticked; `LoginRequest.remember_me` and the frontend `login()` helper now default to true). A remembered login is a 90-day refresh token with a persistent cookie and renews with use; `REFRESH_TOKEN_DAYS` default 30 -> 90 (`settings.py`, `.env.defaults`, `deploy/.env.production.example`).
