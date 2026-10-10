@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import UnifiedSoldierModal from "./UnifiedSoldierModal";
 import type { SoldierDTO } from "../api/soldiers";
+import { queryKeys } from "../queryKeys";
 
 const mockCreateTransferRequest = vi.fn().mockResolvedValue({ id: "transfer-1" });
 vi.mock("../api/hierarchyTransfers", () => ({
@@ -34,9 +35,10 @@ vi.mock("../api/soldiers", () => ({
 
 const mockListSoldierConstraints = vi.fn().mockResolvedValue([]);
 const mockRejectConstraint = vi.fn();
+const mockApproveConstraint = vi.fn();
 vi.mock("../api/constraints", () => ({
   listSoldierConstraints: (...args: unknown[]) => mockListSoldierConstraints(...args),
-  approveConstraint: vi.fn(),
+  approveConstraint: (...args: unknown[]) => mockApproveConstraint(...args),
   rejectConstraint: (...args: unknown[]) => mockRejectConstraint(...args),
   cancelConstraintForManager: vi.fn(),
 }));
@@ -103,8 +105,7 @@ const soldier: SoldierDTO = {
   can_request_unit_join_date: false,
 };
 
-function renderModal(soldierOverrides: Partial<SoldierDTO> = {}, initialEditing = false) {
-  const qc = new QueryClient();
+function renderModal(soldierOverrides: Partial<SoldierDTO> = {}, initialEditing = false, qc = new QueryClient()) {
   return render(
     <QueryClientProvider client={qc}>
       <UnifiedSoldierModal
@@ -670,6 +671,59 @@ describe("UnifiedSoldierModal constraint rejection", () => {
   });
 });
 
+describe("UnifiedSoldierModal nav-count invalidation", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+    mockUseAuth.mockReturnValue({ user: ADMIN_USER });
+    mockListSoldierConstraints.mockReset();
+    mockListSoldierConstraints.mockResolvedValue([
+      {
+        id: "c1", soldier_id: "s1", constraint_type: "personal", start_date: "2026-01-01",
+        end_date: "2026-12-31", status: "pending", reason: "test reason", can_cancel: false, overrides: [],
+      },
+    ]);
+    mockRejectConstraint.mockReset();
+    mockRejectConstraint.mockResolvedValue(undefined);
+    mockApproveConstraint.mockReset();
+    mockApproveConstraint.mockResolvedValue(undefined);
+  });
+
+  function navCountsCalls(spy: ReturnType<typeof vi.spyOn>) {
+    return spy.mock.calls.filter(([filters]) => JSON.stringify((filters as { queryKey?: unknown })?.queryKey) === JSON.stringify(queryKeys.navCountsAll()));
+  }
+
+  test("approving a constraint invalidates the nav counts", async () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    renderModal({}, false, qc);
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    fireEvent.click(await screen.findByTestId("approve-constraint-c1"));
+    await waitFor(() => expect(navCountsCalls(spy)).toHaveLength(1));
+  });
+
+  test("rejecting a constraint invalidates the nav counts", async () => {
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    renderModal({}, false, qc);
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    fireEvent.click(await screen.findByTestId("reject-constraint-c1"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
+    await waitFor(() => expect(navCountsCalls(spy)).toHaveLength(1));
+  });
+
+  test("a failed rejection does not invalidate the nav counts", async () => {
+    mockRejectConstraint.mockRejectedValueOnce(new Error("network"));
+    const qc = new QueryClient();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    renderModal({}, false, qc);
+    fireEvent.click(await screen.findByTestId("modal-tab-constraints"));
+    fireEvent.click(await screen.findByTestId("reject-constraint-c1"));
+    fireEvent.click(screen.getByTestId("input-dialog-confirm"));
+    await screen.findByText("שגיאה בדחיית בקשת עדכון האילוץ");
+    expect(navCountsCalls(spy)).toHaveLength(0);
+  });
+});
+
 describe("UnifiedSoldierModal public mode", () => {
   beforeEach(() => {
     mockUseAuth.mockReset();
