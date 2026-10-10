@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-10
+
+### Features
+- Pages open noticeably faster, especially when several people use the system at once. The app now downloads only the part it needs for the page you open (about 90% less up front), the same information is no longer requested several times per page, and the menu stays on screen while a page loads. A loading indicator appears immediately when you open the app.
+  Why: before, every page had to download the code for the whole app first, and each page asked the server for the same data repeatedly, which added up under load.
+- The "ineligible soldiers" count in the menu is much faster to calculate, about one second instead of about four when five people open pages at the same time.
+- Signing in now remembers you by default for 90 days (it used to be 30), and the "remember me" choice also applies to single sign-on (SSO), including the first time someone registers through SSO. If you untick "remember me" you are not remembered: you are signed out when you close the browser, and after 12 hours without activity even if the browser restores your tabs.
+  Why: this keeps shared computers safe while making normal use convenient; a ticked box now reliably means 90 days and an unticked box now reliably means "do not remember me".
+- Fairness groups open faster. Large groups show the top 30 and bottom 30 soldiers first, with buttons to load more from either end, and there is a new name search across the whole group.
+  Why: groups with thousands of soldiers made the page slow to open and heavy to scroll.
+- The transparency page now loads in bounded pages that stay consistent while data changes behind them.
+- The approvals, swaps and hakpaza badges in the menu update immediately after you approve or reject something from a soldier's profile, history or exemptions tabs.
+- Text now appears in the right font from the first moment the page is shown, because the font is served by the application itself.
+
+### Fixes
+- Dates for constraint decisions and in "My requests" now follow your local day. Entries made shortly after midnight (Israel time) used to show the previous day.
+- Sign-in keeps working if the server's cache service is briefly unavailable, instead of failing with an error.
+- People on a shared network (for example one base connection) no longer get temporary errors while a page is loading; the server's request limit was too low for a full page load.
+- After a new version is released, a tab that was left open now refreshes itself once instead of showing an error when you open a page.
+- Fixed a rare problem where signing in again right after another person on the same computer could briefly keep the previous person's session alive.
+- Users who must link Telegram no longer see the menu flash before being taken to the Telegram setup page.
+
 ## 2026-10-06
 
 ### Features
