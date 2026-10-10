@@ -9,7 +9,7 @@ vi.mock("./auth/AuthContext", () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useAuth: () => mockUseAuth(),
 }));
-vi.mock("./hooks/usePublicSettings", () => ({ usePublicSettings: () => ({}) }));
+vi.mock("./hooks/usePublicSettings", () => ({ usePublicSettings: () => ({ "telegram.enabled": true }) }));
 vi.mock("./components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => (
     <div><nav data-testid="sidebar" />{children}</div>
@@ -46,5 +46,12 @@ describe("App lazy route fallback", () => {
     await act(async () => { release(); });
     expect(await screen.findByTestId("transparency-page")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("shows no nav while the chunk loads for a user about to be redirected to Telegram setup", async () => {
+    mockUseAuth.mockReturnValue({ loggedIn: true, authLoading: false, mustChangePassword: false, telegramRequired: true, telegramLinked: false });
+    renderAt("/transparency");
+    expect(await screen.findByRole("status")).toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
   });
 });
