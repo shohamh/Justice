@@ -227,11 +227,11 @@ describe("App - internal route targets", () => {
     expect(window.location.origin).toBe("http://localhost:3000");
   });
 
-  it("redirects legacy settings URLs to the internal destination with its query", () => {
+  it("redirects legacy settings URLs to the internal destination with its query", async () => {
     mockUsePublicSettings.mockReturnValue({});
     renderApp("/admin/invite-codes");
 
-    expect(screen.getByTestId("admin-settings-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("admin-settings-page")).toBeInTheDocument();
     expect(screen.getByTestId("router-location")).toHaveTextContent("/admin/settings?tab=1");
     expect(window.location.origin).toBe("http://localhost:3000");
   });
