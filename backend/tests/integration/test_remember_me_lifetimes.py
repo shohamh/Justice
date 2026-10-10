@@ -243,3 +243,84 @@ def test_sso_tampering_with_transaction_cookie_cannot_flip_choice(client, admin_
     # The binding hash no longer matches: login is denied, nothing is issued.
     assert resp.headers["location"].endswith("/login?sso_error=1")
     assert "refresh_token" not in resp.headers.get("set-cookie", "")
+
+
+# --- SSO registration (first-time users) ----------------------------------------------
+
+
+@pytest.fixture
+def reg_world(admin_session):
+    from tests.helpers import create_node
+    from tests.integration.test_registration_routes import _setup_holding
+
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name="sso-unit-rm", parent=holding)
+    admin_session.commit()
+    return node
+
+
+def _sso_register(client, provider, node, query: str = "", cookie_override: str | None = None):
+    from tests.integration.test_oidc_registration import STRANGER, register
+
+    started = _start(client, query)
+    parts = urlsplit(provider.authorize(started.headers["location"], STRANGER))
+    cb = client.get(f"{parts.path}?{parts.query}", follow_redirects=False)
+    assert cb.headers["location"].endswith("/register?sso=1"), cb.headers["location"]
+    if cookie_override is not None:
+        client.cookies.set("oidc_reg", cookie_override, path="/api/auth")
+    r = register(client, node)
+    client.cookies.clear()
+    return r
+
+
+def test_sso_registration_unticked_is_session_with_short_exp(client, provider, reg_world):
+    r = _sso_register(client, provider, reg_world, "?remember=0")
+    assert r.status_code == 200, r.text
+    assert _is_session(r)
+    cookie = r.cookies.get("refresh_token")
+    assert decode_token(cookie)["persist"] is False
+    assert abs(_remaining(cookie) - 12 * 3600) < 30
+    assert _is_session(_refresh(client, cookie))
+
+
+def test_sso_registration_default_is_remembered(client, provider, reg_world):
+    r = _sso_register(client, provider, reg_world)
+    assert r.status_code == 200, r.text
+    assert f"max-age={90 * _DAY}" in _set_cookie(r)
+    cookie = r.cookies.get("refresh_token")
+    assert decode_token(cookie)["persist"] is True
+    assert abs(_remaining(cookie) - 90 * _DAY) < 30
+
+
+def test_sso_registration_tampered_cookie_is_rejected_not_flipped(client, provider, reg_world):
+    from tests.integration.test_oidc_registration import STRANGER, register
+
+    started = _start(client, "?remember=0")
+    parts = urlsplit(provider.authorize(started.headers["location"], STRANGER))
+    cb = client.get(f"{parts.path}?{parts.query}", follow_redirects=False)
+    token = cb.cookies.get("oidc_reg")
+    assert token and token.startswith("r0.")
+    client.cookies.set("oidc_reg", "r1." + token[3:], path="/api/auth")
+    r = register(client, reg_world)
+    assert r.status_code == 400
+    assert "refresh_token" not in r.headers.get("set-cookie", "")
+
+
+def test_invite_code_registration_stays_persistent(client, admin_session):
+    from app.services.invite_codes import create_invite_code
+    from tests.helpers import create_node
+    from tests.integration.test_registration_routes import (
+        _payload,
+        _post_register,
+        _setup_holding,
+        _uid,
+    )
+
+    holding = _setup_holding(admin_session)
+    node = create_node(admin_session, level="unit", name=f"unit_{_uid()}", parent=holding)
+    invite = create_invite_code(admin_session, uses_left=1, actor_id=None)
+    admin_session.commit()
+    client.cookies.clear()
+    r = _post_register(client, _payload(invite.code, node.id))
+    assert f"max-age={90 * _DAY}" in _set_cookie(r)
+    assert decode_token(r.cookies.get("refresh_token"))["persist"] is True

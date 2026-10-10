@@ -580,13 +580,19 @@ async def register(
     # Registration signs the new soldier in: retire the session this browser had.
     _revoke_presented_refresh_cookie(request)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    # Register's cookie sets max_age below, so it is persistent.
+    # Invite-code registration is always remembered. An SSO registration follows the
+    # choice bound into its (hash-verified) context cookie token at /oidc/start.
+    persist = (
+        oidc_reg.token_remembers(request.cookies.get(oidc_reg.REGISTRATION_COOKIE))
+        if sso_context is not None
+        else True
+    )
     refresh = issue_refresh_token(
-        user_id=soldier.id, token_version=soldier.token_version, persist=True
+        user_id=soldier.id, token_version=soldier.token_version, persist=persist
     )
     response.set_cookie(
         key="refresh_token", value=refresh,
-        max_age=refresh_cookie_max_age(settings, True),
+        max_age=refresh_cookie_max_age(settings, persist),
         httponly=True, secure=get_settings().cookie_secure, samesite="strict", path="/api/auth",
     )
     if sso_context is not None:

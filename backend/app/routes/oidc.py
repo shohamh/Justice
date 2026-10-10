@@ -133,6 +133,7 @@ def oidc_callback(
         token = oidc_registration.create_context(
             session, issuer=verified.issuer, subject=verified.subject, email=result.email,
             ad_username=result.ad_username, ttl_seconds=client.config.registration_ttl_seconds,
+            remember=consumed.remember,
         )
         write_audit(
             session, actor_id=None, action="auth.sso.registration_started",
