@@ -1,5 +1,25 @@
 #!/usr/bin/env node
 
+// Scale-page profiler (see docs/benchmarks/2026-10-08-shell-load.md for the
+// stack procedure).
+//
+// Measurement notes:
+// - selectorVisibleMs is stamped IN THE PAGE: an init-script MutationObserver
+//   records performance.timeOrigin + performance.now() the first time each
+//   readiness selector (and the soldier modal) is rendered visible, and the
+//   profiler converts it to "ms since the measurement started". Playwright's
+//   locator.waitFor() resolves on a coarse retry cadence (values quantized in
+//   ~500 ms steps), so the old "time when waitFor returned" overstated and
+//   bucketed the marker time. If the observer did not fire (or reads back an
+//   implausible value) the profiler falls back to that old method, so the
+//   metric name and meaning are unchanged for consumers. The calendar team
+//   milestone is an input-value state (no DOM mutation) and keeps the old method.
+// - Use JUSTICE_SCALE_BASE_URL=http://127.0.0.1:<port>, not localhost: on some
+//   machines localhost resolves to IPv6 first and falls back to IPv4, adding a
+//   ~300 ms new-connection stall to every cold request. The profiler warns and
+//   records the base URL host as `baseUrlHost` in the artifact so captures stay
+//   comparable; it never rewrites the host.
+
 import { link, mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -37,6 +57,12 @@ const TIMEOUT_MS = parseBoundedInteger(
 );
 const NAVIGATION_TIMEOUT_MS = TIMEOUT_MS;
 const QUIET_TIMEOUT_MS = TIMEOUT_MS;
+
+if (BASE_URL.hostname.toLowerCase() === "localhost") {
+  process.stderr.write(
+    "warning: JUSTICE_SCALE_BASE_URL uses localhost; use http://127.0.0.1:<port> to avoid a ~300 ms IPv6-first connection stall in the measurements.\n",
+  );
+}
 
 if (!USERNAME || !PASSWORD) {
   throw new Error("Set JUSTICE_SCALE_ADMIN_USERNAME and JUSTICE_SCALE_ADMIN_PASSWORD.");
@@ -129,11 +155,13 @@ function buildOutput() {
     batchesPerScenario: RUNS,
     concurrency: CONCURRENCY,
     clientsPerBatch: CONCURRENCY,
+    baseUrlHost: BASE_URL.hostname,
     startBarrier: "all clients begin each cold/warm measurement together",
     authenticationSetup: "one login per invocation; independent client contexts restore from copied refresh-cookie storageState",
     summaryCoverage: "per-run response-byte and database totals require values for every tracked API request",
     serverTiming: "x-scale-server-ms measures ASGI time through response-start; serverMinusDbMs is the signed wall-minus-accumulated-SQL residual, not CPU-only time",
     renderTiming: "firstContentfulPaintMs comes from the browser Paint Timing API and is relative to a document navigation that occurs during the measured journey; it is null for in-document interactions without a new navigation; pageReadyMs is measured separately through the configured readiness marker and API quiet period",
+    selectorTiming: "selectorVisibleMs is stamped in the page by a MutationObserver at the moment the readiness marker is first rendered visible (falls back to the Playwright waitFor return time, and always does for the calendar team milestone)",
     timeoutMs: TIMEOUT_MS,
     scenarios: selectedScenarios.map(({ id, path, mode }) => ({
       id,
@@ -590,6 +618,71 @@ async function waitForApiQuiescence(collector) {
   }
 }
 
+const SOLDIER_MODAL_SELECTOR = '[data-testid="unified-soldier-modal"]';
+const WATCHED_SELECTORS = [...new Set([
+  ...scenarios.flatMap(({ readiness }) => readiness),
+  SOLDIER_MODAL_SELECTOR,
+])];
+
+// Runs in every page of the context before any page script. Records the first
+// time each watched selector matches a rendered (non-empty, not visibility:hidden)
+// element, as epoch milliseconds (timeOrigin + now), so the node side can
+// subtract its own measurement start without any polling cadence in between.
+function installSelectorMarks(selectors) {
+  const marks = {};
+  window.__justiceScaleMarks = marks;
+  const isVisible = (element) => {
+    if (element.getClientRects().length === 0) return false;
+    return getComputedStyle(element).visibility !== "hidden";
+  };
+  const check = () => {
+    for (const selector of selectors) {
+      if (marks[selector] !== undefined) continue;
+      let element = null;
+      try {
+        element = document.querySelector(selector);
+      } catch {
+        continue;
+      }
+      if (element && isVisible(element)) marks[selector] = performance.timeOrigin + performance.now();
+    }
+  };
+  // Call only while the element is known to be absent (e.g. a closed modal),
+  // so the next appearance is stamped afresh.
+  window.__justiceScaleResetMarks = (selector) => {
+    delete marks[selector];
+  };
+  new MutationObserver(check).observe(document, { childList: true, subtree: true, attributes: true });
+  check();
+}
+
+async function resetSelectorMark(page, selector) {
+  await page.evaluate((target) => window.__justiceScaleResetMarks?.(target), selector).catch(() => {});
+}
+
+// Records selectorVisibleMs from the in-page marks (latest of the given
+// selectors), or falls back to "now" (the moment the preceding waitFor
+// returned) when a mark is missing or implausible.
+async function recordSelectorVisibleMilestone(page, collector, selectors) {
+  if (!collector.current || !Number.isFinite(collector.measurementStartedAt)) return;
+  const fallbackMs = roundMillis(performance.now() - collector.measurementStartedAt);
+  let marked = null;
+  try {
+    const marks = await page.evaluate(
+      (targets) => targets.map((target) => window.__justiceScaleMarks?.[target] ?? null),
+      selectors,
+    );
+    if (marks.length && marks.every((mark) => Number.isFinite(mark))) {
+      marked = roundMillis(Math.max(...marks) - collector.measurementStartedEpochMs);
+    }
+  } catch {
+    marked = null;
+  }
+  // A real mark is never negative and never later than the waitFor return.
+  const plausible = Number.isFinite(marked) && marked >= 0 && marked <= fallbackMs + 5;
+  collector.current.selectorVisibleMs = plausible ? marked : fallbackMs;
+}
+
 function recordMeasurementMilestone(collector, field) {
   if (collector.current && Number.isFinite(collector.measurementStartedAt)) {
     collector.current[field] = roundMillis(performance.now() - collector.measurementStartedAt);
@@ -600,7 +693,7 @@ async function waitForReadiness(page, selectors, collector) {
   for (const selector of selectors) {
     await page.locator(selector).waitFor({ state: "visible", timeout: NAVIGATION_TIMEOUT_MS });
   }
-  recordMeasurementMilestone(collector, "selectorVisibleMs");
+  await recordSelectorVisibleMilestone(page, collector, selectors);
   await waitForApiQuiescence(collector);
   recordMeasurementMilestone(collector, "apiQuietMs");
 }
@@ -643,6 +736,7 @@ async function recordMeasurement(page, collector, scenario, run, client, batch, 
   const startedAt = performance.now();
   collector.current = measurement;
   collector.measurementStartedAt = startedAt;
+  collector.measurementStartedEpochMs = performance.timeOrigin + startedAt;
 
   try {
     const phaseTimings = await action();
@@ -676,6 +770,7 @@ async function recordMeasurement(page, collector, scenario, run, client, batch, 
     };
     collector.current = null;
     collector.measurementStartedAt = null;
+    collector.measurementStartedEpochMs = null;
   }
 
   measurements.push(measurement);
@@ -737,9 +832,10 @@ async function openSyntheticSoldier(page, scenario, collector) {
   const syntheticSoldierFilterMs = roundMillis(performance.now() - filterStartedAt);
 
   const detailStartedAt = performance.now();
+  await resetSelectorMark(page, SOLDIER_MODAL_SELECTOR);
   await editButton.click();
-  await page.locator('[data-testid="unified-soldier-modal"]').waitFor({ state: "visible", timeout: NAVIGATION_TIMEOUT_MS });
-  recordMeasurementMilestone(collector, "selectorVisibleMs");
+  await page.locator(SOLDIER_MODAL_SELECTOR).waitFor({ state: "visible", timeout: NAVIGATION_TIMEOUT_MS });
+  await recordSelectorVisibleMilestone(page, collector, [SOLDIER_MODAL_SELECTOR]);
   await waitForApiQuiescence(collector);
   recordMeasurementMilestone(collector, "apiQuietMs");
   return {
@@ -754,9 +850,10 @@ async function reopenSyntheticSoldier(page, collector) {
   await page.locator('[data-testid="modal-close"]').click();
   await page.locator('[data-testid="unified-soldier-modal"]').waitFor({ state: "detached", timeout: NAVIGATION_TIMEOUT_MS });
   const editButton = await syntheticSoldierEditButton(page);
+  await resetSelectorMark(page, SOLDIER_MODAL_SELECTOR);
   await editButton.click();
-  await page.locator('[data-testid="unified-soldier-modal"]').waitFor({ state: "visible", timeout: NAVIGATION_TIMEOUT_MS });
-  recordMeasurementMilestone(collector, "selectorVisibleMs");
+  await page.locator(SOLDIER_MODAL_SELECTOR).waitFor({ state: "visible", timeout: NAVIGATION_TIMEOUT_MS });
+  await recordSelectorVisibleMilestone(page, collector, [SOLDIER_MODAL_SELECTOR]);
   await waitForApiQuiescence(collector);
   recordMeasurementMilestone(collector, "apiQuietMs");
   return {
@@ -802,6 +899,7 @@ async function createProfiledPage(browser, storageState) {
     storageState: structuredClone(storageState),
     serviceWorkers: "block",
   });
+  await context.addInitScript(installSelectorMarks, WATCHED_SELECTORS);
   await context.addInitScript(() => {
     window.__justiceScaleLongTasks = [];
     try {

@@ -7,7 +7,7 @@ Plan: `docs/superpowers/plans/2026-10-08-shell-and-page-load-optimization.md`.
 
 ### Setup
 
-- Frontend: production Vite build (`npx vite build`, served by `vite preview` on `127.0.0.1:5174`, proxying `/api` to the backend). Entry chunk `assets/index-BGCgDM-q.js` = 3,989.42 kB raw (1,099.94 kB gzip).
+- Frontend: production Vite build (`npx vite build`, served by `vite preview` on `127.0.0.1:5174`, proxying `/api` to the backend). Entry chunk `assets/index-BGCgDM-q.js` = 3,989.42 kB raw (1,099.94 kB gzip). For new captures set `JUSTICE_SCALE_BASE_URL=http://127.0.0.1:5174` (not `localhost`): the profiler warns on `localhost`, records the host as `baseUrlHost` in the artifact, and stamps `selectorVisibleMs` in the page with a MutationObserver instead of when Playwright's `waitFor` returned (see the header of `frontend/scripts/profile-scale-pages.mjs`). The existing captures were taken on `localhost` with the polled marker and stay comparable only with each other.
 - Backend: `python -m app.scripts.profile_scale_server --port 8100` (adds server-timing and DB-query-count headers), `TRANSPARENCY_READ_MODEL_ENABLED=true`, `LOKI_URL` unset (so `/api/admin/errors/unread-count` answers 503).
 - Data: Postgres container `justice-scale-20k`, database `justice_scale_fcp_scale`: 20,120 soldiers, 1,000,008 duty assignments. Redis on 6379.
 - Profiler: `frontend/scripts/profile-scale-pages.mjs`, 5 runs per scenario, c1 (70 measurements) and c5 (350 measurements); every measurement reached readiness. A discarded 1-run warm-up preceded both.
