@@ -86,7 +86,8 @@ def oidc_start(
         return JSONResponse({"detail": "not_found"}, status_code=404)
     try:
         # The login page appends remember=0 when "remember me" is unticked; anything
-        # else (including no parameter) keeps the remembered default.
+        # else (including no parameter) keeps the remembered default. Only the exact
+        # string "0" means unticked (the frontend only ever sends 0); "false"/"no" do not.
         remember = request.query_params.get("remember") != "0"
         auth_request, browser_token = begin_transaction(session, client, remember=remember)
     except OidcError as exc:

@@ -303,6 +303,8 @@ def test_sso_registration_tampered_cookie_is_rejected_not_flipped(client, provid
     client.cookies.set("oidc_reg", "r1." + token[3:], path="/api/auth")
     r = register(client, reg_world)
     assert r.status_code == 400
+    # Rejected on the invite-code branch (no live context), not for another reason.
+    assert r.json()["detail"] == "invalid invite code"
     assert "refresh_token" not in r.headers.get("set-cookie", "")
 
 
@@ -324,3 +326,84 @@ def test_invite_code_registration_stays_persistent(client, admin_session):
     r = _post_register(client, _payload(invite.code, node.id))
     assert f"max-age={90 * _DAY}" in _set_cookie(r)
     assert decode_token(r.cookies.get("refresh_token"))["persist"] is True
+
+
+# --- review follow-ups (M1-M4) -----------------------------------------------------------
+
+
+def _settings_kwargs(**extra):
+    return dict(
+        DATABASE_URL="postgresql+psycopg://x:y@localhost/z",
+        DB_ADMIN_URL="postgresql+psycopg://x:y@localhost/z",
+        JWT_SECRET="a" * 32,
+        _env_file=None,
+        **extra,
+    )
+
+
+@pytest.mark.parametrize("alias", ["REFRESH_TOKEN_DAYS", "SESSION_REFRESH_TOKEN_HOURS"])
+@pytest.mark.parametrize("value", [0, -1])
+def test_lifetime_settings_reject_non_positive_values(alias, value):
+    from pydantic import ValidationError
+
+    from app.settings import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(**_settings_kwargs(**{alias: value}))
+
+
+def test_lifetime_settings_defaults_and_override():
+    from app.settings import Settings
+
+    s = Settings(**_settings_kwargs())
+    assert (s.refresh_token_days, s.session_refresh_token_hours) == (90, 12)
+    s = Settings(**_settings_kwargs(SESSION_REFRESH_TOKEN_HOURS=2, REFRESH_TOKEN_DAYS=7))
+    assert (s.refresh_token_days, s.session_refresh_token_hours) == (7, 2)
+
+
+def test_revocation_ttls_follow_the_tokens_own_exp_not_current_config(monkeypatch):
+    payload = decode_token(issue_refresh_token(user_id=uuid.uuid4(), persist=True))  # ~90 d
+    lowered = get_settings().model_copy(
+        update={"refresh_token_days": 1, "session_refresh_token_hours": 1}
+    )
+    monkeypatch.setattr(refresh_revocation, "get_settings", lambda: lowered)
+    refresh_revocation.revoke(payload)
+    r = get_redis()
+    assert r.ttl(f"auth:refresh:revoked:jti:{payload['jti']}") >= 89 * _DAY
+    assert r.ttl(f"auth:refresh:revoked:sid:{payload['sid']}") >= 89 * _DAY
+
+
+def test_sso_login_revokes_the_previously_presented_refresh_cookie(
+    client, admin_session, provider
+):
+    _linked(admin_session, "6300010")
+    other = create_soldier(admin_session, personal_number="7830010", password=_PASSWORD)
+    admin_session.commit()
+    old = _login(client, other.personal_number).cookies.get("refresh_token")
+    started = _start(client)
+    client.cookies.set("refresh_token", old, path="/api/auth")
+    resp = _callback(client, provider, started)
+    assert resp.status_code == 303
+    new = resp.cookies.get("refresh_token")
+    stale = _refresh(client, old)
+    assert stale.status_code == 401 and stale.json()["detail"] == "token_revoked"
+    assert _refresh(client, new).status_code == 200
+
+
+def test_denied_sso_callback_does_not_revoke_the_presented_cookie(client, admin_session, provider):
+    other = create_soldier(admin_session, personal_number="7830011", password=_PASSWORD)
+    admin_session.commit()
+    old = _login(client, other.personal_number).cookies.get("refresh_token")
+    client.cookies.set("refresh_token", old, path="/api/auth")
+    resp = client.get("/api/auth/oidc/callback?code=x&state=bogus", follow_redirects=False)
+    assert resp.headers["location"].endswith("/login?sso_error=1")
+    assert _refresh(client, old).status_code == 200
+
+
+@pytest.mark.parametrize("value,persists", [("false", True), ("no", True), ("0", False)])
+def test_sso_start_only_the_exact_string_zero_means_unticked(
+    client, admin_session, provider, value, persists
+):
+    _linked(admin_session, f"63001{20 + len(value)}")
+    resp = _callback(client, provider, _start(client, f"?remember={value}"))
+    assert decode_token(resp.cookies.get("refresh_token"))["persist"] is persists
