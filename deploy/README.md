@@ -3,7 +3,7 @@
 ## Architecture
 
 - **nginx**: TLS termination, reverse proxy, static frontend serving
-- **backend**: FastAPI (uvicorn, 2 workers), auto-runs migrations on start
+- **backend**: FastAPI (uvicorn; worker count is set by `WEB_CONCURRENCY`, default 4), auto-runs migrations on start. Per-process behaviors, such as the ineligible-count single-flight (`backend/app/services/single_flight.py`), are per worker, not shared across workers.
 - **telegram-bot**: Polling bot (separate process)
 - **db**: PostgreSQL 16 with WAL archiving enabled
 
