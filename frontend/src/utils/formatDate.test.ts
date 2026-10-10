@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatDutyRange, isDateInPast, isDateRangeValid, lastDutyDay, todayIso, toExclusiveEndDate } from "./formatDate";
+import { dateToLocalIso, formatDutyRange, isDateInPast, isDateRangeValid, lastDutyDay, timestampToLocalIso, todayIso, toExclusiveEndDate } from "./formatDate";
 
 describe("isDateRangeValid", () => {
   it("is valid when from is before to", () => {
@@ -89,5 +89,15 @@ describe("formatDutyRange", () => {
   it("shows the actual last day touched for a multi-day duty", () => {
     // start Monday, exclusive end the following Monday -> last day touched is Sunday.
     expect(formatDutyRange("2026-06-01", "2026-06-08")).toBe("01.06.2026 – 07.06.2026");
+  });
+});
+
+describe("timestampToLocalIso", () => {
+  it.each(["2026-10-09T21:30:00Z", "2026-10-09T12:00:00Z", "2026-10-10T00:00:00Z"])("maps instant %s to its local calendar day", (iso) => {
+    expect(timestampToLocalIso(iso)).toBe(dateToLocalIso(new Date(iso)));
+  });
+
+  it("passes bare dates through unchanged", () => {
+    expect(timestampToLocalIso("2026-10-09")).toBe("2026-10-09");
   });
 });

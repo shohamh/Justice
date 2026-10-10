@@ -23,7 +23,7 @@ import {
   listMyConstraints,
   submitConstraint,
 } from "../api/constraints";
-import { formatDate, isDateInPast, isDateRangeValid, todayIso } from "../utils/formatDate";
+import { formatDate, isDateInPast, isDateRangeValid, timestampToLocalIso, todayIso } from "../utils/formatDate";
 import { translateApiError } from "../utils/translateApiError";
 import { formatFieldUpdateValue } from "../utils/formatFieldUpdateValue";
 import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
@@ -102,8 +102,8 @@ function RequestMetaRow({
 }: RequestMetaProps) {
   const { t } = useTranslation();
   const requestedIso = requestedAt ?? createdAt ?? null;
-  const requestedDay = requestedIso ? formatDate(requestedIso.slice(0, 10)) : null;
-  const updatedDay = updatedAt ? formatDate(updatedAt.slice(0, 10)) : null;
+  const requestedDay = requestedIso ? formatDate(timestampToLocalIso(requestedIso)) : null;
+  const updatedDay = updatedAt ? formatDate(timestampToLocalIso(updatedAt)) : null;
   // The update line only adds signal when it lands on a different day.
   const showUpdate = updatedDay !== null && updatedDay !== requestedDay;
   return (

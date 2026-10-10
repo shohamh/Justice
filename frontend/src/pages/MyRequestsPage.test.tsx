@@ -14,6 +14,7 @@ import * as soldiersApi from "../api/soldiers";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 import { useAuth, AuthContextValue } from "../auth/AuthContext";
 import he from "../i18n/he.json";
+import { dateToLocalIso, formatDate } from "../utils/formatDate";
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -689,6 +690,20 @@ describe("MyRequestsPage - request card metadata", () => {
     const row = await screen.findByTestId("constraint-row-c1");
     expect(row.textContent).not.toContain("my_requests.updated_at");
   });
+
+  it.each(["2026-10-09T21:30:00Z", "2026-10-09T12:00:00Z", "2026-10-10T00:00:00Z"])(
+    "shows the request date as the LOCAL calendar day (requested_at=%s)",
+    async (requestedAt) => {
+      vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
+        { ...constraint, requested_at: requestedAt, updated_at: requestedAt },
+      ]);
+      renderPage();
+      await openExistingTab();
+      const row = await screen.findByTestId("constraint-row-c1");
+      const meta = within(row).getByTestId("constraint-c1-meta");
+      expect(meta.textContent).toContain(formatDate(dateToLocalIso(new Date(requestedAt))));
+    },
+  );
 
   it("shows who approved with a decider link on an approved row", async () => {
     vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([

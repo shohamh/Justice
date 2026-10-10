@@ -1,6 +1,11 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import ConstraintWarningIcon from "./ConstraintWarningIcon";
+import { dateToLocalIso, formatDate } from "../utils/formatDate";
+
+// Instants straddling local/UTC midnight: 2026-10-09T21:30Z is already 2026-10-10
+// in Asia/Jerusalem (UTC+3) but still 2026-10-09 in UTC.
+const DECIDED_AT_INSTANTS = ["2026-10-09T21:30:00Z", "2026-10-09T12:00:00Z", "2026-10-10T00:00:00Z"];
 
 const warning = {
   reason: "בקשה אישית",
@@ -16,5 +21,12 @@ describe("ConstraintWarningIcon", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(screen.getByText("בקשה אישית")).toBeInTheDocument();
     expect(screen.getByText(/רב"ט כהן/)).toBeInTheDocument();
+  });
+
+  it.each(DECIDED_AT_INSTANTS)("shows the decision date as the LOCAL calendar day (decided_at=%s)", (decidedAt) => {
+    render(<ConstraintWarningIcon warning={{ ...warning, decided_at: decidedAt }} />);
+    fireEvent.click(screen.getByRole("button"));
+    const expected = formatDate(dateToLocalIso(new Date(decidedAt)));
+    expect(screen.getByText(new RegExp(`${expected.replaceAll(".", "\.")}$`))).toBeInTheDocument();
   });
 });
