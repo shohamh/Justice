@@ -24,8 +24,8 @@ from app.settings import get_settings
 #   open, so refresh/login/logout keep working;
 # - the long-lived job cancel-flag poller (algorithm_bridge) logs and retries;
 # - other request-path callers surface it as a 500.
-# NOT covered: the slowapi rate limiter (app.rate_limit) opens its own storage
-# connection from REDIS_URL, so login rate limiting has no such bound.
+# The slowapi rate limiter (app.rate_limit) opens its own storage connection
+# but reuses these constants for its socket timeouts.
 SOCKET_TIMEOUT_SECONDS = 1
 SOCKET_CONNECT_TIMEOUT_SECONDS = 1
 
