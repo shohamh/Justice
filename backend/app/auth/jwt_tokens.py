@@ -34,6 +34,7 @@ def issue_refresh_token(
     token_version: int = 1,
     lifetime_seconds: int | None = None,
     session_id: str | None = None,
+    persist: bool = True,
 ) -> str:
     """Issue a refresh token.
 
@@ -43,6 +44,12 @@ def issue_refresh_token(
     so a logout also revokes a token rotated from the same session by a
     refresh that raced the logout. A fresh login passes no ``session_id`` and
     starts a new session.
+
+    ``persist`` records whether the login chose a persistent cookie ("remember
+    me") or a browser-session cookie; ``/auth/refresh`` reads it back and
+    passes it on so rotation never turns a session login into a 30-day one.
+    Tokens issued before this claim existed have none and are treated as
+    persistent (see ``token_persists``), which keeps their old behavior.
     """
     settings = get_settings()
     if lifetime_seconds is None:
@@ -54,9 +61,15 @@ def issue_refresh_token(
         "tv": token_version,
         "jti": uuid.uuid4().hex,
         "sid": session_id or uuid.uuid4().hex,
+        "persist": persist,
         "exp": int(exp.timestamp()),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def token_persists(payload: dict[str, Any]) -> bool:
+    """Whether a refresh token's cookie should be persistent. Missing claim -> True."""
+    return payload.get("persist") is not False
 
 
 def decode_token(token: str) -> dict[str, Any]:

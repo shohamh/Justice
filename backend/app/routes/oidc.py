@@ -156,7 +156,10 @@ def oidc_callback(
         entity_id=soldier.id,
         context={**_client_context(request), **({"linked": True} if result.linked else {})},
     )
-    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
+    # Session cookie below (no max_age): keep it a session cookie across refreshes.
+    refresh = issue_refresh_token(
+        user_id=soldier.id, token_version=soldier.token_version, persist=False
+    )
     session.commit()
     redirect = _redirect(_frontend(SUCCESS_PATH))
     redirect.delete_cookie(TRANSACTION_COOKIE, path=COOKIE_PATH)

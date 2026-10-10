@@ -16,7 +16,13 @@ from sqlalchemy.orm import Session
 from app.audit.writer import write_audit
 from app.auth import refresh_revocation
 from app.auth.deps import get_current_user
-from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
+from app.auth.jwt_tokens import (
+    InvalidToken,
+    decode_token,
+    issue_access_token,
+    issue_refresh_token,
+    token_persists,
+)
 from app.auth.password import hash_password, verify_password
 from app.db.models import ExemptionRequestFile, ExemptionType, HierarchyNode, Soldier
 from app.db.session import get_session
@@ -294,7 +300,9 @@ def login(
         bump_token_version(soldier)
 
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
+    refresh = issue_refresh_token(
+        user_id=soldier.id, token_version=soldier.token_version, persist=body.remember_me
+    )
 
     write_audit(
         session,
@@ -356,15 +364,18 @@ def refresh(
     # Rotation keeps the login session id so a logout of this session also
     # revokes the rotated token. Legacy tokens (no sid) start a new session.
     sid = payload.get("sid")
+    # A session (non-remember-me) login stays a session cookie; old tokens persist.
+    persist = token_persists(payload)
     refresh = issue_refresh_token(
         user_id=soldier.id,
         token_version=soldier.token_version,
         session_id=sid if isinstance(sid, str) and sid else None,
+        persist=persist,
     )
     response.set_cookie(
         key="refresh_token",
         value=refresh,
-        max_age=settings.refresh_token_days * 24 * 3600,
+        max_age=settings.refresh_token_days * 24 * 3600 if persist else None,
         httponly=True,
         secure=settings.cookie_secure,
         samesite="strict",
