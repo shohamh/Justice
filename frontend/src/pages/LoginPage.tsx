@@ -161,7 +161,7 @@ export default function LoginPage() {
             type="button"
             onClick={() => {
               storeAuthReturnPath(returnTo);
-              startSsoLogin();
+              startSsoLogin(rememberMe);
             }}
             className="w-full border border-indigo-600 text-indigo-600 dark:text-indigo-300 dark:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-gray-700 font-medium py-2 rounded-md"
             data-testid="sso-login-button"

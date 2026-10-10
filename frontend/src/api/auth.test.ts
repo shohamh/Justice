@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { api } from "./client";
 import {
   fetchMe, listPublicExemptionTypes, fetchOidcStatus, fetchOidcRegistrationContext,
-  fetchRegisterNodes, startSsoLogin, OIDC_START_PATH,
+  fetchRegisterNodes, startSsoLogin, OIDC_START_PATH, login,
 } from "./auth";
 
 vi.mock("./client");
@@ -107,5 +107,28 @@ describe("OIDC helpers", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("startSsoLogin appends remember=0 only when remember-me is unticked", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("window", { location: { assign } });
+    try {
+      startSsoLogin(true);
+      expect(assign).toHaveBeenLastCalledWith(OIDC_START_PATH);
+      startSsoLogin(false);
+      expect(assign).toHaveBeenLastCalledWith(`${OIDC_START_PATH}?remember=0`);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("login", () => {
+  it("remembers by default (remember_me true) and sends false only when asked", async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { access_token: "t" } });
+    await login("123", "pw");
+    expect(api.post).toHaveBeenLastCalledWith("/auth/login", { personal_number: "123", password: "pw", remember_me: true });
+    await login("123", "pw", false);
+    expect(api.post).toHaveBeenLastCalledWith("/auth/login", { personal_number: "123", password: "pw", remember_me: false });
   });
 });
