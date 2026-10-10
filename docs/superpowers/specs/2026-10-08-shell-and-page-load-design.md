@@ -4,7 +4,7 @@ Date: 2026-10-08. Branch: stacks on `feature/transparency-bounded-continuation` 
 
 ## Problem
 
-The 2026-10-08 FCP recapture (`docs/benchmarks/data/transparency-keyset-browser-c{1,5}-fcp-recapture-v2-20261008.json`, 20,120 Soldiers / 1,000,008 assignments) shows that every page, not just Transparency, is slow, and slow in the same way:
+The 2026-10-08 FCP recapture (Vite dev-server captures taken before the production-build baseline; the raw c1/c5 files were not retained in the repo; 20,120 Soldiers / 1,000,008 assignments) shows that every page, not just Transparency, is slow, and slow in the same way:
 
 - c5 cold first-contentful-paint (FCP) is 3.4-3.8 s on every page; c1 is 1.2-1.6 s.
 - c5 cold page-ready is 9-17 s on every page except Transparency.

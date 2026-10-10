@@ -118,8 +118,8 @@ for (const [key, row] of [...after.rows].sort()) {
 
 - [ ] **Step 2: Verify it on an existing artifact**
 
-Run: `node frontend/scripts/summarize-scale-pages.mjs docs/benchmarks/data/transparency-keyset-browser-c1-fcp-recapture-v2-20261008.json`
-Expected: 14 scenario/mode lines (cold and warm for 7 scenarios), each followed by 5 endpoint lines; `home-dashboard cold` shows ~45 requests.
+Run: `node frontend/scripts/summarize-scale-pages.mjs docs/benchmarks/data/shell-load-before-c1-20261008.json`
+Expected: 14 scenario/mode lines (cold and warm for 7 scenarios), each followed by 5 endpoint lines; `home-dashboard cold` shows ~39 requests (baseline production build).
 
 - [ ] **Step 3: Commit the summarizer**
 

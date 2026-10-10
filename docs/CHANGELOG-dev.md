@@ -8,6 +8,12 @@ by `release-dev-to-master`.
 
 ## Unreleased
 
+### Transparency read-model design docs (`docs/transparency-design-docs`, 2026-10-10)
+Docs: docs/superpowers/plans/2026-10-05-transparency-keyset-read-model.md, docs/superpowers/specs/2026-10-05-transparency-keyset-read-model-design.md
+- Added the plan and design spec for the transparency keyset read model that landed with the shell-load merge (they were never committed).
+- Reworded two references in the 2026-10-08 shell-load spec/plan that pointed at dev-server FCP capture files which are not retained in the repo.
+- Type: chore
+
 ### Shell-load follow-ups: auth cookie persistence, nginx limit, limiter fail-open, local-day dates (`chore/shell-load-followups`, 2026-10-10)
 Docs: docs/superpowers/specs/2026-10-08-shell-and-page-load-design.md, docs/superpowers/plans/2026-10-08-shell-and-page-load-optimization.md, docs/benchmarks/2026-10-08-shell-load.md
 - Auth: refresh tokens now carry a signed `persist` claim, carried across rotation like `sid`; `/auth/refresh` sets the cookie `max_age` only when it is true. A login without "remember me" stays a browser-session cookie across refreshes (before, the first refresh turned it into a 30-day cookie). Tokens issued before this deploy have no claim and are treated as persistent (no surprise logouts). OIDC/SSO logins issue `persist=False`, so SSO sessions now also end when the browser closes (user-visible); register stays persistent. Touches `routes/auth.py`, `routes/oidc.py`, `auth/jwt_tokens.py`.
