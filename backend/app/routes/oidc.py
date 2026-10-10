@@ -20,7 +20,11 @@ from app.audit.writer import write_audit
 from app.auth.jwt_tokens import issue_access_token, issue_refresh_token  # noqa: F401
 from app.db.session import get_session
 from app.rate_limit import limiter
-from app.routes.auth import _client_context, refresh_cookie_max_age
+from app.routes.auth import (
+    _client_context,
+    _revoke_presented_refresh_cookie,
+    refresh_cookie_max_age,
+)
 from app.services import oidc_login, oidc_registration
 from app.services.oidc import OidcClient, OidcError, get_oidc_client
 from app.services.oidc_transactions import begin_transaction, consume_transaction
@@ -168,6 +172,9 @@ def oidc_callback(
         user_id=soldier.id, token_version=soldier.token_version, persist=persist
     )
     session.commit()
+    # Login accepted: retire the session this browser still holds (same ordering-race
+    # protection as password login and registration) before the new cookie replaces it.
+    _revoke_presented_refresh_cookie(request)
     redirect = _redirect(_frontend(SUCCESS_PATH))
     redirect.delete_cookie(TRANSACTION_COOKIE, path=COOKIE_PATH)
     redirect.set_cookie(
