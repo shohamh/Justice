@@ -1,3 +1,5 @@
+// Pin the test timezone to the app's (Israel) so date-display tests guard the local-vs-UTC day on any machine.
+process.env.TZ = "Asia/Jerusalem";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";

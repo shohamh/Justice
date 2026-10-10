@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import EntriesExitsPanel from "./EntriesExitsPanel";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
-import { dateToLocalIso } from "../utils/formatDate";
 import type { SoldierWithStatus } from "../api/commanderDashboard";
 
 vi.mock("react-i18next", () => ({
@@ -35,7 +34,12 @@ vi.mock("../api/dutyConfig", () => ({ listExemptionTypes: vi.fn().mockResolvedVa
 
 // Instants straddling local/UTC midnight; the first is 2026-10-10 00:30 in
 // Asia/Jerusalem (UTC+3) but still 2026-10-09 in UTC.
-const RELEASE_TEST_INSTANTS = ["2026-10-09T21:30:00Z", "2026-10-09T12:00:00Z", "2026-10-10T00:00:00Z"];
+// Expected local dates are hard-coded for the test timezone pinned to Asia/Jerusalem in vite.config.ts.
+const RELEASE_TEST_CASES: [string, string][] = [
+  ["2026-10-09T21:30:00Z", "2026-10-10"],
+  ["2026-10-09T12:00:00Z", "2026-10-09"],
+  ["2026-10-10T00:00:00Z", "2026-10-10"],
+];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -119,7 +123,7 @@ describe("EntriesExitsPanel - move flow", () => {
 });
 
 describe("EntriesExitsPanel - release flow", () => {
-  it.each(RELEASE_TEST_INSTANTS)("clicking release opens a modal with a date field defaulting to the local today, then submits that date (now=%s)", async (nowIso) => {
+  it.each(RELEASE_TEST_CASES)("clicking release opens a modal with a date field defaulting to the local today, then submits that date (now=%s)", async (nowIso, expectedLocalDay) => {
     const { softDeleteSoldier } = await import("../api/soldiers");
     const soldier = {
       id: "s1",
@@ -149,7 +153,7 @@ describe("EntriesExitsPanel - release flow", () => {
       vi.useRealTimers();
     }
 
-    const [todayY, todayM, todayD] = dateToLocalIso(new Date(nowIso)).split("-");
+    const [todayY, todayM, todayD] = expectedLocalDay.split("-");
     const dateInput = await screen.findByTestId("release-date-input");
     expect(dateInput).toHaveValue(`${todayD}/${todayM}/${todayY}`);
 

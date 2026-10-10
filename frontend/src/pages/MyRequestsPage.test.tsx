@@ -14,7 +14,6 @@ import * as soldiersApi from "../api/soldiers";
 import { SoldierModalProvider } from "../contexts/SoldierModalContext";
 import { useAuth, AuthContextValue } from "../auth/AuthContext";
 import he from "../i18n/he.json";
-import { dateToLocalIso, formatDate } from "../utils/formatDate";
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -691,9 +690,14 @@ describe("MyRequestsPage - request card metadata", () => {
     expect(row.textContent).not.toContain("my_requests.updated_at");
   });
 
-  it.each(["2026-10-09T21:30:00Z", "2026-10-09T12:00:00Z", "2026-10-10T00:00:00Z"])(
-    "shows the request date as the LOCAL calendar day (requested_at=%s)",
-    async (requestedAt) => {
+  // Expected days are hard-coded for the test timezone pinned to Asia/Jerusalem in vite.config.ts.
+  it.each([
+    ["2026-10-09T21:30:00Z", "10.10.2026"],
+    ["2026-10-09T12:00:00Z", "09.10.2026"],
+    ["2026-10-10T00:00:00Z", "10.10.2026"],
+  ])(
+    "shows the request date as the LOCAL calendar day (requested_at=%s -> %s)",
+    async (requestedAt, expectedDay) => {
       vi.mocked(constraintsApi.listMyConstraints).mockResolvedValue([
         { ...constraint, requested_at: requestedAt, updated_at: requestedAt },
       ]);
@@ -701,7 +705,7 @@ describe("MyRequestsPage - request card metadata", () => {
       await openExistingTab();
       const row = await screen.findByTestId("constraint-row-c1");
       const meta = within(row).getByTestId("constraint-c1-meta");
-      expect(meta.textContent).toContain(formatDate(dateToLocalIso(new Date(requestedAt))));
+      expect(meta.textContent).toContain(expectedDay);
     },
   );
 

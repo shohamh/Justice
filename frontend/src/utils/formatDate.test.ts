@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dateToLocalIso, formatDutyRange, isDateInPast, isDateRangeValid, lastDutyDay, timestampToLocalIso, todayIso, toExclusiveEndDate } from "./formatDate";
+import { formatDutyRange, isDateInPast, isDateRangeValid, lastDutyDay, timestampToLocalIso, todayIso, toExclusiveEndDate } from "./formatDate";
 
 describe("isDateRangeValid", () => {
   it("is valid when from is before to", () => {
@@ -93,8 +93,13 @@ describe("formatDutyRange", () => {
 });
 
 describe("timestampToLocalIso", () => {
-  it.each(["2026-10-09T21:30:00Z", "2026-10-09T12:00:00Z", "2026-10-10T00:00:00Z"])("maps instant %s to its local calendar day", (iso) => {
-    expect(timestampToLocalIso(iso)).toBe(dateToLocalIso(new Date(iso)));
+  // Hard-coded for the test timezone pinned to Asia/Jerusalem in vite.config.ts.
+  it.each([
+    ["2026-10-09T21:30:00Z", "2026-10-10"],
+    ["2026-10-09T12:00:00Z", "2026-10-09"],
+    ["2026-10-10T00:00:00Z", "2026-10-10"],
+  ])("maps instant %s to its local calendar day %s", (iso, day) => {
+    expect(timestampToLocalIso(iso)).toBe(day);
   });
 
   it("passes bare dates through unchanged", () => {

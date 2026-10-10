@@ -1,11 +1,15 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import ConstraintWarningIcon from "./ConstraintWarningIcon";
-import { dateToLocalIso, formatDate } from "../utils/formatDate";
 
 // Instants straddling local/UTC midnight: 2026-10-09T21:30Z is already 2026-10-10
 // in Asia/Jerusalem (UTC+3) but still 2026-10-09 in UTC.
-const DECIDED_AT_INSTANTS = ["2026-10-09T21:30:00Z", "2026-10-09T12:00:00Z", "2026-10-10T00:00:00Z"];
+// Expected days are hard-coded for the test timezone pinned to Asia/Jerusalem in vite.config.ts.
+const DECIDED_AT_CASES: [string, string][] = [
+  ["2026-10-09T21:30:00Z", "10.10.2026"],
+  ["2026-10-09T12:00:00Z", "09.10.2026"],
+  ["2026-10-10T00:00:00Z", "10.10.2026"],
+];
 
 const warning = {
   reason: "בקשה אישית",
@@ -23,10 +27,9 @@ describe("ConstraintWarningIcon", () => {
     expect(screen.getByText(/רב"ט כהן/)).toBeInTheDocument();
   });
 
-  it.each(DECIDED_AT_INSTANTS)("shows the decision date as the LOCAL calendar day (decided_at=%s)", (decidedAt) => {
+  it.each(DECIDED_AT_CASES)("shows the decision date as the LOCAL calendar day (decided_at=%s -> %s)", (decidedAt, expected) => {
     render(<ConstraintWarningIcon warning={{ ...warning, decided_at: decidedAt }} />);
     fireEvent.click(screen.getByRole("button"));
-    const expected = formatDate(dateToLocalIso(new Date(decidedAt)));
     expect(screen.getByText((text) => text.endsWith(` · ${expected}`))).toBeInTheDocument();
   });
 });
