@@ -82,13 +82,17 @@ def revoke(payload: Mapping[str, Any]) -> None:
     except (TypeError, ValueError):
         exp = 0
     remaining = exp - int(time.time())
-    jti_ttl = max(1, min(remaining, max_lifetime)) if remaining > 0 else max_lifetime
+    # TTLs follow the token's own exp, not the *current* config: ops may lower
+    # REFRESH_TOKEN_DAYS while longer tokens are still live. (Unreadable/expired exp
+    # falls back to the configured maximum.)
+    jti_ttl = max(1, remaining) if remaining > 0 else max_lifetime
+    sid_ttl = max(max_lifetime, remaining) + SESSION_TTL_MARGIN_SECONDS
     try:
         pipe = get_redis().pipeline(transaction=False)
         if jti is not None:
             pipe.set(_jti_key(jti), "1", ex=jti_ttl)
         if sid is not None:
-            pipe.set(_sid_key(sid), "1", ex=max_lifetime + SESSION_TTL_MARGIN_SECONDS)
+            pipe.set(_sid_key(sid), "1", ex=sid_ttl)
         pipe.execute()
     except redis.RedisError:
         _logger.warning(
