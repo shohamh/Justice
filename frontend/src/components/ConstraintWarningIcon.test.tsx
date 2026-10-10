@@ -27,6 +27,6 @@ describe("ConstraintWarningIcon", () => {
     render(<ConstraintWarningIcon warning={{ ...warning, decided_at: decidedAt }} />);
     fireEvent.click(screen.getByRole("button"));
     const expected = formatDate(dateToLocalIso(new Date(decidedAt)));
-    expect(screen.getByText(new RegExp(`${expected.replaceAll(".", "\.")}$`))).toBeInTheDocument();
+    expect(screen.getByText((text) => text.endsWith(` · ${expected}`))).toBeInTheDocument();
   });
 });
