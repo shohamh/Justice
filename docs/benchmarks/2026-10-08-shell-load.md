@@ -155,7 +155,7 @@ Admin user, Home cold, medians. "c1 before" is one run of `31db05aa` plus the du
 Not fixed:
 
 - The warning-score aggregate (above).
-- `deploy/nginx.conf` serves HTTPS without `http2`, so production has the same six-connection queue; `listen 443 ssl http2;` would remove it. Its `limit_req` (10 r/s, burst 20, per client IP) is also close to one cold Home load (32 API requests in 4-5 s) and would be reached by users behind a shared NAT. Deployment configuration is outside this task.
+- `deploy/nginx.conf` serves HTTPS without `http2`, so production has the same six-connection queue; `listen 443 ssl http2;` would remove it. Its `limit_req` was 10 r/s, burst 20 per client IP, which is close to one cold Home load (32 API requests in 4-5 s) and would be reached by users behind a shared NAT; it was raised to 100 r/s, burst 100 on 2026-10-10 (see the ops-review note below).
 - The Home command calendar loads the scope window (`node_id`) and then the personal window (`soldier_id`) one after the other. Running them in parallel would take ~350 ms off the end of the page. They are not duplicates, so this is left for a separate change.
 - Measurement artifact: on this machine every new browser connection to `localhost:5174` waits ~300 ms before its request starts (Playwright `requestStart` ~300 ms on fresh connections, 0 on reused ones), consistent with an IPv6-then-IPv4 fallback for `localhost` against a server bound to 127.0.0.1. It adds to all wall times in these captures and does not exist in production.
 
@@ -269,7 +269,7 @@ All four persist; this run does not show them fixed. Nothing in the data indicat
 - gzip over JSON responses in nginx: note for ops: compression of JSON responses carries BREACH considerations.
 - UTC-date patterns remain in `UpcomingRangesWidget.test.tsx` and `ConstraintWarningIcon.tsx`.
 - The benchmark JSON files add about 3.3 MB of bulk to the repository per run pair.
-- The nginx change (`deploy/nginx.conf`) needs ops review before rollout: HTTP/2 behind a load balancer, gzip CPU cost, and `limit_req` 10 r/s burst 20 against about 32 requests for a cold Home load.
+- The nginx change (`deploy/nginx.conf`) needs ops review before rollout: HTTP/2 behind a load balancer, gzip CPU cost, and `limit_req` (was 10 r/s burst 20 against about 32 requests for a cold Home load; raised to 100 r/s burst 100 on 2026-10-10, see the ops-review note under "Follow-up batch 6").
 - Eager assets grew from 244 to 264 kB gzip after the earlier final; not investigated.
 
 ### Caveats
@@ -718,7 +718,7 @@ Image from `deploy/docker-compose.prod.yml`: `nginx:1.27-alpine` (stock nginx, n
 
 Validation, in the locally present `nginx:1.27-alpine` (nginx/1.27.5), config and a throwaway self-signed certificate mounted read-only, upstream host names mapped with `--add-host`: `nginx -t` -> "syntax is ok" / "test is successful", no warnings. Serving the fonts+placeholder build from that container: ALPN `h2` (old config: none); `/`, `/login`, `/index.html` -> `Cache-Control: no-cache`, gzip, `Vary: Accept-Encoding`; a hashed `/assets/*.js` and `/fonts/Heebo-v28-hebrew.woff2` -> `public, max-age=31536000, immutable` with all three security headers (old config: `Expires`, two Cache-Control headers, no security headers). Temporary container, certificates and files were removed.
 
-Ops review: check that nothing between the client and nginx strips ALPN (a TLS-terminating load balancer in front would need its own HTTP/2 setting), that the extra gzip CPU is acceptable, and the `no-cache` on HTML. Observation, not changed: `limit_req zone=api rate=10r/s burst=20 nodelay` per IP is close to one cold Home load (about 32 requests, most of them `/api/`); users behind one NAT or proxy address share that budget and could get 503s on a burst. With HTTP/2 the requests arrive faster, which makes the burst limit more likely to bite.
+Ops review: check that nothing between the client and nginx strips ALPN (a TLS-terminating load balancer in front would need its own HTTP/2 setting), that the extra gzip CPU is acceptable, and the `no-cache` on HTML. Update 2026-10-10: `limit_req zone=api rate=10r/s burst=20 nodelay` per IP was close to one cold Home load (about 32 requests, most of them `/api/`); users behind one NAT or proxy address share that budget and could get 503s on a burst, and HTTP/2 makes that more likely. Resolved by raising the limit to `rate=100r/s burst=100 nodelay`. Login brute-force protection is not nginx's job: it is the backend's Redis-backed login limiter (`backend/app/rate_limit.py`) plus per-account lockout.
 
 `/pdfjs/pdf.worker.min.mjs` was served as `application/octet-stream` with `X-Content-Type-Options: nosniff` (stock `mime.types` has no `.mjs`). Fixed in fix round 1 (`7804d400`), see there.
 
