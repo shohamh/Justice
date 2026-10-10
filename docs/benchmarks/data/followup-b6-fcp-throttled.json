@@ -1,0 +1,7116 @@
+{
+ "generatedAt": "2026-10-09T18:31:20.379Z",
+ "description": "Follow-up batch 6: throttled FCP/LCP/shell A/B. Builds: base=15a4adfa, fonts=base+self-hosted Heebo (item A), fc=fonts+static boot placeholder and ProtectedRoute loading status (item C). Served by a Node server imitating the pre-batch deploy/nginx.conf (gzip level 1, HTTP/1.1, no TLS), one loopback origin per build. 7 runs + 1 discarded warm-up per cell, builds interleaved. Times in ms from navigation start.",
+ "profiles": {
+  "fast4g": {
+   "downMbps": 9,
+   "upMbps": 1.5,
+   "rttMs": 150,
+   "cpu": 4
+  },
+  "slow4g": {
+   "downMbps": 1.6,
+   "upMbps": 0.75,
+   "rttMs": 300,
+   "cpu": 4
+  }
+ },
+ "targets": [
+  {
+   "label": "base",
+   "base": "http://127.0.0.1:5174"
+  },
+  {
+   "label": "fonts",
+   "base": "http://127.0.0.2:5174"
+  },
+  {
+   "label": "fc",
+   "base": "http://127.0.0.3:5174"
+  }
+ ],
+ "summary": [
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "mode": "cold",
+   "target": "base",
+   "n": 7,
+   "fcp50": 1748,
+   "fcp95": 2152,
+   "fcpMin": 1708,
+   "fcpMax": 2152,
+   "lcp50": 3088,
+   "lcp95": 3188,
+   "heebo50": null,
+   "heeboAtFcp": 0,
+   "boot50": null,
+   "loading50": 1626,
+   "loginForm50": null,
+   "shell50": 1626,
+   "page50": 2516,
+   "dcl50": 1005,
+   "jsEnd50": 919,
+   "blockingEnd50": 912,
+   "fontCssEnd50": 912,
+   "meEnd50": 1483,
+   "kbBeforeFcp": 331.755859375,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "mode": "cold",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 1728,
+   "fcp95": 2076,
+   "fcpMin": 1692,
+   "fcpMax": 2076,
+   "lcp50": 3032,
+   "lcp95": 3204,
+   "heebo50": 399,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": 1620,
+   "loginForm50": null,
+   "shell50": 1620,
+   "page50": 2520,
+   "dcl50": 1005,
+   "jsEnd50": 948,
+   "blockingEnd50": 590,
+   "fontCssEnd50": null,
+   "meEnd50": 1488,
+   "kbBeforeFcp": 324.8330078125,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "mode": "cold",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 644,
+   "fcp95": 660,
+   "fcpMin": 636,
+   "fcpMax": 660,
+   "lcp50": 3120,
+   "lcp95": 3192,
+   "heebo50": 410,
+   "heeboAtFcp": 7,
+   "boot50": 215,
+   "loading50": 1089,
+   "loginForm50": null,
+   "shell50": 1691,
+   "page50": 2531,
+   "dcl50": 1021,
+   "jsEnd50": 960,
+   "blockingEnd50": 597,
+   "fontCssEnd50": null,
+   "meEnd50": 1517,
+   "kbBeforeFcp": 259.6181640625,
+   "painted": "boot placeholder"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "mode": "warm",
+   "target": "base",
+   "n": 7,
+   "fcp50": 932,
+   "fcp95": 1176,
+   "fcpMin": 784,
+   "fcpMax": 1176,
+   "lcp50": 1576,
+   "lcp95": 1680,
+   "heebo50": 162,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": 801,
+   "loginForm50": null,
+   "shell50": 905,
+   "page50": 968,
+   "dcl50": 223,
+   "jsEnd50": 93,
+   "blockingEnd50": 144,
+   "fontCssEnd50": 144,
+   "meEnd50": 694,
+   "kbBeforeFcp": 1.7744140625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "mode": "warm",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 956,
+   "fcp95": 1184,
+   "fcpMin": 720,
+   "fcpMax": 1184,
+   "lcp50": 1480,
+   "lcp95": 1756,
+   "heebo50": 76,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": 759.5,
+   "loginForm50": null,
+   "shell50": 931,
+   "page50": 948,
+   "dcl50": 245,
+   "jsEnd50": 101,
+   "blockingEnd50": 104,
+   "fontCssEnd50": null,
+   "meEnd50": 722,
+   "kbBeforeFcp": 1.775390625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "mode": "warm",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 200,
+   "fcp95": 268,
+   "fcpMin": 88,
+   "fcpMax": 268,
+   "lcp50": 1528,
+   "lcp95": 1620,
+   "heebo50": 79,
+   "heeboAtFcp": 7,
+   "boot50": 163,
+   "loading50": 262,
+   "loginForm50": null,
+   "shell50": 885,
+   "page50": 953,
+   "dcl50": 228,
+   "jsEnd50": 99,
+   "blockingEnd50": 101,
+   "fontCssEnd50": null,
+   "meEnd50": 738,
+   "kbBeforeFcp": 0,
+   "painted": "loading text"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "mode": "cold",
+   "target": "base",
+   "n": 7,
+   "fcp50": 1204,
+   "fcp95": 1480,
+   "fcpMin": 1160,
+   "fcpMax": 1480,
+   "lcp50": 1204,
+   "lcp95": 1480,
+   "heebo50": null,
+   "heeboAtFcp": 0,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": 1106,
+   "shell50": null,
+   "page50": 1106,
+   "dcl50": 1024,
+   "jsEnd50": 927,
+   "blockingEnd50": 953,
+   "fontCssEnd50": 953,
+   "meEnd50": null,
+   "kbBeforeFcp": 301.8310546875,
+   "painted": "login form"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "mode": "cold",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 1184,
+   "fcp95": 1228,
+   "fcpMin": 1164,
+   "fcpMax": 1228,
+   "lcp50": 1184,
+   "lcp95": 1228,
+   "heebo50": 410,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": 1085,
+   "shell50": null,
+   "page50": 1085,
+   "dcl50": 1004,
+   "jsEnd50": 942,
+   "blockingEnd50": 592,
+   "fontCssEnd50": null,
+   "meEnd50": null,
+   "kbBeforeFcp": 312.453125,
+   "painted": "login form"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "mode": "cold",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 636,
+   "fcp95": 656,
+   "fcpMin": 616,
+   "fcpMax": 656,
+   "lcp50": 1192,
+   "lcp95": 1220,
+   "heebo50": 403,
+   "heeboAtFcp": 7,
+   "boot50": 213,
+   "loading50": null,
+   "loginForm50": 1104,
+   "shell50": null,
+   "page50": 1104,
+   "dcl50": 1019,
+   "jsEnd50": 958,
+   "blockingEnd50": 595,
+   "fontCssEnd50": null,
+   "meEnd50": null,
+   "kbBeforeFcp": 259.6181640625,
+   "painted": "boot placeholder"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "mode": "warm",
+   "target": "base",
+   "n": 7,
+   "fcp50": 184,
+   "fcp95": 240,
+   "fcpMin": 156,
+   "fcpMax": 240,
+   "lcp50": 184,
+   "lcp95": 240,
+   "heebo50": 50,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": 109,
+   "shell50": null,
+   "page50": 109,
+   "dcl50": 91,
+   "jsEnd50": 19,
+   "blockingEnd50": 39,
+   "fontCssEnd50": 39,
+   "meEnd50": null,
+   "kbBeforeFcp": 0,
+   "painted": "login form"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "mode": "warm",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 164,
+   "fcp95": 200,
+   "fcpMin": 148,
+   "fcpMax": 200,
+   "lcp50": 164,
+   "lcp95": 200,
+   "heebo50": 11,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": 88,
+   "shell50": null,
+   "page50": 88,
+   "dcl50": 71,
+   "jsEnd50": 19,
+   "blockingEnd50": 19,
+   "fontCssEnd50": null,
+   "meEnd50": null,
+   "kbBeforeFcp": 0,
+   "painted": "login form"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "mode": "warm",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 56,
+   "fcp95": 60,
+   "fcpMin": 44,
+   "fcpMax": 60,
+   "lcp50": 160,
+   "lcp95": 168,
+   "heebo50": 12,
+   "heeboAtFcp": 7,
+   "boot50": 46,
+   "loading50": null,
+   "loginForm50": 94,
+   "shell50": null,
+   "page50": 94,
+   "dcl50": 77,
+   "jsEnd50": 20,
+   "blockingEnd50": 21,
+   "fontCssEnd50": null,
+   "meEnd50": null,
+   "kbBeforeFcp": 0,
+   "painted": "login form"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "mode": "cold",
+   "target": "base",
+   "n": 7,
+   "fcp50": 1824,
+   "fcp95": 1868,
+   "fcpMin": 1732,
+   "fcpMax": 1868,
+   "lcp50": 2608,
+   "lcp95": 2704,
+   "heebo50": null,
+   "heeboAtFcp": 0,
+   "boot50": null,
+   "loading50": 1728,
+   "loginForm50": null,
+   "shell50": 1728,
+   "page50": 2581,
+   "dcl50": 1017,
+   "jsEnd50": 923,
+   "blockingEnd50": 945,
+   "fontCssEnd50": 945,
+   "meEnd50": 1521,
+   "kbBeforeFcp": 329.0078125,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "mode": "cold",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 1784,
+   "fcp95": 2068,
+   "fcpMin": 1740,
+   "fcpMax": 2068,
+   "lcp50": 2584,
+   "lcp95": 2724,
+   "heebo50": 407,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": 1675,
+   "loginForm50": null,
+   "shell50": 1676,
+   "page50": 2544,
+   "dcl50": 1016,
+   "jsEnd50": 954,
+   "blockingEnd50": 598,
+   "fontCssEnd50": null,
+   "meEnd50": 1504,
+   "kbBeforeFcp": 339.623046875,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "mode": "cold",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 644,
+   "fcp95": 656,
+   "fcpMin": 624,
+   "fcpMax": 656,
+   "lcp50": 2568,
+   "lcp95": 2600,
+   "heebo50": 410,
+   "heeboAtFcp": 7,
+   "boot50": 221,
+   "loading50": 1090,
+   "loginForm50": null,
+   "shell50": 1670,
+   "page50": 2541,
+   "dcl50": 1021,
+   "jsEnd50": 962,
+   "blockingEnd50": 598,
+   "fontCssEnd50": null,
+   "meEnd50": 1517,
+   "kbBeforeFcp": 259.6181640625,
+   "painted": "boot placeholder"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "mode": "warm",
+   "target": "base",
+   "n": 7,
+   "fcp50": 908,
+   "fcp95": 1020,
+   "fcpMin": 820,
+   "fcpMax": 1020,
+   "lcp50": 908,
+   "lcp95": 1020,
+   "heebo50": 125,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": null,
+   "shell50": 862,
+   "page50": 862,
+   "dcl50": 194,
+   "jsEnd50": 55,
+   "blockingEnd50": 105,
+   "fontCssEnd50": 105,
+   "meEnd50": 669,
+   "kbBeforeFcp": 1.7744140625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "mode": "warm",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 908,
+   "fcp95": 960,
+   "fcpMin": 776,
+   "fcpMax": 960,
+   "lcp50": 916,
+   "lcp95": 1064,
+   "heebo50": 43,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": 727,
+   "loginForm50": null,
+   "shell50": 843,
+   "page50": 871,
+   "dcl50": 183,
+   "jsEnd50": 56,
+   "blockingEnd50": 56,
+   "fontCssEnd50": null,
+   "meEnd50": 659,
+   "kbBeforeFcp": 1.775390625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "mode": "warm",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 144,
+   "fcp95": 208,
+   "fcpMin": 108,
+   "fcpMax": 208,
+   "lcp50": 912,
+   "lcp95": 1088,
+   "heebo50": 46,
+   "heeboAtFcp": 7,
+   "boot50": 130,
+   "loading50": 211,
+   "loginForm50": null,
+   "shell50": 858,
+   "page50": 871,
+   "dcl50": 186,
+   "jsEnd50": 61,
+   "blockingEnd50": 66,
+   "fontCssEnd50": null,
+   "meEnd50": 654,
+   "kbBeforeFcp": 0,
+   "painted": "loading text"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "mode": "cold",
+   "target": "base",
+   "n": 7,
+   "fcp50": 3432,
+   "fcp95": 3724,
+   "fcpMin": 3356,
+   "fcpMax": 3724,
+   "lcp50": 6264,
+   "lcp95": 6284,
+   "heebo50": null,
+   "heeboAtFcp": 0,
+   "boot50": null,
+   "loading50": 3300,
+   "loginForm50": null,
+   "shell50": 3300,
+   "page50": 5603,
+   "dcl50": 2347,
+   "jsEnd50": 2286,
+   "blockingEnd50": 1995,
+   "fontCssEnd50": 1995,
+   "meEnd50": 3143,
+   "kbBeforeFcp": 303.6064453125,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "mode": "cold",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 3572,
+   "fcp95": 3884,
+   "fcpMin": 3456,
+   "fcpMax": 3884,
+   "lcp50": 6352,
+   "lcp95": 6424,
+   "heebo50": 914,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": 3456,
+   "loginForm50": null,
+   "shell50": 3456,
+   "page50": 5709,
+   "dcl50": 2435,
+   "jsEnd50": 2377,
+   "blockingEnd50": 1520,
+   "fontCssEnd50": null,
+   "meEnd50": 3225,
+   "kbBeforeFcp": 314.228515625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "mode": "cold",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 1564,
+   "fcp95": 1580,
+   "fcpMin": 1544,
+   "fcpMax": 1580,
+   "lcp50": 6364,
+   "lcp95": 6556,
+   "heebo50": 916,
+   "heeboAtFcp": 7,
+   "boot50": 367,
+   "loading50": 2642,
+   "loginForm50": null,
+   "shell50": 3523,
+   "page50": 5736,
+   "dcl50": 2574,
+   "jsEnd50": 2520,
+   "blockingEnd50": 1521,
+   "fontCssEnd50": null,
+   "meEnd50": 3361,
+   "kbBeforeFcp": 79.783203125,
+   "painted": "boot placeholder"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "mode": "warm",
+   "target": "base",
+   "n": 7,
+   "fcp50": 1156,
+   "fcp95": 1224,
+   "fcpMin": 1124,
+   "fcpMax": 1224,
+   "lcp50": 1916,
+   "lcp95": 1980,
+   "heebo50": 131,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": null,
+   "shell50": 1129,
+   "page50": 1129,
+   "dcl50": 216,
+   "jsEnd50": 69,
+   "blockingEnd50": 111,
+   "fontCssEnd50": 111,
+   "meEnd50": 974,
+   "kbBeforeFcp": 1.7744140625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "mode": "warm",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 1208,
+   "fcp95": 1268,
+   "fcpMin": 1012,
+   "fcpMax": 1268,
+   "lcp50": 2012,
+   "lcp95": 2076,
+   "heebo50": 57,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": null,
+   "shell50": 1187,
+   "page50": 1187,
+   "dcl50": 186,
+   "jsEnd50": 81,
+   "blockingEnd50": 82,
+   "fontCssEnd50": null,
+   "meEnd50": 992,
+   "kbBeforeFcp": 1.7744140625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "mode": "warm",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 156,
+   "fcp95": 212,
+   "fcpMin": 96,
+   "fcpMax": 212,
+   "lcp50": 1964,
+   "lcp95": 2028,
+   "heebo50": 49,
+   "heeboAtFcp": 7,
+   "boot50": 125,
+   "loading50": 221,
+   "loginForm50": null,
+   "shell50": 1169,
+   "page50": 1169,
+   "dcl50": 190,
+   "jsEnd50": 71,
+   "blockingEnd50": 72,
+   "fontCssEnd50": null,
+   "meEnd50": 988,
+   "kbBeforeFcp": 0,
+   "painted": "loading text"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "mode": "cold",
+   "target": "base",
+   "n": 7,
+   "fcp50": 2548,
+   "fcp95": 2584,
+   "fcpMin": 2520,
+   "fcpMax": 2584,
+   "lcp50": 2548,
+   "lcp95": 2584,
+   "heebo50": null,
+   "heeboAtFcp": 0,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": 2434,
+   "shell50": null,
+   "page50": 2434,
+   "dcl50": 2352,
+   "jsEnd50": 2291,
+   "blockingEnd50": 1969,
+   "fontCssEnd50": 1969,
+   "meEnd50": null,
+   "kbBeforeFcp": 301.8310546875,
+   "painted": "login form"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "mode": "cold",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 2620,
+   "fcp95": 2728,
+   "fcpMin": 2596,
+   "fcpMax": 2728,
+   "lcp50": 2620,
+   "lcp95": 2728,
+   "heebo50": 920,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": 2525,
+   "shell50": null,
+   "page50": 2525,
+   "dcl50": 2432,
+   "jsEnd50": 2375,
+   "blockingEnd50": 1522,
+   "fontCssEnd50": null,
+   "meEnd50": null,
+   "kbBeforeFcp": 312.453125,
+   "painted": "login form"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "mode": "cold",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 1568,
+   "fcp95": 1576,
+   "fcpMin": 1528,
+   "fcpMax": 1576,
+   "lcp50": 2736,
+   "lcp95": 2752,
+   "heebo50": 919,
+   "heeboAtFcp": 7,
+   "boot50": 367,
+   "loading50": null,
+   "loginForm50": 2648,
+   "shell50": null,
+   "page50": 2648,
+   "dcl50": 2569,
+   "jsEnd50": 2519,
+   "blockingEnd50": 1521,
+   "fontCssEnd50": null,
+   "meEnd50": null,
+   "kbBeforeFcp": 79.783203125,
+   "painted": "boot placeholder"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "mode": "warm",
+   "target": "base",
+   "n": 7,
+   "fcp50": 184,
+   "fcp95": 200,
+   "fcpMin": 184,
+   "fcpMax": 200,
+   "lcp50": 184,
+   "lcp95": 200,
+   "heebo50": 55,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": 113,
+   "shell50": null,
+   "page50": 113,
+   "dcl50": 92,
+   "jsEnd50": 21,
+   "blockingEnd50": 44,
+   "fontCssEnd50": 44,
+   "meEnd50": null,
+   "kbBeforeFcp": 0,
+   "painted": "login form"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "mode": "warm",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 168,
+   "fcp95": 228,
+   "fcpMin": 148,
+   "fcpMax": 228,
+   "lcp50": 168,
+   "lcp95": 228,
+   "heebo50": 10,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": 90,
+   "shell50": null,
+   "page50": 90,
+   "dcl50": 73,
+   "jsEnd50": 19,
+   "blockingEnd50": 20,
+   "fontCssEnd50": null,
+   "meEnd50": null,
+   "kbBeforeFcp": 0,
+   "painted": "login form"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "mode": "warm",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 56,
+   "fcp95": 112,
+   "fcpMin": 48,
+   "fcpMax": 112,
+   "lcp50": 172,
+   "lcp95": 212,
+   "heebo50": 11,
+   "heeboAtFcp": 7,
+   "boot50": 47,
+   "loading50": null,
+   "loginForm50": 95,
+   "shell50": null,
+   "page50": 95,
+   "dcl50": 76,
+   "jsEnd50": 21,
+   "blockingEnd50": 22,
+   "fontCssEnd50": null,
+   "meEnd50": null,
+   "kbBeforeFcp": 0,
+   "painted": "login form"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "mode": "cold",
+   "target": "base",
+   "n": 7,
+   "fcp50": 3404,
+   "fcp95": 3588,
+   "fcpMin": 3348,
+   "fcpMax": 3588,
+   "lcp50": 6472,
+   "lcp95": 6604,
+   "heebo50": null,
+   "heeboAtFcp": 0,
+   "boot50": null,
+   "loading50": 3285,
+   "loginForm50": null,
+   "shell50": 3285,
+   "page50": 6323,
+   "dcl50": 2350,
+   "jsEnd50": 2291,
+   "blockingEnd50": 1974,
+   "fontCssEnd50": 1974,
+   "meEnd50": 3140,
+   "kbBeforeFcp": 303.60546875,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "mode": "cold",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 3540,
+   "fcp95": 3824,
+   "fcpMin": 3460,
+   "fcpMax": 3824,
+   "lcp50": 6432,
+   "lcp95": 6528,
+   "heebo50": 910,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": 3423,
+   "loginForm50": null,
+   "shell50": 3423,
+   "page50": 6343,
+   "dcl50": 2436,
+   "jsEnd50": 2379,
+   "blockingEnd50": 1519,
+   "fontCssEnd50": null,
+   "meEnd50": 3224,
+   "kbBeforeFcp": 314.228515625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "mode": "cold",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 1564,
+   "fcp95": 1572,
+   "fcpMin": 1548,
+   "fcpMax": 1572,
+   "lcp50": 6484,
+   "lcp95": 6628,
+   "heebo50": 910,
+   "heeboAtFcp": 7,
+   "boot50": 363,
+   "loading50": 2654,
+   "loginForm50": null,
+   "shell50": 3543,
+   "page50": 6357,
+   "dcl50": 2574,
+   "jsEnd50": 2515,
+   "blockingEnd50": 1515,
+   "fontCssEnd50": null,
+   "meEnd50": 3389,
+   "kbBeforeFcp": 79.783203125,
+   "painted": "boot placeholder"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "mode": "warm",
+   "target": "base",
+   "n": 7,
+   "fcp50": 1120,
+   "fcp95": 1212,
+   "fcpMin": 1060,
+   "fcpMax": 1212,
+   "lcp50": 1120,
+   "lcp95": 1212,
+   "heebo50": 73,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": null,
+   "shell50": 1082,
+   "page50": 1082,
+   "dcl50": 121,
+   "jsEnd50": 39,
+   "blockingEnd50": 64,
+   "fontCssEnd50": 64,
+   "meEnd50": 867,
+   "kbBeforeFcp": 1.7744140625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "mode": "warm",
+   "target": "fonts",
+   "n": 7,
+   "fcp50": 1088,
+   "fcp95": 1136,
+   "fcpMin": 1060,
+   "fcpMax": 1136,
+   "lcp50": 1088,
+   "lcp95": 1136,
+   "heebo50": 18,
+   "heeboAtFcp": 7,
+   "boot50": null,
+   "loading50": null,
+   "loginForm50": null,
+   "shell50": 1053,
+   "page50": 1053,
+   "dcl50": 84,
+   "jsEnd50": 27,
+   "blockingEnd50": 28,
+   "fontCssEnd50": null,
+   "meEnd50": 842,
+   "kbBeforeFcp": 1.7744140625,
+   "painted": "shell+page"
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "mode": "warm",
+   "target": "fc",
+   "n": 7,
+   "fcp50": 68,
+   "fcp95": 148,
+   "fcpMin": 56,
+   "fcpMax": 148,
+   "lcp50": 1140,
+   "lcp95": 1248,
+   "heebo50": 17,
+   "heeboAtFcp": 7,
+   "boot50": 57,
+   "loading50": 123,
+   "loginForm50": null,
+   "shell50": 1104,
+   "page50": 1104,
+   "dcl50": 102,
+   "jsEnd50": 26,
+   "blockingEnd50": 26,
+   "fontCssEnd50": null,
+   "meEnd50": 867,
+   "kbBeforeFcp": 0,
+   "painted": "loading text"
+  }
+ ],
+ "measurements": [
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 1204,
+   "lcp": 1204,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1115
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1040,
+   "cssEnd": 973,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 220,
+   "lcp": 220,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 122
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 98,
+   "cssEnd": 39,
+   "heeboHebrewEnd": 50,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 1172,
+   "lcp": 1172,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1079
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 982,
+   "cssEnd": 573,
+   "heeboHebrewEnd": 387,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 156,
+   "lcp": 156,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 88
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 72,
+   "cssEnd": 19,
+   "heeboHebrewEnd": 11,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 656,
+   "lcp": 1180,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 219,
+    "loginForm": 1090
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1010,
+   "cssEnd": 598,
+   "heeboHebrewEnd": 399,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 60,
+   "lcp": 164,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 49,
+    "loginForm": 99
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 79,
+   "cssEnd": 21,
+   "heeboHebrewEnd": 12,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 2152,
+   "lcp": 3188,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 2067,
+    "sidebar": 2067,
+    "personalPanel": 2627,
+    "panelAlerts": 3104
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1053,
+   "cssEnd": 977,
+   "heeboHebrewEnd": null,
+   "meEnd": 1567
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 856,
+   "lcp": 1636,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 801,
+    "sidebar": 801,
+    "personalPanel": 1057,
+    "panelAlerts": 1543
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 223,
+   "cssEnd": 156,
+   "heeboHebrewEnd": 173,
+   "meEnd": 682
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 1728,
+   "lcp": 3024,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1601,
+    "sidebar": 1601,
+    "personalPanel": 2532,
+    "panelAlerts": 2991
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1009,
+   "cssEnd": 578,
+   "heeboHebrewEnd": 408,
+   "meEnd": 1480
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 1184,
+   "lcp": 1672,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1158,
+    "personalPanel": 1158,
+    "panelAlerts": 1647
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 307,
+   "cssEnd": 175,
+   "heeboHebrewEnd": 148,
+   "meEnd": 849
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 648,
+   "lcp": 3096,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 222,
+    "pageLoading": 1103,
+    "sidebar": 1674,
+    "personalPanel": 2531,
+    "panelAlerts": 3058
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1038,
+   "cssEnd": 602,
+   "heeboHebrewEnd": 415,
+   "meEnd": 1521
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 228,
+   "lcp": 1504,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 151,
+    "pageLoading": 266,
+    "sidebar": 925,
+    "personalPanel": 925,
+    "panelAlerts": 1473
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 210,
+   "cssEnd": 86,
+   "heeboHebrewEnd": 66,
+   "meEnd": 738
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 1736,
+   "lcp": 2508,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1608,
+    "sidebar": 1608,
+    "transparencyPage": 2380
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 975,
+   "cssEnd": 884,
+   "heeboHebrewEnd": null,
+   "meEnd": 1458
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 904,
+   "lcp": 904,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 859,
+    "transparencyPage": 859
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 167,
+   "cssEnd": 100,
+   "heeboHebrewEnd": 115,
+   "meEnd": 627
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 1744,
+   "lcp": 2628,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1640,
+    "sidebar": 1640,
+    "transparencyPage": 2609
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1016,
+   "cssEnd": 605,
+   "heeboHebrewEnd": 403,
+   "meEnd": 1504
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 916,
+   "lcp": 916,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 839,
+    "transparencyPage": 839
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 136,
+   "cssEnd": 51,
+   "heeboHebrewEnd": 34,
+   "meEnd": 584
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 636,
+   "lcp": 2532,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 221,
+    "pageLoading": 1074,
+    "sidebar": 1677,
+    "transparencyPage": 2512
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1009,
+   "cssEnd": 598,
+   "heeboHebrewEnd": 395,
+   "meEnd": 1485
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 144,
+   "lcp": 1088,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 130,
+    "pageLoading": 199,
+    "sidebar": 782,
+    "transparencyPage": 1078
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 179,
+   "cssEnd": 78,
+   "heeboHebrewEnd": 53,
+   "meEnd": 654
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 1160,
+   "lcp": 1160,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1063
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 990,
+   "cssEnd": 911,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 240,
+   "lcp": 240,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 140
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 114,
+   "cssEnd": 57,
+   "heeboHebrewEnd": 69,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 1164,
+   "lcp": 1164,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1077
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1000,
+   "cssEnd": 591,
+   "heeboHebrewEnd": 406,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 172,
+   "lcp": 172,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 94
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 71,
+   "cssEnd": 19,
+   "heeboHebrewEnd": 11,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 648,
+   "lcp": 1192,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 226,
+    "loginForm": 1104
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1022,
+   "cssEnd": 603,
+   "heeboHebrewEnd": 416,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 56,
+   "lcp": 168,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 46,
+    "loginForm": 101
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 81,
+   "cssEnd": 21,
+   "heeboHebrewEnd": 12,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 1776,
+   "lcp": 3040,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1576,
+    "sidebar": 1576,
+    "personalPanel": 2437,
+    "panelAlerts": 2972
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 974,
+   "cssEnd": 872,
+   "heeboHebrewEnd": null,
+   "meEnd": 1446
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 1172,
+   "lcp": 1680,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1140,
+    "personalPanel": 1140,
+    "panelAlerts": 1656
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 328,
+   "cssEnd": 224,
+   "heeboHebrewEnd": 244,
+   "meEnd": 826
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 1724,
+   "lcp": 3204,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1620,
+    "sidebar": 1620,
+    "personalPanel": 2547,
+    "panelAlerts": 3154
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1005,
+   "cssEnd": 589,
+   "heeboHebrewEnd": 404,
+   "meEnd": 1478
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 956,
+   "lcp": 1756,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 870,
+    "sidebar": 870,
+    "personalPanel": 1165,
+    "panelAlerts": 1713
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 245,
+   "cssEnd": 160,
+   "heeboHebrewEnd": 113,
+   "meEnd": 726
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 660,
+   "lcp": 3068,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 215,
+    "pageLoading": 1089,
+    "sidebar": 1704,
+    "personalPanel": 2536,
+    "panelAlerts": 3032
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1025,
+   "cssEnd": 597,
+   "heeboHebrewEnd": 408,
+   "meEnd": 1530
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 152,
+   "lcp": 1528,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 136,
+    "pageLoading": 212,
+    "sidebar": 874,
+    "personalPanel": 874,
+    "panelAlerts": 1469
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 193,
+   "cssEnd": 101,
+   "heeboHebrewEnd": 81,
+   "meEnd": 659
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 1780,
+   "lcp": 2600,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1656,
+    "sidebar": 1656,
+    "transparencyPage": 2581
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1029,
+   "cssEnd": 945,
+   "heeboHebrewEnd": null,
+   "meEnd": 1508
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 820,
+   "lcp": 820,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 770,
+    "transparencyPage": 770
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 131,
+   "cssEnd": 74,
+   "heeboHebrewEnd": 88,
+   "meEnd": 562
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 1772,
+   "lcp": 2584,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1667,
+    "sidebar": 1667,
+    "transparencyPage": 2468
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1013,
+   "cssEnd": 601,
+   "heeboHebrewEnd": 416,
+   "meEnd": 1506
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 960,
+   "lcp": 960,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 915,
+    "transparencyPage": 915
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 219,
+   "cssEnd": 111,
+   "heeboHebrewEnd": 62,
+   "meEnd": 693
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 656,
+   "lcp": 2560,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 214,
+    "pageLoading": 1087,
+    "sidebar": 1640,
+    "transparencyPage": 2541
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1021,
+   "cssEnd": 592,
+   "heeboHebrewEnd": 406,
+   "meEnd": 1508
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 196,
+   "lcp": 912,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 136,
+    "pageLoading": 211,
+    "sidebar": 880,
+    "transparencyPage": 880
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 186,
+   "cssEnd": 87,
+   "heeboHebrewEnd": 68,
+   "meEnd": 672
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 1208,
+   "lcp": 1208,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1106
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1023,
+   "cssEnd": 938,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 156,
+   "lcp": 156,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 97
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 80,
+   "cssEnd": 35,
+   "heeboHebrewEnd": 44,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 1192,
+   "lcp": 1192,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1100
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1027,
+   "cssEnd": 600,
+   "heeboHebrewEnd": 427,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 148,
+   "lcp": 148,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 84
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 66,
+   "cssEnd": 17,
+   "heeboHebrewEnd": 9,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 652,
+   "lcp": 1200,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 213,
+    "loginForm": 1110
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1019,
+   "cssEnd": 596,
+   "heeboHebrewEnd": 409,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 44,
+   "lcp": 148,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 36,
+    "loginForm": 86
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 70,
+   "cssEnd": 17,
+   "heeboHebrewEnd": 9,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 1784,
+   "lcp": 3120,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1661,
+    "sidebar": 1661,
+    "personalPanel": 2536,
+    "panelAlerts": 3030
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1005,
+   "cssEnd": 938,
+   "heeboHebrewEnd": null,
+   "meEnd": 1500
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 920,
+   "lcp": 1436,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 881,
+    "personalPanel": 881,
+    "panelAlerts": 1413
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 173,
+   "cssEnd": 66,
+   "heeboHebrewEnd": 85,
+   "meEnd": 606
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 2076,
+   "lcp": 3144,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1985,
+    "sidebar": 1985,
+    "personalPanel": 2601,
+    "panelAlerts": 3108
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1004,
+   "cssEnd": 598,
+   "heeboHebrewEnd": 396,
+   "meEnd": 1495
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 972,
+   "lcp": 1452,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 948,
+    "personalPanel": 948,
+    "panelAlerts": 1432
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 256,
+   "cssEnd": 146,
+   "heeboHebrewEnd": 119,
+   "meEnd": 722
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 636,
+   "lcp": 3192,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 211,
+    "pageLoading": 1076,
+    "sidebar": 1712,
+    "personalPanel": 2611,
+    "panelAlerts": 3158
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1012,
+   "cssEnd": 592,
+   "heeboHebrewEnd": 405,
+   "meEnd": 1501
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 176,
+   "lcp": 1620,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 163,
+    "pageLoading": 251,
+    "sidebar": 823,
+    "personalPanel": 1134,
+    "panelAlerts": 1601
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 228,
+   "cssEnd": 101,
+   "heeboHebrewEnd": 79,
+   "meEnd": 691
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 1732,
+   "lcp": 2560,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1620,
+    "sidebar": 1620,
+    "transparencyPage": 2541
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1016,
+   "cssEnd": 948,
+   "heeboHebrewEnd": null,
+   "meEnd": 1495
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 1020,
+   "lcp": 1020,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 978,
+    "transparencyPage": 978
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 238,
+   "cssEnd": 115,
+   "heeboHebrewEnd": 132,
+   "meEnd": 697
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 1888,
+   "lcp": 2724,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1776,
+    "sidebar": 1776,
+    "transparencyPage": 2595
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1045,
+   "cssEnd": 598,
+   "heeboHebrewEnd": 412,
+   "meEnd": 1571
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 884,
+   "lcp": 884,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 843,
+    "transparencyPage": 843
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 183,
+   "cssEnd": 92,
+   "heeboHebrewEnd": 67,
+   "meEnd": 659
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 648,
+   "lcp": 2548,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 218,
+    "pageLoading": 1093,
+    "sidebar": 1668,
+    "transparencyPage": 2528
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1025,
+   "cssEnd": 596,
+   "heeboHebrewEnd": 410,
+   "meEnd": 1517
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 204,
+   "lcp": 916,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 142,
+    "pageLoading": 226,
+    "sidebar": 871,
+    "transparencyPage": 871
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 191,
+   "cssEnd": 80,
+   "heeboHebrewEnd": 25,
+   "meEnd": 693
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 1212,
+   "lcp": 1212,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1113
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1032,
+   "cssEnd": 953,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 192,
+   "lcp": 192,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 121
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 101,
+   "cssEnd": 51,
+   "heeboHebrewEnd": 61,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 1184,
+   "lcp": 1184,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1085
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1004,
+   "cssEnd": 596,
+   "heeboHebrewEnd": 410,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 164,
+   "lcp": 164,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 86
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 70,
+   "cssEnd": 17,
+   "heeboHebrewEnd": 9,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 628,
+   "lcp": 1196,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 220,
+    "loginForm": 1109
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1023,
+   "cssEnd": 590,
+   "heeboHebrewEnd": 404,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 52,
+   "lcp": 168,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 44,
+    "loginForm": 93
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 73,
+   "cssEnd": 22,
+   "heeboHebrewEnd": 12,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 1708,
+   "lcp": 3088,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1599,
+    "sidebar": 1599,
+    "personalPanel": 2478,
+    "panelAlerts": 3038
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 997,
+   "cssEnd": 910,
+   "heeboHebrewEnd": null,
+   "meEnd": 1471
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 784,
+   "lcp": 1308,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 754,
+    "personalPanel": 754,
+    "panelAlerts": 1285
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 135,
+   "cssEnd": 85,
+   "heeboHebrewEnd": 96,
+   "meEnd": 585
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 1692,
+   "lcp": 3032,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1612,
+    "sidebar": 1612,
+    "personalPanel": 2511,
+    "panelAlerts": 3001
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1006,
+   "cssEnd": 590,
+   "heeboHebrewEnd": 387,
+   "meEnd": 1494
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 1004,
+   "lcp": 1480,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 982,
+    "personalPanel": 982,
+    "panelAlerts": 1460
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 212,
+   "cssEnd": 104,
+   "heeboHebrewEnd": 76,
+   "meEnd": 706
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 644,
+   "lcp": 3120,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 213,
+    "pageLoading": 1089,
+    "sidebar": 1691,
+    "personalPanel": 2501,
+    "panelAlerts": 3074
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1015,
+   "cssEnd": 581,
+   "heeboHebrewEnd": 411,
+   "meEnd": 1500
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 260,
+   "lcp": 1460,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 199,
+    "pageLoading": 288,
+    "sidebar": 953,
+    "personalPanel": 953,
+    "panelAlerts": 1441
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 247,
+   "cssEnd": 97,
+   "heeboHebrewEnd": 76,
+   "meEnd": 783
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 1868,
+   "lcp": 2704,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1754,
+    "sidebar": 1754,
+    "transparencyPage": 2573
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1086,
+   "cssEnd": 987,
+   "heeboHebrewEnd": null,
+   "meEnd": 1624
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 984,
+   "lcp": 984,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 946,
+    "transparencyPage": 946
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 275,
+   "cssEnd": 186,
+   "heeboHebrewEnd": 211,
+   "meEnd": 774
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 1784,
+   "lcp": 2640,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1675,
+    "sidebar": 1676,
+    "transparencyPage": 2622
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1028,
+   "cssEnd": 601,
+   "heeboHebrewEnd": 412,
+   "meEnd": 1528
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 932,
+   "lcp": 932,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 892,
+    "transparencyPage": 892
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 219,
+   "cssEnd": 95,
+   "heeboHebrewEnd": 72,
+   "meEnd": 722
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 644,
+   "lcp": 2600,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 234,
+    "pageLoading": 1076,
+    "sidebar": 1670,
+    "transparencyPage": 2446
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1013,
+   "cssEnd": 601,
+   "heeboHebrewEnd": 386,
+   "meEnd": 1489
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 108,
+   "lcp": 892,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 97,
+    "pageLoading": 159,
+    "sidebar": 858,
+    "transparencyPage": 858
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 141,
+   "cssEnd": 56,
+   "heeboHebrewEnd": 41,
+   "meEnd": 628
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 1480,
+   "lcp": 1480,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1384
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1298,
+   "cssEnd": 1226,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 172,
+   "lcp": 172,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 108
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 90,
+   "cssEnd": 45,
+   "heeboHebrewEnd": 55,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 1228,
+   "lcp": 1228,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1140
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1037,
+   "cssEnd": 592,
+   "heeboHebrewEnd": 419,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 200,
+   "lcp": 200,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 134
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 113,
+   "cssEnd": 33,
+   "heeboHebrewEnd": 15,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 636,
+   "lcp": 1220,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 211,
+    "loginForm": 1120
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1030,
+   "cssEnd": 595,
+   "heeboHebrewEnd": 393,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 56,
+   "lcp": 160,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 49,
+    "loginForm": 99
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 80,
+   "cssEnd": 27,
+   "heeboHebrewEnd": 16,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 1748,
+   "lcp": 3020,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1628,
+    "sidebar": 1628,
+    "personalPanel": 2516,
+    "panelAlerts": 2981
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1007,
+   "cssEnd": 912,
+   "heeboHebrewEnd": null,
+   "meEnd": 1483
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 1176,
+   "lcp": 1664,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1143,
+    "personalPanel": 1143,
+    "panelAlerts": 1642
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 352,
+   "cssEnd": 255,
+   "heeboHebrewEnd": 273,
+   "meEnd": 829
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 1732,
+   "lcp": 3020,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1632,
+    "sidebar": 1632,
+    "personalPanel": 2486,
+    "panelAlerts": 2988
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1000,
+   "cssEnd": 585,
+   "heeboHebrewEnd": 399,
+   "meEnd": 1488
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 720,
+   "lcp": 1348,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 649,
+    "sidebar": 649,
+    "personalPanel": 858,
+    "panelAlerts": 1326
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 85,
+   "cssEnd": 31,
+   "heeboHebrewEnd": 23,
+   "meEnd": 523
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 640,
+   "lcp": 3040,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 232,
+    "pageLoading": 1093,
+    "sidebar": 2006,
+    "personalPanel": 2491,
+    "panelAlerts": 3006
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1021,
+   "cssEnd": 597,
+   "heeboHebrewEnd": 410,
+   "meEnd": 1517
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 88,
+   "lcp": 1264,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 79,
+    "pageLoading": 137,
+    "sidebar": 759,
+    "personalPanel": 760,
+    "panelAlerts": 1243
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 120,
+   "cssEnd": 48,
+   "heeboHebrewEnd": 40,
+   "meEnd": 557
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 1868,
+   "lcp": 2668,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1728,
+    "sidebar": 1728,
+    "transparencyPage": 2645
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1107,
+   "cssEnd": 1034,
+   "heeboHebrewEnd": null,
+   "meEnd": 1595
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 856,
+   "lcp": 856,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 816,
+    "transparencyPage": 816
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 182,
+   "cssEnd": 86,
+   "heeboHebrewEnd": 103,
+   "meEnd": 647
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 1740,
+   "lcp": 2560,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1629,
+    "sidebar": 1629,
+    "transparencyPage": 2544
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1002,
+   "cssEnd": 589,
+   "heeboHebrewEnd": 387,
+   "meEnd": 1476
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 776,
+   "lcp": 1064,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 727,
+    "sidebar": 727,
+    "transparencyPage": 1032
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 118,
+   "cssEnd": 30,
+   "heeboHebrewEnd": 17,
+   "meEnd": 604
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 624,
+   "lcp": 2568,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 221,
+    "pageLoading": 1091,
+    "sidebar": 1655,
+    "transparencyPage": 2545
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1014,
+   "cssEnd": 583,
+   "heeboHebrewEnd": 413,
+   "meEnd": 1518
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 140,
+   "lcp": 864,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 127,
+    "pageLoading": 223,
+    "sidebar": 827,
+    "transparencyPage": 827
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 196,
+   "cssEnd": 59,
+   "heeboHebrewEnd": 46,
+   "meEnd": 650
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 1168,
+   "lcp": 1168,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1063
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 975,
+   "cssEnd": 884,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 184,
+   "lcp": 184,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 109
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 91,
+   "cssEnd": 39,
+   "heeboHebrewEnd": 48,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 1188,
+   "lcp": 1188,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1093
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1010,
+   "cssEnd": 604,
+   "heeboHebrewEnd": 417,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 148,
+   "lcp": 148,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 83
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 66,
+   "cssEnd": 19,
+   "heeboHebrewEnd": 11,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 636,
+   "lcp": 1160,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 210,
+    "loginForm": 1071
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 991,
+   "cssEnd": 592,
+   "heeboHebrewEnd": 389,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 48,
+   "lcp": 140,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 39,
+    "loginForm": 85
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 67,
+   "cssEnd": 19,
+   "heeboHebrewEnd": 11,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 1740,
+   "lcp": 3064,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1626,
+    "sidebar": 1626,
+    "personalPanel": 2483,
+    "panelAlerts": 3006
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 982,
+   "cssEnd": 911,
+   "heeboHebrewEnd": null,
+   "meEnd": 1475
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 932,
+   "lcp": 1424,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 905,
+    "personalPanel": 905,
+    "panelAlerts": 1404
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 242,
+   "cssEnd": 134,
+   "heeboHebrewEnd": 155,
+   "meEnd": 739
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 1748,
+   "lcp": 3104,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1634,
+    "sidebar": 1634,
+    "personalPanel": 2520,
+    "panelAlerts": 3032
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1015,
+   "cssEnd": 601,
+   "heeboHebrewEnd": 414,
+   "meEnd": 1503
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 956,
+   "lcp": 1484,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 931,
+    "personalPanel": 931,
+    "panelAlerts": 1463
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 250,
+   "cssEnd": 95,
+   "heeboHebrewEnd": 68,
+   "meEnd": 743
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 644,
+   "lcp": 3144,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 212,
+    "pageLoading": 1085,
+    "sidebar": 1657,
+    "personalPanel": 2530,
+    "panelAlerts": 3057
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1019,
+   "cssEnd": 590,
+   "heeboHebrewEnd": 401,
+   "meEnd": 1505
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 200,
+   "lcp": 1584,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 187,
+    "pageLoading": 262,
+    "sidebar": 1084,
+    "personalPanel": 1084,
+    "panelAlerts": 1565
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 242,
+   "cssEnd": 107,
+   "heeboHebrewEnd": 84,
+   "meEnd": 784
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 1860,
+   "lcp": 2636,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1728,
+    "sidebar": 1728,
+    "transparencyPage": 2609
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1005,
+   "cssEnd": 901,
+   "heeboHebrewEnd": null,
+   "meEnd": 1551
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 924,
+   "lcp": 924,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 879,
+    "transparencyPage": 879
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 213,
+   "cssEnd": 105,
+   "heeboHebrewEnd": 125,
+   "meEnd": 677
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 1796,
+   "lcp": 2584,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1694,
+    "sidebar": 1694,
+    "transparencyPage": 2458
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1017,
+   "cssEnd": 597,
+   "heeboHebrewEnd": 407,
+   "meEnd": 1501
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 908,
+   "lcp": 908,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 871,
+    "transparencyPage": 871
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 191,
+   "cssEnd": 53,
+   "heeboHebrewEnd": 32,
+   "meEnd": 664
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 644,
+   "lcp": 2588,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 228,
+    "pageLoading": 1090,
+    "sidebar": 1728,
+    "transparencyPage": 2565
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1026,
+   "cssEnd": 602,
+   "heeboHebrewEnd": 415,
+   "meEnd": 1520
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 116,
+   "lcp": 824,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 71,
+    "pageLoading": 136,
+    "sidebar": 787,
+    "transparencyPage": 787
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 107,
+   "cssEnd": 32,
+   "heeboHebrewEnd": 22,
+   "meEnd": 584
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 1204,
+   "lcp": 1204,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1102
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1024,
+   "cssEnd": 961,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 164,
+   "lcp": 164,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 100
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 84,
+   "cssEnd": 39,
+   "heeboHebrewEnd": 50,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 1168,
+   "lcp": 1168,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 1084
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 1004,
+   "cssEnd": 580,
+   "heeboHebrewEnd": 407,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 176,
+   "lcp": 176,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 115
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 97,
+   "cssEnd": 30,
+   "heeboHebrewEnd": 13,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 616,
+   "lcp": 1168,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 208,
+    "loginForm": 1079
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1000,
+   "cssEnd": 574,
+   "heeboHebrewEnd": 403,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 56,
+   "lcp": 156,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 46,
+    "loginForm": 94
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 77,
+   "cssEnd": 20,
+   "heeboHebrewEnd": 10,
+   "meEnd": null
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 1732,
+   "lcp": 3092,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1620,
+    "sidebar": 1620,
+    "personalPanel": 2552,
+    "panelAlerts": 3038
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1011,
+   "cssEnd": 946,
+   "heeboHebrewEnd": null,
+   "meEnd": 1491
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 1004,
+   "lcp": 1576,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 968,
+    "personalPanel": 968,
+    "panelAlerts": 1554
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 223,
+   "cssEnd": 144,
+   "heeboHebrewEnd": 162,
+   "meEnd": 694
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 1720,
+   "lcp": 3032,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 1608,
+    "sidebar": 1608,
+    "personalPanel": 2485,
+    "panelAlerts": 2993
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 990,
+   "cssEnd": 595,
+   "heeboHebrewEnd": 364,
+   "meEnd": 1482
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 736,
+   "lcp": 1268,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 714,
+    "personalPanel": 714,
+    "panelAlerts": 1234
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 88,
+   "cssEnd": 37,
+   "heeboHebrewEnd": 28,
+   "meEnd": 526
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 648,
+   "lcp": 3136,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 222,
+    "pageLoading": 1110,
+    "sidebar": 1669,
+    "personalPanel": 2534,
+    "panelAlerts": 3095
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1024,
+   "cssEnd": 604,
+   "heeboHebrewEnd": 416,
+   "meEnd": 1537
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 268,
+   "lcp": 1600,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 200,
+    "pageLoading": 297,
+    "sidebar": 885,
+    "personalPanel": 1108,
+    "panelAlerts": 1584
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 254,
+   "cssEnd": 137,
+   "heeboHebrewEnd": 117,
+   "meEnd": 768
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 1824,
+   "lcp": 2608,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1731,
+    "sidebar": 1731,
+    "transparencyPage": 2587
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1017,
+   "cssEnd": 944,
+   "heeboHebrewEnd": null,
+   "meEnd": 1521
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 908,
+   "lcp": 908,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 862,
+    "transparencyPage": 862
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 194,
+   "cssEnd": 107,
+   "heeboHebrewEnd": 142,
+   "meEnd": 669
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 2068,
+   "lcp": 2556,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 1996,
+    "sidebar": 1996,
+    "transparencyPage": 2537
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 1007,
+   "cssEnd": 594,
+   "heeboHebrewEnd": 407,
+   "meEnd": 1496
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 852,
+   "lcp": 852,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 815,
+    "transparencyPage": 815
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 144,
+   "cssEnd": 56,
+   "heeboHebrewEnd": 43,
+   "meEnd": 611
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 644,
+   "lcp": 2584,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 221,
+    "pageLoading": 1094,
+    "sidebar": 1673,
+    "transparencyPage": 2564
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 1030,
+   "cssEnd": 600,
+   "heeboHebrewEnd": 414,
+   "meEnd": 1518
+  },
+  {
+   "profile": "fast4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 208,
+   "lcp": 976,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 138,
+    "pageLoading": 231,
+    "sidebar": 938,
+    "transparencyPage": 938
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 193,
+   "cssEnd": 66,
+   "heeboHebrewEnd": 46,
+   "meEnd": 711
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 2520,
+   "lcp": 2520,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2417
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2340,
+   "cssEnd": 2005,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 184,
+   "lcp": 184,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 111
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 91,
+   "cssEnd": 46,
+   "heeboHebrewEnd": 57,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 2596,
+   "lcp": 2596,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2506
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2427,
+   "cssEnd": 1510,
+   "heeboHebrewEnd": 898,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 168,
+   "lcp": 168,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 90
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 73,
+   "cssEnd": 18,
+   "heeboHebrewEnd": 10,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 1568,
+   "lcp": 2744,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 369,
+    "loginForm": 2656
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2573,
+   "cssEnd": 1526,
+   "heeboHebrewEnd": 918,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 56,
+   "lcp": 156,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 43,
+    "loginForm": 95
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 74,
+   "cssEnd": 22,
+   "heeboHebrewEnd": 11,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 3412,
+   "lcp": 6284,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3300,
+    "sidebar": 3300,
+    "personalPanel": 5578,
+    "panelAlerts": 6242
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2347,
+   "cssEnd": 2078,
+   "heeboHebrewEnd": null,
+   "meEnd": 3121
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 1224,
+   "lcp": 1980,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1186,
+    "personalPanel": 1187,
+    "panelAlerts": 1955
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 233,
+   "cssEnd": 124,
+   "heeboHebrewEnd": 150,
+   "meEnd": 1017
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 3884,
+   "lcp": 6352,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3713,
+    "sidebar": 3713,
+    "personalPanel": 5701,
+    "panelAlerts": 6298
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2434,
+   "cssEnd": 1520,
+   "heeboHebrewEnd": 912,
+   "meEnd": 3222
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 1208,
+   "lcp": 2020,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1187,
+    "personalPanel": 1187,
+    "panelAlerts": 1965
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 250,
+   "cssEnd": 115,
+   "heeboHebrewEnd": 82,
+   "meEnd": 1009
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 1548,
+   "lcp": 6556,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 356,
+    "pageLoading": 2625,
+    "sidebar": 3847,
+    "personalPanel": 5736,
+    "panelAlerts": 6494
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2560,
+   "cssEnd": 1505,
+   "heeboHebrewEnd": 897,
+   "meEnd": 3356
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 120,
+   "lcp": 1964,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 109,
+    "pageLoading": 219,
+    "sidebar": 1172,
+    "personalPanel": 1172,
+    "panelAlerts": 1938
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 183,
+   "cssEnd": 59,
+   "heeboHebrewEnd": 49,
+   "meEnd": 956
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 3404,
+   "lcp": 6476,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3285,
+    "sidebar": 3285,
+    "transparencyPage": 6453
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2350,
+   "cssEnd": 2027,
+   "heeboHebrewEnd": null,
+   "meEnd": 3148
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 1120,
+   "lcp": 1120,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1082,
+    "transparencyPage": 1082
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 168,
+   "cssEnd": 117,
+   "heeboHebrewEnd": 127,
+   "meEnd": 899
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 3460,
+   "lcp": 6440,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3348,
+    "sidebar": 3348,
+    "transparencyPage": 6419
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2419,
+   "cssEnd": 1509,
+   "heeboHebrewEnd": 902,
+   "meEnd": 3202
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 1084,
+   "lcp": 1084,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1053,
+    "transparencyPage": 1053
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 79,
+   "cssEnd": 26,
+   "heeboHebrewEnd": 18,
+   "meEnd": 820
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 1,
+   "mode": "cold",
+   "fcp": 1572,
+   "lcp": 6628,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 372,
+    "pageLoading": 2654,
+    "sidebar": 3543,
+    "transparencyPage": 6493
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2584,
+   "cssEnd": 1531,
+   "heeboHebrewEnd": 923,
+   "meEnd": 3401
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 1,
+   "mode": "warm",
+   "fcp": 64,
+   "lcp": 1116,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 57,
+    "pageLoading": 144,
+    "sidebar": 1071,
+    "transparencyPage": 1071
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 114,
+   "cssEnd": 26,
+   "heeboHebrewEnd": 13,
+   "meEnd": 894
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 2552,
+   "lcp": 2552,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2449
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2359,
+   "cssEnd": 1969,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 184,
+   "lcp": 184,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 108
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 90,
+   "cssEnd": 41,
+   "heeboHebrewEnd": 51,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 2620,
+   "lcp": 2620,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2525
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2438,
+   "cssEnd": 1524,
+   "heeboHebrewEnd": 920,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 148,
+   "lcp": 148,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 87
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 70,
+   "cssEnd": 20,
+   "heeboHebrewEnd": 9,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 1572,
+   "lcp": 2752,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 376,
+    "loginForm": 2648
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2569,
+   "cssEnd": 1521,
+   "heeboHebrewEnd": 926,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 112,
+   "lcp": 200,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 71,
+    "loginForm": 130
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 102,
+   "cssEnd": 28,
+   "heeboHebrewEnd": 17,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 3424,
+   "lcp": 6276,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3248,
+    "sidebar": 3248,
+    "personalPanel": 5663,
+    "panelAlerts": 6227
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2336,
+   "cssEnd": 1982,
+   "heeboHebrewEnd": null,
+   "meEnd": 3121
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 1124,
+   "lcp": 1876,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1098,
+    "personalPanel": 1098,
+    "panelAlerts": 1856
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 186,
+   "cssEnd": 102,
+   "heeboHebrewEnd": 118,
+   "meEnd": 938
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 3456,
+   "lcp": 6424,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3348,
+    "sidebar": 3348,
+    "personalPanel": 5702,
+    "panelAlerts": 6388
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2434,
+   "cssEnd": 1518,
+   "heeboHebrewEnd": 927,
+   "meEnd": 3215
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 1268,
+   "lcp": 2036,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1234,
+    "personalPanel": 1234,
+    "panelAlerts": 2018
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 211,
+   "cssEnd": 96,
+   "heeboHebrewEnd": 72,
+   "meEnd": 998
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 1580,
+   "lcp": 6336,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 374,
+    "pageLoading": 2652,
+    "sidebar": 3863,
+    "personalPanel": 5727,
+    "panelAlerts": 6300
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2587,
+   "cssEnd": 1536,
+   "heeboHebrewEnd": 925,
+   "meEnd": 3374
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 96,
+   "lcp": 1912,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 88,
+    "pageLoading": 180,
+    "sidebar": 1110,
+    "personalPanel": 1110,
+    "panelAlerts": 1871
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 150,
+   "cssEnd": 56,
+   "heeboHebrewEnd": 42,
+   "meEnd": 933
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 3500,
+   "lcp": 6464,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3395,
+    "sidebar": 3395,
+    "transparencyPage": 6313
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2357,
+   "cssEnd": 2001,
+   "heeboHebrewEnd": null,
+   "meEnd": 3140
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 1212,
+   "lcp": 1212,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1165,
+    "transparencyPage": 1165
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 171,
+   "cssEnd": 81,
+   "heeboHebrewEnd": 94,
+   "meEnd": 972
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 3616,
+   "lcp": 6388,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3537,
+    "sidebar": 3537,
+    "transparencyPage": 6263
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2420,
+   "cssEnd": 1505,
+   "heeboHebrewEnd": 880,
+   "meEnd": 3202
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 1060,
+   "lcp": 1060,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1021,
+    "transparencyPage": 1021
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 81,
+   "cssEnd": 28,
+   "heeboHebrewEnd": 14,
+   "meEnd": 827
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 2,
+   "mode": "cold",
+   "fcp": 1564,
+   "lcp": 6560,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 378,
+    "pageLoading": 2654,
+    "sidebar": 3568,
+    "transparencyPage": 6333
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2591,
+   "cssEnd": 1525,
+   "heeboHebrewEnd": 934,
+   "meEnd": 3395
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 2,
+   "mode": "warm",
+   "fcp": 72,
+   "lcp": 1248,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 61,
+    "pageLoading": 123,
+    "sidebar": 1216,
+    "transparencyPage": 1216
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 102,
+   "cssEnd": 25,
+   "heeboHebrewEnd": 17,
+   "meEnd": 867
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 2584,
+   "lcp": 2584,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2474
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2374,
+   "cssEnd": 2125,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 188,
+   "lcp": 188,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 121
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 101,
+   "cssEnd": 52,
+   "heeboHebrewEnd": 66,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 2628,
+   "lcp": 2628,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2501
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2425,
+   "cssEnd": 1514,
+   "heeboHebrewEnd": 907,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 172,
+   "lcp": 172,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 107
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 87,
+   "cssEnd": 22,
+   "heeboHebrewEnd": 13,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 1544,
+   "lcp": 2740,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 363,
+    "loginForm": 2657
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2583,
+   "cssEnd": 1505,
+   "heeboHebrewEnd": 929,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 60,
+   "lcp": 212,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 51,
+    "loginForm": 129
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 98,
+   "cssEnd": 24,
+   "heeboHebrewEnd": 12,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 3444,
+   "lcp": 6264,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3288,
+    "sidebar": 3288,
+    "personalPanel": 5608,
+    "panelAlerts": 6218
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2355,
+   "cssEnd": 2095,
+   "heeboHebrewEnd": null,
+   "meEnd": 3167
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 1208,
+   "lcp": 1968,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1176,
+    "personalPanel": 1176,
+    "panelAlerts": 1944
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 216,
+   "cssEnd": 111,
+   "heeboHebrewEnd": 136,
+   "meEnd": 1004
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 3828,
+   "lcp": 6304,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3704,
+    "sidebar": 3704,
+    "personalPanel": 5687,
+    "panelAlerts": 6267
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2441,
+   "cssEnd": 1524,
+   "heeboHebrewEnd": 917,
+   "meEnd": 3210
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 1244,
+   "lcp": 2012,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1216,
+    "personalPanel": 1216,
+    "panelAlerts": 1965
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 209,
+   "cssEnd": 81,
+   "heeboHebrewEnd": 56,
+   "meEnd": 1034
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 1568,
+   "lcp": 6384,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 367,
+    "pageLoading": 2642,
+    "sidebar": 3523,
+    "personalPanel": 5730,
+    "panelAlerts": 6353
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2579,
+   "cssEnd": 1527,
+   "heeboHebrewEnd": 918,
+   "meEnd": 3375
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 212,
+   "lcp": 1920,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 149,
+    "pageLoading": 226,
+    "sidebar": 1149,
+    "personalPanel": 1149,
+    "panelAlerts": 1903
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 201,
+   "cssEnd": 88,
+   "heeboHebrewEnd": 58,
+   "meEnd": 981
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 3416,
+   "lcp": 6472,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3294,
+    "sidebar": 3294,
+    "transparencyPage": 6323
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2336,
+   "cssEnd": 1918,
+   "heeboHebrewEnd": null,
+   "meEnd": 3133
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 1100,
+   "lcp": 1100,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1064,
+    "transparencyPage": 1064
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 115,
+   "cssEnd": 64,
+   "heeboHebrewEnd": 73,
+   "meEnd": 853
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 3480,
+   "lcp": 6432,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3370,
+    "sidebar": 3370,
+    "transparencyPage": 6300
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2447,
+   "cssEnd": 1524,
+   "heeboHebrewEnd": 917,
+   "meEnd": 3224
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 1128,
+   "lcp": 1128,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1093,
+    "transparencyPage": 1093
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 120,
+   "cssEnd": 28,
+   "heeboHebrewEnd": 18,
+   "meEnd": 914
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 3,
+   "mode": "cold",
+   "fcp": 1568,
+   "lcp": 6420,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 384,
+    "pageLoading": 2640,
+    "sidebar": 3490,
+    "transparencyPage": 6282
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2578,
+   "cssEnd": 1529,
+   "heeboHebrewEnd": 921,
+   "meEnd": 3362
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 3,
+   "mode": "warm",
+   "fcp": 56,
+   "lcp": 1192,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 48,
+    "pageLoading": 94,
+    "sidebar": 1154,
+    "transparencyPage": 1154
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 79,
+   "cssEnd": 26,
+   "heeboHebrewEnd": 18,
+   "meEnd": 835
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 2548,
+   "lcp": 2548,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2422
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2340,
+   "cssEnd": 1947,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 200,
+   "lcp": 200,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 116
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 88,
+   "cssEnd": 43,
+   "heeboHebrewEnd": 53,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 2728,
+   "lcp": 2728,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2604
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2483,
+   "cssEnd": 1528,
+   "heeboHebrewEnd": 936,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 168,
+   "lcp": 168,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 95
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 77,
+   "cssEnd": 24,
+   "heeboHebrewEnd": 14,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 1568,
+   "lcp": 2728,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 367,
+    "loginForm": 2642
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2569,
+   "cssEnd": 1524,
+   "heeboHebrewEnd": 919,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 48,
+   "lcp": 168,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 39,
+    "loginForm": 94
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 74,
+   "cssEnd": 17,
+   "heeboHebrewEnd": 9,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 3724,
+   "lcp": 6240,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3637,
+    "sidebar": 3637,
+    "personalPanel": 5598,
+    "panelAlerts": 6202
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2347,
+   "cssEnd": 1910,
+   "heeboHebrewEnd": null,
+   "meEnd": 3143
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 1128,
+   "lcp": 1876,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1097,
+    "personalPanel": 1097,
+    "panelAlerts": 1855
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 177,
+   "cssEnd": 108,
+   "heeboHebrewEnd": 121,
+   "meEnd": 923
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 3516,
+   "lcp": 6372,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3420,
+    "sidebar": 3420,
+    "personalPanel": 5781,
+    "panelAlerts": 6343
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2450,
+   "cssEnd": 1517,
+   "heeboHebrewEnd": 910,
+   "meEnd": 3261
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 1160,
+   "lcp": 1912,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1133,
+    "personalPanel": 1133,
+    "panelAlerts": 1894
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 186,
+   "cssEnd": 96,
+   "heeboHebrewEnd": 57,
+   "meEnd": 954
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 1564,
+   "lcp": 6364,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 367,
+    "pageLoading": 2643,
+    "sidebar": 3853,
+    "personalPanel": 5707,
+    "panelAlerts": 6325
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2576,
+   "cssEnd": 1521,
+   "heeboHebrewEnd": 917,
+   "meEnd": 3360
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 132,
+   "lcp": 1976,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 114,
+    "pageLoading": 223,
+    "sidebar": 1169,
+    "personalPanel": 1169,
+    "panelAlerts": 1923
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 193,
+   "cssEnd": 61,
+   "heeboHebrewEnd": 47,
+   "meEnd": 988
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 3588,
+   "lcp": 6604,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3494,
+    "sidebar": 3494,
+    "transparencyPage": 6353
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2363,
+   "cssEnd": 1947,
+   "heeboHebrewEnd": null,
+   "meEnd": 3161
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 1160,
+   "lcp": 1160,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1120,
+    "transparencyPage": 1120
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 114,
+   "cssEnd": 61,
+   "heeboHebrewEnd": 71,
+   "meEnd": 867
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 3548,
+   "lcp": 6528,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3433,
+    "sidebar": 3433,
+    "transparencyPage": 6343
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2436,
+   "cssEnd": 1519,
+   "heeboHebrewEnd": 910,
+   "meEnd": 3266
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 1076,
+   "lcp": 1076,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1038,
+    "transparencyPage": 1038
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 84,
+   "cssEnd": 31,
+   "heeboHebrewEnd": 21,
+   "meEnd": 842
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 4,
+   "mode": "cold",
+   "fcp": 1564,
+   "lcp": 6484,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 361,
+    "pageLoading": 2655,
+    "sidebar": 3611,
+    "transparencyPage": 6357
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2571,
+   "cssEnd": 1515,
+   "heeboHebrewEnd": 908,
+   "meEnd": 3389
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 4,
+   "mode": "warm",
+   "fcp": 148,
+   "lcp": 1140,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 81,
+    "pageLoading": 171,
+    "sidebar": 1104,
+    "transparencyPage": 1104
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 136,
+   "cssEnd": 32,
+   "heeboHebrewEnd": 20,
+   "meEnd": 914
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 2548,
+   "lcp": 2548,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2441
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2355,
+   "cssEnd": 1962,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 200,
+   "lcp": 200,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 125
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 103,
+   "cssEnd": 54,
+   "heeboHebrewEnd": 63,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 2620,
+   "lcp": 2620,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2529
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2432,
+   "cssEnd": 1544,
+   "heeboHebrewEnd": 922,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 228,
+   "lcp": 228,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 158
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 125,
+   "cssEnd": 20,
+   "heeboHebrewEnd": 12,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 1528,
+   "lcp": 2732,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 362,
+    "loginForm": 2640
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2557,
+   "cssEnd": 1489,
+   "heeboHebrewEnd": 912,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 92,
+   "lcp": 208,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 56,
+    "loginForm": 110
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 77,
+   "cssEnd": 18,
+   "heeboHebrewEnd": 10,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 3356,
+   "lcp": 6256,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3261,
+    "sidebar": 3261,
+    "personalPanel": 5603,
+    "panelAlerts": 6202
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2350,
+   "cssEnd": 2041,
+   "heeboHebrewEnd": null,
+   "meEnd": 3143
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 1156,
+   "lcp": 1916,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1129,
+    "personalPanel": 1129,
+    "panelAlerts": 1877
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 222,
+   "cssEnd": 118,
+   "heeboHebrewEnd": 131,
+   "meEnd": 974
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 3808,
+   "lcp": 6352,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3725,
+    "sidebar": 3725,
+    "personalPanel": 5709,
+    "panelAlerts": 6304
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2430,
+   "cssEnd": 1514,
+   "heeboHebrewEnd": 910,
+   "meEnd": 3225
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 1264,
+   "lcp": 2076,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1236,
+    "personalPanel": 1236,
+    "panelAlerts": 1998
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 180,
+   "cssEnd": 82,
+   "heeboHebrewEnd": 65,
+   "meEnd": 992
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 1564,
+   "lcp": 6404,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 377,
+    "pageLoading": 2636,
+    "sidebar": 3487,
+    "personalPanel": 5770,
+    "panelAlerts": 6361
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2574,
+   "cssEnd": 1520,
+   "heeboHebrewEnd": 895,
+   "meEnd": 3361
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 192,
+   "lcp": 1920,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 125,
+    "pageLoading": 215,
+    "sidebar": 1165,
+    "personalPanel": 1165,
+    "panelAlerts": 1899
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 179,
+   "cssEnd": 72,
+   "heeboHebrewEnd": 50,
+   "meEnd": 1001
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 3372,
+   "lcp": 6536,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3277,
+    "sidebar": 3277,
+    "transparencyPage": 6400
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2359,
+   "cssEnd": 1955,
+   "heeboHebrewEnd": null,
+   "meEnd": 3155
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 1104,
+   "lcp": 1104,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1065,
+    "transparencyPage": 1065
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 124,
+   "cssEnd": 79,
+   "heeboHebrewEnd": 89,
+   "meEnd": 860
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 3540,
+   "lcp": 3540,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "pageLoading": 3423,
+    "sidebar": 3423,
+    "transparencyPage": 6363
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2439,
+   "cssEnd": 1532,
+   "heeboHebrewEnd": 935,
+   "meEnd": 3227
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 1136,
+   "lcp": 1136,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1100,
+    "transparencyPage": 1100
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 159,
+   "cssEnd": 57,
+   "heeboHebrewEnd": 23,
+   "meEnd": 902
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 5,
+   "mode": "cold",
+   "fcp": 1556,
+   "lcp": 6524,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 359,
+    "pageLoading": 2638,
+    "sidebar": 3503,
+    "transparencyPage": 6361
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2573,
+   "cssEnd": 1513,
+   "heeboHebrewEnd": 910,
+   "meEnd": 3367
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 5,
+   "mode": "warm",
+   "fcp": 68,
+   "lcp": 1128,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 56,
+    "pageLoading": 99,
+    "sidebar": 1062,
+    "transparencyPage": 1062
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 92,
+   "cssEnd": 28,
+   "heeboHebrewEnd": 16,
+   "meEnd": 772
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 2536,
+   "lcp": 2536,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2427
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2351,
+   "cssEnd": 2014,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 184,
+   "lcp": 184,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 113
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 93,
+   "cssEnd": 44,
+   "heeboHebrewEnd": 55,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 2616,
+   "lcp": 2616,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2525
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2446,
+   "cssEnd": 1522,
+   "heeboHebrewEnd": 917,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 160,
+   "lcp": 160,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 86
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 69,
+   "cssEnd": 18,
+   "heeboHebrewEnd": 10,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 1552,
+   "lcp": 2732,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 365,
+    "loginForm": 2638
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2558,
+   "cssEnd": 1508,
+   "heeboHebrewEnd": 917,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 56,
+   "lcp": 156,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 47,
+    "loginForm": 94
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 76,
+   "cssEnd": 21,
+   "heeboHebrewEnd": 14,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 3432,
+   "lcp": 6284,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3313,
+    "sidebar": 3313,
+    "personalPanel": 5617,
+    "panelAlerts": 6239
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2342,
+   "cssEnd": 1912,
+   "heeboHebrewEnd": null,
+   "meEnd": 3146
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 1184,
+   "lcp": 1976,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1158,
+    "personalPanel": 1158,
+    "panelAlerts": 1939
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 238,
+   "cssEnd": 134,
+   "heeboHebrewEnd": 160,
+   "meEnd": 1005
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 3572,
+   "lcp": 6368,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3456,
+    "sidebar": 3456,
+    "personalPanel": 5756,
+    "panelAlerts": 6331
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2448,
+   "cssEnd": 1532,
+   "heeboHebrewEnd": 936,
+   "meEnd": 3267
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 1136,
+   "lcp": 1896,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1103,
+    "personalPanel": 1103,
+    "panelAlerts": 1878
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 139,
+   "cssEnd": 59,
+   "heeboHebrewEnd": 49,
+   "meEnd": 951
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 1576,
+   "lcp": 6312,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 364,
+    "pageLoading": 2635,
+    "sidebar": 3484,
+    "personalPanel": 5743,
+    "panelAlerts": 6280
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2570,
+   "cssEnd": 1529,
+   "heeboHebrewEnd": 907,
+   "meEnd": 3355
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 156,
+   "lcp": 2000,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 145,
+    "pageLoading": 221,
+    "sidebar": 1233,
+    "personalPanel": 1233,
+    "panelAlerts": 1980
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 190,
+   "cssEnd": 75,
+   "heeboHebrewEnd": 49,
+   "meEnd": 1047
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 3384,
+   "lcp": 6432,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3261,
+    "sidebar": 3261,
+    "transparencyPage": 6275
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2344,
+   "cssEnd": 2083,
+   "heeboHebrewEnd": null,
+   "meEnd": 3132
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 1180,
+   "lcp": 1180,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1138,
+    "transparencyPage": 1138
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 121,
+   "cssEnd": 51,
+   "heeboHebrewEnd": 63,
+   "meEnd": 937
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 3460,
+   "lcp": 6428,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3345,
+    "sidebar": 3345,
+    "transparencyPage": 6286
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2414,
+   "cssEnd": 1516,
+   "heeboHebrewEnd": 861,
+   "meEnd": 3208
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 1088,
+   "lcp": 1088,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1049,
+    "transparencyPage": 1049
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 79,
+   "cssEnd": 26,
+   "heeboHebrewEnd": 17,
+   "meEnd": 829
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 6,
+   "mode": "cold",
+   "fcp": 1548,
+   "lcp": 6396,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 361,
+    "pageLoading": 2623,
+    "sidebar": 3540,
+    "transparencyPage": 6275
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2559,
+   "cssEnd": 1503,
+   "heeboHebrewEnd": 897,
+   "meEnd": 3358
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 6,
+   "mode": "warm",
+   "fcp": 60,
+   "lcp": 1124,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 51,
+    "pageLoading": 94,
+    "sidebar": 1055,
+    "transparencyPage": 1055
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 81,
+   "cssEnd": 25,
+   "heeboHebrewEnd": 16,
+   "meEnd": 823
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 2528,
+   "lcp": 2528,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2434
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2352,
+   "cssEnd": 1941,
+   "heeboHebrewEnd": null,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "base",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 184,
+   "lcp": 184,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 109
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 92,
+   "cssEnd": 42,
+   "heeboHebrewEnd": 49,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 2600,
+   "lcp": 2600,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 2505
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 2431,
+   "cssEnd": 1518,
+   "heeboHebrewEnd": 927,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fonts",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 156,
+   "lcp": 156,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "loginForm": 88
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 71,
+   "cssEnd": 19,
+   "heeboHebrewEnd": 9,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 1576,
+   "lcp": 2736,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 381,
+    "loginForm": 2652
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2581,
+   "cssEnd": 1531,
+   "heeboHebrewEnd": 924,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "login",
+   "target": "fc",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 52,
+   "lcp": 172,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 43,
+    "loginForm": 90
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "justice-logo",
+    "justice-logo-text",
+    "env-badge"
+   ],
+   "dcl": 73,
+   "cssEnd": 22,
+   "heeboHebrewEnd": 11,
+   "meEnd": null
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 3696,
+   "lcp": 6264,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3615,
+    "sidebar": 3615,
+    "personalPanel": 5545,
+    "panelAlerts": 6223
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2331,
+   "cssEnd": 1995,
+   "heeboHebrewEnd": null,
+   "meEnd": 3119
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "base",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 1136,
+   "lcp": 1884,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 1108,
+    "personalPanel": 1108,
+    "panelAlerts": 1859
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 155,
+   "cssEnd": 100,
+   "heeboHebrewEnd": 115,
+   "meEnd": 930
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 3460,
+   "lcp": 6324,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "pageLoading": 3356,
+    "sidebar": 3356,
+    "personalPanel": 5765,
+    "panelAlerts": 6288
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2435,
+   "cssEnd": 1536,
+   "heeboHebrewEnd": 914,
+   "meEnd": 3228
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fonts",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 1012,
+   "lcp": 1760,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "sidebar": 985,
+    "personalPanel": 985,
+    "panelAlerts": 1743
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 85,
+   "cssEnd": 37,
+   "heeboHebrewEnd": 28,
+   "meEnd": 820
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 1544,
+   "lcp": 6336,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 364,
+    "pageLoading": 2654,
+    "sidebar": 3517,
+    "personalPanel": 5774,
+    "panelAlerts": 6301
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2572,
+   "cssEnd": 1496,
+   "heeboHebrewEnd": 916,
+   "meEnd": 3380
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "home",
+   "target": "fc",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 204,
+   "lcp": 2028,
+   "lcpTestid": "panel-ineligible-soldiers",
+   "markers": {
+    "bootPlaceholder": 132,
+    "pageLoading": 229,
+    "sidebar": 1252,
+    "personalPanel": 1252,
+    "panelAlerts": 2009
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 190,
+   "cssEnd": 75,
+   "heeboHebrewEnd": 52,
+   "meEnd": 1020
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 3348,
+   "lcp": 6424,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3248,
+    "sidebar": 3248,
+    "transparencyPage": 6284
+   },
+   "heeboAtFcp": false,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2329,
+   "cssEnd": 1974,
+   "heeboHebrewEnd": null,
+   "meEnd": 3131
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "base",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 1060,
+   "lcp": 1060,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1014,
+    "transparencyPage": 1014
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 96,
+   "cssEnd": 49,
+   "heeboHebrewEnd": 59,
+   "meEnd": 833
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 3824,
+   "lcp": 6500,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "pageLoading": 3748,
+    "sidebar": 3748,
+    "transparencyPage": 6375
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 2437,
+   "cssEnd": 1543,
+   "heeboHebrewEnd": 921,
+   "meEnd": 3241
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fonts",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 1136,
+   "lcp": 1136,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "sidebar": 1099,
+    "transparencyPage": 1099
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "nav-home",
+    "nav-my-requests",
+    "nav-swaps"
+   ],
+   "dcl": 92,
+   "cssEnd": 26,
+   "heeboHebrewEnd": 16,
+   "meEnd": 849
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 7,
+   "mode": "cold",
+   "fcp": 1552,
+   "lcp": 4008,
+   "lcpTestid": "justice-logo-text",
+   "markers": {
+    "bootPlaceholder": 363,
+    "pageLoading": 2659,
+    "sidebar": 3890,
+    "transparencyPage": 6472
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "boot-placeholder"
+   ],
+   "dcl": 2574,
+   "cssEnd": 1506,
+   "heeboHebrewEnd": 885,
+   "meEnd": 3395
+  },
+  {
+   "profile": "slow4g",
+   "scenario": "transparency",
+   "target": "fc",
+   "run": 7,
+   "mode": "warm",
+   "fcp": 144,
+   "lcp": 1248,
+   "lcpTestid": "transparency-table",
+   "markers": {
+    "bootPlaceholder": 129,
+    "pageLoading": 202,
+    "sidebar": 1206,
+    "transparencyPage": 1206
+   },
+   "heeboAtFcp": true,
+   "paintedTestids": [
+    "page-loading"
+   ],
+   "dcl": 182,
+   "cssEnd": 80,
+   "heeboHebrewEnd": 42,
+   "meEnd": 1010
+  }
+ ]
+}

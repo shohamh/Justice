@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ScoreProjectionState
 from app.db.session import session_scope
-from app.services.score_projection import SCORE_PROJECTION_STATE_KEY, backfill_score_projection
+from app.services.score_projection import (
+    SCORE_PROJECTION_MAINTENANCE_LOCK_KEY,
+    SCORE_PROJECTION_STATE_KEY,
+    backfill_score_projection,
+)
 from app.services.score_projection_reconciliation import revalidate_score_projection
 
 logger = logging.getLogger(__name__)
@@ -16,7 +20,7 @@ logger = logging.getLogger(__name__)
 _POLL_SECONDS = 3600
 _BACKFILL_POLL_SECONDS = 10
 _BATCH_SIZE = 2000
-_LOCK_KEY = "justice.score_projection_maintenance"
+_LOCK_KEY = SCORE_PROJECTION_MAINTENANCE_LOCK_KEY
 
 
 def _projection_tick(session: Session) -> bool:

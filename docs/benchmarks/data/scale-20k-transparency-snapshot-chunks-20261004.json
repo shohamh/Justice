@@ -1,0 +1,133 @@
+{
+  "captured_at_utc": "2026-10-04T05:33:16.899013+00:00",
+  "measurement": "direct ASGI HTTP via FastAPI TestClient; no browser or frontend readiness",
+  "endpoint": "/api/scoring/transparency/page?sort=burden_share&descending=true&page_size=100",
+  "database": {
+    "name": "justice_scale_20k_scale",
+    "port": 5432,
+    "soldiers_total": 20270,
+    "soldiers_active": 20270,
+    "duty_assignments_total": 1002597
+  },
+  "method": {
+    "first_page_builds": 3,
+    "cache_hit_samples": 5,
+    "continuation_samples": 5,
+    "page_size": 100,
+    "snapshot_rows_deleted_between_build_samples": true,
+    "projection_readiness_forced_cold": false,
+    "sql_ms": "sum of before/after cursor execution time; excludes fetch/ORM Python time"
+  },
+  "build_samples": [
+    {
+      "sql_count": 58,
+      "sql_ms": 7802.722399981576,
+      "wall_ms": 12325.608200000715,
+      "response_bytes": 72266,
+      "items": 100,
+      "row_count": 20270,
+      "has_more": true
+    },
+    {
+      "sql_count": 58,
+      "sql_ms": 7546.884299925296,
+      "wall_ms": 11313.211899992893,
+      "response_bytes": 72266,
+      "items": 100,
+      "row_count": 20270,
+      "has_more": true
+    },
+    {
+      "sql_count": 58,
+      "sql_ms": 7363.53590003273,
+      "wall_ms": 10984.730100011802,
+      "response_bytes": 72266,
+      "items": 100,
+      "row_count": 20270,
+      "has_more": true
+    }
+  ],
+  "build_summary": {
+    "samples": 3,
+    "wall_ms": {
+      "p50": 11313.21,
+      "p95": 12325.61
+    },
+    "accumulated_sql_ms": {
+      "p50": 7546.88,
+      "p95": 7802.72
+    },
+    "sql_statements": {
+      "p50": 58.0,
+      "p95": 58.0
+    },
+    "response_bytes": {
+      "p50": 72266.0,
+      "p95": 72266.0
+    },
+    "items": {
+      "p50": 100.0,
+      "p95": 100.0
+    },
+    "row_count": {
+      "p50": 20270.0,
+      "p95": 20270.0
+    }
+  },
+  "cached_first_page_summary": {
+    "samples": 5,
+    "wall_ms": {
+      "p50": 66.9,
+      "p95": 73.47
+    },
+    "accumulated_sql_ms": {
+      "p50": 31.65,
+      "p95": 42.63
+    },
+    "sql_statements": {
+      "p50": 18.0,
+      "p95": 18.0
+    },
+    "response_bytes": {
+      "p50": 72266.0,
+      "p95": 72266.0
+    },
+    "items": {
+      "p50": 100.0,
+      "p95": 100.0
+    },
+    "row_count": {
+      "p50": 20270.0,
+      "p95": 20270.0
+    }
+  },
+  "continuation_summary": {
+    "samples": 5,
+    "wall_ms": {
+      "p50": 56.16,
+      "p95": 62.88
+    },
+    "accumulated_sql_ms": {
+      "p50": 27.84,
+      "p95": 33.42
+    },
+    "sql_statements": {
+      "p50": 15.0,
+      "p95": 15.0
+    },
+    "response_bytes": {
+      "p50": 72636.0,
+      "p95": 72636.0
+    },
+    "items": {
+      "p50": 100.0,
+      "p95": 100.0
+    },
+    "row_count": {
+      "p50": 20270.0,
+      "p95": 20270.0
+    }
+  },
+  "response_bodies_stored": false,
+  "existing_admin_login_or_account_created": false
+}

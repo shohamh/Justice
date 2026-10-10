@@ -32,6 +32,15 @@ vi.mock("./HierarchyNodePickerModal", () => ({
 vi.mock("../api/exemptions", () => ({ grantExemption: vi.fn() }));
 vi.mock("../api/dutyConfig", () => ({ listExemptionTypes: vi.fn().mockResolvedValue([]) }));
 
+// Instants straddling local/UTC midnight; the first is 2026-10-10 00:30 in
+// Asia/Jerusalem (UTC+3) but still 2026-10-09 in UTC.
+// Expected local dates are hard-coded for the test timezone pinned to Asia/Jerusalem in vite.config.ts.
+const RELEASE_TEST_CASES: [string, string][] = [
+  ["2026-10-09T21:30:00Z", "2026-10-10"],
+  ["2026-10-09T12:00:00Z", "2026-10-09"],
+  ["2026-10-10T00:00:00Z", "2026-10-10"],
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -114,7 +123,7 @@ describe("EntriesExitsPanel - move flow", () => {
 });
 
 describe("EntriesExitsPanel - release flow", () => {
-  it("clicking release opens a modal with a date field defaulting to today, then submits that date", async () => {
+  it.each(RELEASE_TEST_CASES)("clicking release opens a modal with a date field defaulting to the local today, then submits that date (now=%s)", async (nowIso, expectedLocalDay) => {
     const { softDeleteSoldier } = await import("../api/soldiers");
     const soldier = {
       id: "s1",
@@ -135,14 +144,16 @@ describe("EntriesExitsPanel - release flow", () => {
       </SoldierModalProvider>
     );
 
-    fireEvent.click(screen.getByText("command_dashboard.release"));
+    // Pin the clock inside the Israel local-midnight..UTC-midnight window so the
+    // test proves the default is the LOCAL date (not the UTC date).
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(nowIso) });
+    try {
+      fireEvent.click(screen.getByText("command_dashboard.release"));
+    } finally {
+      vi.useRealTimers();
+    }
 
-    // Local calendar day, matching the component — toISOString() is UTC and
-    // differs from the local date between local midnight and the UTC offset.
-    const now = new Date();
-    const todayY = String(now.getFullYear());
-    const todayM = String(now.getMonth() + 1).padStart(2, "0");
-    const todayD = String(now.getDate()).padStart(2, "0");
+    const [todayY, todayM, todayD] = expectedLocalDay.split("-");
     const dateInput = await screen.findByTestId("release-date-input");
     expect(dateInput).toHaveValue(`${todayD}/${todayM}/${todayY}`);
 

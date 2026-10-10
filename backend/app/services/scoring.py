@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select, text, tuple_, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.algorithm.duration import calendar_days_touched, combine_date_time, score_days
 from app.auth.authz import scope_root_ids
@@ -30,6 +30,7 @@ from app.db.models import (
     SoldierExemption,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
+    SystemSetting,
 )
 from app.services.authority import (
     build_soldier_scope_visibility,
@@ -45,15 +46,16 @@ logger = logging.getLogger(__name__)
 
 
 def _duty_type_scores(session: Session) -> dict[uuid.UUID, Decimal]:
-    return {dt.id: dt.score_per_day for dt in session.execute(select(DutyType)).scalars().all()}
+    return dict(session.execute(select(DutyType.id, DutyType.score_per_day)).all())
 
 
 def _get_multiplier_setting(session: Session, key: str, default: str) -> Decimal:
-    from app.services.settings_loader import SettingNotFound, get_setting
-    try:
-        return Decimal(str(get_setting(session, key)))
-    except SettingNotFound:
+    row = session.execute(
+        select(SystemSetting.key, SystemSetting.value).where(SystemSetting.key == key)
+    ).first()
+    if row is None:
         return Decimal(default)
+    return Decimal(str(row.value))
 
 
 def effective_duty_days(
@@ -1572,6 +1574,22 @@ def _ensure_projection_ready(
         )
     )
 
+    if rebuild_keys:
+        from app.services.score_projection import (
+            _mark_dirty_bucket,
+            lock_score_projection_maintenance_shared,
+        )
+
+        lock_score_projection_maintenance_shared(session)
+        for soldier_id, quarter_start_value in sorted(
+            rebuild_keys, key=lambda item: (str(item[0]), item[1])
+        ):
+            _mark_dirty_bucket(
+                session,
+                soldier_id=soldier_id,
+                quarter_start_value=quarter_start_value,
+            )
+
     repaired_quarters: set[date] = set()
     repaired_keys: set[tuple[uuid.UUID, date]] = set()
     for soldier_id, quarter_start_value in sorted(rebuild_keys, key=lambda item: (str(item[0]), item[1])):
@@ -2080,9 +2098,16 @@ def _try_projected_transparency_rows(
         return None
 
     total_rows = session.execute(
-        select(SoldierScoreProjection).where(uuid_any("soldier_score_projection.soldier_id", soldier_ids))
-    ).scalars().all()
-    totals_by_soldier = {row.soldier_id: row for row in total_rows}
+        select(
+            SoldierScoreProjection.soldier_id,
+            SoldierScoreProjection.cumulative_score,
+            SoldierScoreProjection.shift_count,
+        ).where(uuid_any("soldier_score_projection.soldier_id", soldier_ids))
+    ).all()
+    totals_by_soldier = {
+        soldier_id: (cumulative_score, shift_count)
+        for soldier_id, cumulative_score, shift_count in total_rows
+    }
     active_days_map = _bulk_active_days(session, list(soldiers))
     nodes = {n.id: n for n in session.execute(select(HierarchyNode)).scalars().all()}
     exempted_ids = globally_exempted_soldier_ids(session)
@@ -2119,8 +2144,8 @@ def _try_projected_transparency_rows(
                 extra={"soldier_id": str(s.id)},
             )
             return None
-        cum = _q6(total.cumulative_score)
-        shift_count = total.shift_count
+        cum = _q6(total[0])
+        shift_count = total[1]
         ad = active_days_map.get(s.id, 1)
         # Normalisation is computed over the FULL active population (dev
         # behavior) regardless of which rows this viewer may see.
@@ -2625,9 +2650,69 @@ def fairness_components(
     }
     from app.services.algorithm_bridge import exempted_duty_type_ids_by_soldier
 
-    exempt_map = exempted_duty_type_ids_by_soldier(session, as_of=date.today())
+    # Reuse the roster loaded above: eligibility exclusions are only read for
+    # visible soldiers, so re-querying every Soldier row would be wasted work.
+    exempt_map = exempted_duty_type_ids_by_soldier(
+        session, as_of=date.today(), soldiers=visible_soldiers
+    )
     eligible_types = {
         soldier_id: (active_type_ids - exempt_map.get(soldier_id, set()))
         for soldier_id in visible_ids
     }
     return _build_fairness_components(eligible_types, type_names, burden_share_by_id, name_by_id, soldier_eligible_types=eligible_types)
+
+
+# Soldier columns the duty-type requirement checks read (see
+# eligibility._ineligibility_reason). Loading only these keeps the grouping-only
+# path from hydrating every column of every soldier.
+_ELIGIBILITY_SOLDIER_COLUMNS = (
+    Soldier.id,
+    Soldier.gender,
+    Soldier.rank,
+    Soldier.is_officer,
+    Soldier.bahad1_graduate,
+    Soldier.has_military_driving_license,
+    Soldier.military_driving_license_expiry,
+    Soldier.mandatory_end_date,
+    Soldier.last_mitvahim_date,
+    Soldier.last_alal_date,
+)
+
+
+def eligibility_groups(session: Session) -> list[dict[str, Any]]:
+    """Org-wide duty-type eligibility groups: the connected components that
+    fairness_components() reports, without burden shares, names or per-soldier
+    detail. Same grouping and ordering, but skips the burden-share scoring pass
+    and the full-row soldier load that dominate fairness_components() at scale."""
+    from app.services.algorithm_bridge import exempted_duty_type_ids_by_soldier
+
+    soldiers = session.execute(
+        select(Soldier).options(load_only(*_ELIGIBILITY_SOLDIER_COLUMNS)).where(Soldier.left_at.is_(None))
+    ).scalars().all()
+
+    active_type_ids = _active_duty_type_ids(session)
+    type_names = {
+        dt.id: dt.name
+        for dt in session.execute(
+            select(DutyType).where(DutyType.id.in_(active_type_ids))
+        ).scalars().all()
+    }
+    exempt_map = exempted_duty_type_ids_by_soldier(
+        session, as_of=date.today(), soldiers=soldiers
+    )
+    eligible_types = {}
+    for soldier in soldiers:
+        eligible = active_type_ids - exempt_map.get(soldier.id, set())
+        # Exempt-from-all soldiers form no group; leaving them out also spares
+        # building (and sorting) an exempt roster this caller never reads.
+        if eligible:
+            eligible_types[soldier.id] = eligible
+    built = _build_fairness_components(eligible_types, type_names, {}, {}, soldier_eligible_types=eligible_types)
+    return [
+        {
+            "duty_type_ids": c["duty_type_ids"],
+            "duty_type_names": c["duty_type_names"],
+            "soldier_count": c["soldier_count"],
+        }
+        for c in built["components"]
+    ]

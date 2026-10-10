@@ -269,6 +269,30 @@ describe("ExemptionsPanel", () => {
     expect(await screen.findByTestId("exemption-request-action-error")).toHaveTextContent("שגיאה באישור הבקשה");
   });
 
+  test("calls onDecided once after a successful approval", async () => {
+    const onDecided = vi.fn();
+    render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} onDecided={onDecided} />);
+    fireEvent.click(await screen.findByTestId("exemption-request-approve-req-1"));
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1));
+  });
+
+  test("does not call onDecided when the approval fails", async () => {
+    vi.mocked(exemptionsApi.approveExemptionRequestDutyManagerStep).mockRejectedValueOnce(new Error("boom"));
+    const onDecided = vi.fn();
+    render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} onDecided={onDecided} />);
+    fireEvent.click(await screen.findByTestId("exemption-request-approve-req-1"));
+    await screen.findByTestId("exemption-request-action-error");
+    expect(onDecided).not.toHaveBeenCalled();
+  });
+
+  test("calls onDecided once after a successful rejection", async () => {
+    const onDecided = vi.fn();
+    render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={true} onDecided={onDecided} />);
+    fireEvent.change(await screen.findByTestId("exemption-request-reject-note-req-1"), { target: { value: "no" } });
+    fireEvent.click(screen.getByTestId("exemption-request-reject-req-1"));
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1));
+  });
+
   test("hides the duty-manager-step approve button for a commander-only viewer", async () => {
     render(<ExemptionsPanel soldierId="abc" canManage={true} canApproveDutyManagerStep={false} />);
     await screen.findByTestId("exemption-request-row-req-1");

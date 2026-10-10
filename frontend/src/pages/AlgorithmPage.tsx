@@ -121,7 +121,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
   function handleJobSubmitted(jobId: string) {
     handleCloseRunForm();
     setSelectedJobId(jobId);
-    void queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobs(JOBS_LIMIT, JOBS_OFFSET) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobsAll() });
   }
 
   function handleRerun(overrides: Record<string, number>) {
@@ -139,7 +139,7 @@ export function AlgorithmContent({ initialJobId }: { initialJobId?: string | nul
     try {
       await cancelJob(selectedJobId);
       await queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJob(selectedJobId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobs(JOBS_LIMIT, JOBS_OFFSET) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.algorithmJobsAll() });
     } catch { /* 409 = already done, ignore */ }
   }
 

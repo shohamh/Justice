@@ -26,6 +26,11 @@ from testcontainers.postgres import PostgresContainer
 RESET_TABLES = (
     "audit_log",
     "bug_reports",
+    "transparency_read_model_rows",
+    "transparency_read_model_generations",
+    "transparency_page_snapshot_rows",
+    "transparency_page_snapshots",
+    "transparency_source_change_journal",
     "bug_report_comments",
     "bug_report_comment_attachments",
     "duty_day_overrides",

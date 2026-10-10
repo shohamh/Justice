@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { getFairnessComponents, type FairnessComponent, type FairnessComponents, type FairnessSoldier } from "../api/scoring";
 import SoldierLink from "./SoldierLink";
@@ -47,7 +47,14 @@ const DEVIATION_NEUTRAL_RGB = `rgb(${DEVIATION_NEUTRAL.join(", ")})`;
  * row below it, applied via inline style (not a Tailwind arbitrary-value
  * class) so both are guaranteed the exact same computed grid regardless of
  * how the build processes utility classes. */
-const CANDIDATE_ROW_GRID = "16px clamp(64px, 14vw, 200px) minmax(0,1fr) 40px 40px";
+const CANDIDATE_ROW_GRID = "36px clamp(64px, 14vw, 200px) minmax(0,1fr) 40px 40px";
+
+/** The ranked list opens as its first and last N soldiers (the best candidates
+ * and the most burdened) with the middle collapsed; each end can then be
+ * extended by one step at a time. Mounting every row of a many-thousand
+ * soldier group froze the page for over a second. */
+const CANDIDATE_EDGE_ROWS = 30;
+const CANDIDATE_LOAD_STEP = 50;
 
 interface BucketBurdenShareStats { mean: number; stddev: number; cv: number; min: number; max: number }
 
@@ -143,6 +150,18 @@ function FairnessComponentCard({
   // hoveredCount resets to null.
   const activeCounts = new Set(lockedCounts);
   if (hoveredCount != null) activeCounts.add(hoveredCount);
+
+  // The ranked list below shows only its two ends and is searchable by name
+  // (see CANDIDATE_EDGE_ROWS). How far each end has been extended is keyed to
+  // what the list shows, so toggling the group, changing the sub-group filter
+  // or typing a search starts again from the initial top/bottom blocks.
+  const [query, setQuery] = useState("");
+  const listKey = `${isActive}|${[...activeCounts].sort((a, b) => a - b).join(",")}|${query}`;
+  const [loaded, setLoaded] = useState<{ key: string; top: number; bottom: number }>({
+    key: listKey, top: CANDIDATE_EDGE_ROWS, bottom: CANDIDATE_EDGE_ROWS,
+  });
+  const topCount = loaded.key === listKey ? loaded.top : CANDIDATE_EDGE_ROWS;
+  const bottomCount = loaded.key === listKey ? loaded.bottom : CANDIDATE_EDGE_ROWS;
 
   function openBreakdown(title: string, forSoldiers: FairnessSoldier[], e: { stopPropagation: () => void }) {
     e.stopPropagation();
@@ -379,28 +398,35 @@ function FairnessComponentCard({
           (a whole-group, next-duty-assignment concept) is dropped for it. */}
       {(isActive || activeCounts.size > 0) && sortedSoldiers.length > 0 && (() => {
         const filtered = activeCounts.size > 0;
-        const displayedSoldiers = filtered
+        const matchingSoldiers = filtered
           ? sortedSoldiers.filter((s) => activeCounts.has(s.eligible_type_count))
           : sortedSoldiers;
-        return (
-        <div className="border-t border-indigo-200 dark:border-indigo-700 px-3 pb-3 pt-2 overflow-x-auto">
-          <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-2">
-            {filtered
-              ? `חיילים בקבוצות שנבחרו (${displayedSoldiers.length}), ממוינים לפי חלק בנטל:`
-              : "סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):"}
-          </p>
-          <div
-            className="items-start gap-1 pr-1 border-r-2 border-transparent text-[10px] leading-tight text-gray-400 dark:text-gray-500"
-            style={{ display: "grid", gridTemplateColumns: CANDIDATE_ROW_GRID }}
-          >
-            <span>&nbsp;</span>
-            <span className="text-right">חייל</span>
-            <span className="text-center">מרחק מהממוצע</span>
-            <span className="text-center">חלק בנטל</span>
-            {mean != null && <span className="text-center">סטייה מהממוצע</span>}
-          </div>
-          <div className="space-y-1">
-            {displayedSoldiers.map((s, rank) => {
+        // A name search narrows the list but keeps each soldier's rank within
+        // matchingSoldiers, so a hit still shows where they stand in the group.
+        const needle = query.trim().toLocaleLowerCase();
+        const searched = needle
+          ? matchingSoldiers.flatMap((s, rank) =>
+              s.full_name.toLocaleLowerCase().includes(needle) ? [{ s, rank }] : [])
+          : null;
+        const total = searched ? searched.length : matchingSoldiers.length;
+        const rowAt = (i: number): { s: FairnessSoldier; rank: number } =>
+          searched ? searched[i] : { s: matchingSoldiers[i], rank: i };
+        // Once the two blocks meet (or already cover everything) the middle is
+        // gone: render one continuous list and drop both load buttons.
+        const hiddenCount = Math.max(0, total - topCount - bottomCount);
+        const topEnd = hiddenCount === 0 ? total : topCount;
+        const bottomStart = hiddenCount === 0 ? total : total - bottomCount;
+        const topRows = Array.from({ length: topEnd }, (_, i) => rowAt(i));
+        const bottomRows = Array.from({ length: total - bottomStart }, (_, i) => rowAt(bottomStart + i));
+        const loadMore = (end: "top" | "bottom") => {
+          const grow = Math.min(CANDIDATE_LOAD_STEP, hiddenCount);
+          setLoaded({
+            key: listKey,
+            top: topCount + (end === "top" ? grow : 0),
+            bottom: bottomCount + (end === "bottom" ? grow : 0),
+          });
+        };
+        const renderRow = ({ s, rank }: { s: FairnessSoldier; rank: number }) => {
               const burdenSharePct = (s.burden_share * 100).toFixed(2);
               const dev = mean != null ? s.burden_share - mean : null;
               const devStr = dev != null
@@ -426,6 +452,7 @@ function FairnessComponentCard({
               return (
                 <div
                   key={s.soldier_id}
+                  data-testid="fairness-candidate-row"
                   className="items-center gap-1 pr-1 border-r-2 rounded transition-colors"
                   style={{
                     display: "grid",
@@ -475,7 +502,70 @@ function FairnessComponentCard({
                   )}
                 </div>
               );
-            })}
+        };
+        return (
+        <div className="border-t border-indigo-200 dark:border-indigo-700 px-3 pb-3 pt-2 overflow-x-auto">
+          <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-2">
+            {filtered
+              ? `חיילים בקבוצות שנבחרו (${matchingSoldiers.length}), ממוינים לפי חלק בנטל:`
+              : "סדר עדיפויות לתורנות הבאה (חלק בנטל עולה — מקום 1 מועמד ראשי):"}
+          </p>
+          <input
+            type="search"
+            dir="rtl"
+            data-testid="fairness-candidates-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="חיפוש חייל לפי שם"
+            aria-label="חיפוש חייל לפי שם"
+            className="mb-2 w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs"
+          />
+          {needle && (
+            <p data-testid="fairness-candidates-count" className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              {`${total === 1 ? "תוצאה אחת" : `${total.toLocaleString("he-IL")} תוצאות`} מתוך ${matchingSoldiers.length.toLocaleString("he-IL")}`}
+            </p>
+          )}
+          {total === 0 && needle && (
+            <p data-testid="fairness-candidates-no-match" className="text-xs text-gray-400 py-2">
+              לא נמצאו חיילים בשם זה
+            </p>
+          )}
+          <div
+            className="items-start gap-1 pr-1 border-r-2 border-transparent text-[10px] leading-tight text-gray-400 dark:text-gray-500"
+            style={{ display: "grid", gridTemplateColumns: CANDIDATE_ROW_GRID }}
+          >
+            <span>&nbsp;</span>
+            <span className="text-right">חייל</span>
+            <span className="text-center">מרחק מהממוצע</span>
+            <span className="text-center">חלק בנטל</span>
+            {mean != null && <span className="text-center">סטייה מהממוצע</span>}
+          </div>
+          <div data-testid="fairness-candidates-list">
+            {topRows.map(renderRow)}
+            {hiddenCount > 0 && (
+              <div className="flex flex-col items-center justify-center gap-1.5 py-2 text-xs text-gray-500 dark:text-gray-400">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded border border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors"
+                  onClick={() => loadMore("top")}
+                >
+                  <ChevronUp size={14} aria-hidden="true" />
+                  <span>טען עוד מלמעלה</span>
+                </button>
+                <span data-testid="fairness-candidates-gap">
+                  {`${hiddenCount.toLocaleString("he-IL")} חיילים מוסתרים`}
+                </span>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded border border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors"
+                  onClick={() => loadMore("bottom")}
+                >
+                  <ChevronDown size={14} aria-hidden="true" />
+                  <span>טען עוד מלמטה</span>
+                </button>
+              </div>
+            )}
+            {bottomRows.map(renderRow)}
           </div>
           {!filtered && mean != null && (
             <p className="text-xs text-gray-400 mt-2">

@@ -567,3 +567,40 @@ def test_nested_scope_roots_do_not_expose_ancestor_metadata(client, admin_sessio
         assert root_node["path_ids"] == [str(root.id)]
         soldier_row = next(row for row in body["soldiers"] if row["soldier_id"] == str(soldier.id))
         assert soldier_row["hierarchy_path_ids"] == [str(root.id), str(child.id)]
+
+
+def test_count_endpoint_uses_the_coalesced_count_with_the_callers_resolved_roots(
+    client, admin_session, monkeypatch
+) -> None:
+    from app.auth.authz import commanded_node_ids
+    from app.services import ineligible_soldiers as svc
+
+    calls: list[tuple[set[uuid.UUID] | None, date]] = []
+
+    def fake_coalesced(_session, *, roots, as_of) -> int:
+        calls.append((roots, as_of))
+        return 7
+
+    monkeypatch.setattr(svc, "count_ineligible_soldiers_coalesced", fake_coalesced)
+    commander = create_soldier(
+        admin_session, personal_number=f"coalesced-cmd-{_uid()}", role="commander"
+    )
+    create_node(
+        admin_session, level="division", name=f"coalesced-root-{_uid()}", commander_id=commander.id
+    )
+    admin = create_soldier(admin_session, personal_number=f"coalesced-admin-{_uid()}", role="admin")
+
+    commander_response = client.get(
+        "/api/ranges/ineligible-soldiers/count?audience=commander",
+        headers=auth_headers(commander),
+    )
+    admin_response = client.get(
+        "/api/ranges/ineligible-soldiers/count", headers=auth_headers(admin)
+    )
+
+    assert commander_response.status_code == 200, commander_response.text
+    assert commander_response.json() == {"count": 7}
+    assert admin_response.json() == {"count": 7}
+    expected_roots = commanded_node_ids(admin_session, commander.id)
+    assert expected_roots
+    assert calls == [(expected_roots, date.today()), (None, date.today())]

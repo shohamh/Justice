@@ -38,10 +38,13 @@ export default function ExemptionsPanel({
   soldierId,
   canManage,
   canApproveDutyManagerStep,
+  onDecided,
 }: {
   soldierId: string;
   canManage: boolean;
   canApproveDutyManagerStep: boolean;
+  /** Called once after an approve/reject succeeds; lets a query-aware parent refresh nav badge counts. */
+  onDecided?: () => void;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -202,6 +205,7 @@ export default function ExemptionsPanel({
     setRequestActionError(null);
     try {
       await approveExemptionRequestCommanderStep(id);
+      onDecided?.();
       await refreshRequests();
     } catch (err) {
       setRequestActionError(translateApiError(err, t, "שגיאה באישור הבקשה"));
@@ -212,6 +216,7 @@ export default function ExemptionsPanel({
     setRequestActionError(null);
     try {
       await approveExemptionRequestDutyManagerStep(id);
+      onDecided?.();
       await refreshRequests();
     } catch (err) {
       setRequestActionError(translateApiError(err, t, "שגיאה באישור הבקשה"));
@@ -222,6 +227,7 @@ export default function ExemptionsPanel({
     const note = rejectNotes[id];
     if (!note) return;
     await rejectExemptionRequest(id, note);
+    onDecided?.();
     setRejectNotes((previous) => {
       const next = { ...previous };
       delete next[id];

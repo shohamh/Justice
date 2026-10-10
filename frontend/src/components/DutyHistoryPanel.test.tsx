@@ -1,8 +1,11 @@
 // frontend/src/components/DutyHistoryPanel.test.tsx
-import { render, screen, fireEvent, within } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import DutyHistoryPanel from "./DutyHistoryPanel";
 import * as dutyHistoryApi from "../api/dutyHistory";
+import * as exemptionsApi from "../api/exemptions";
+import * as constraintsApi from "../api/constraints";
+import * as algorithmApi from "../api/algorithm";
 
 vi.mock("../api/dutyHistory");
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ user: { id: "u-manager" } }) }));
@@ -164,6 +167,75 @@ describe("DutyHistoryPanel personal constraint events", () => {
     const card = await screen.findByTestId("history-event-personal_constraint");
     fireEvent.click(within(card).getByText("אילוצים אישיים"));
     expect(within(card).getByText(/מבטל בדיקה/)).toBeTruthy();
+  });
+});
+
+describe("DutyHistoryPanel onDecided", () => {
+  const pendingExemption = {
+    id: "ex1", event_type: "exemption_request", date: "2026-09-01", end_date: "2026-09-03",
+    title: "בקשת פטור", description: null, status: "pending_commander", metadata: {},
+    created_at: "2026-08-01T00:00:00Z",
+  };
+  const pendingConstraint = {
+    id: "pc9", event_type: "personal_constraint", date: "2026-09-01", end_date: "2026-09-03",
+    title: "אילוץ", description: null, status: "pending", metadata: {},
+    created_at: "2026-08-01T00:00:00Z",
+  };
+  const draft = {
+    id: "dr1", event_type: "assignment", date: "2026-09-01", end_date: "2026-09-02",
+    title: "טיוטה", description: null, status: "algorithm_draft", metadata: { is_reserve: "false" },
+    created_at: "2026-08-01T00:00:00Z",
+  };
+
+  beforeEach(() => {
+    vi.mocked(exemptionsApi.approveExemptionRequestCommanderStep).mockResolvedValue(undefined as never);
+    vi.mocked(constraintsApi.approveConstraint).mockResolvedValue(undefined as never);
+    vi.mocked(algorithmApi.acceptProposalDirect).mockResolvedValue(undefined as never);
+    vi.mocked(dutyHistoryApi.getSoldierDutyHistory).mockResolvedValue([pendingExemption, pendingConstraint, draft] as never);
+  });
+
+  it("calls onDecided exactly once after a successful exemption approval", async () => {
+    const onDecided = vi.fn();
+    render(<DutyHistoryPanel soldierId="s1" canManage={true} isActive={true} onDecided={onDecided} />);
+    fireEvent.click(await screen.findByText("בקשת פטור"));
+    fireEvent.click(await screen.findByTestId("approve-exemption-ex1"));
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not call onDecided when the approval fails", async () => {
+    vi.mocked(exemptionsApi.approveExemptionRequestCommanderStep).mockRejectedValueOnce(new Error("boom"));
+    const onDecided = vi.fn();
+    render(<DutyHistoryPanel soldierId="s1" canManage={true} isActive={true} onDecided={onDecided} />);
+    fireEvent.click(await screen.findByText("בקשת פטור"));
+    fireEvent.click(await screen.findByTestId("approve-exemption-ex1"));
+    await screen.findByText("שגיאה באישור בקשת הפטור");
+    expect(onDecided).not.toHaveBeenCalled();
+  });
+
+  it("calls onDecided once after a successful constraint approval", async () => {
+    const onDecided = vi.fn();
+    render(<DutyHistoryPanel soldierId="s1" canManage={true} isActive={true} onDecided={onDecided} />);
+    fireEvent.click(await screen.findByText("אילוץ"));
+    fireEvent.click(await screen.findByTestId("approve-constraint-hist-pc9"));
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1));
+  });
+
+  it("calls onDecided once after accepting a draft", async () => {
+    const onDecided = vi.fn();
+    render(<DutyHistoryPanel soldierId="s1" canManage={true} isActive={true} onDecided={onDecided} />);
+    fireEvent.click(await screen.findByText("טיוטה"));
+    fireEvent.click(await screen.findByTestId("accept-draft-dr1"));
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not call onDecided when accepting a draft fails", async () => {
+    vi.mocked(algorithmApi.acceptProposalDirect).mockRejectedValueOnce(new Error("boom"));
+    const onDecided = vi.fn();
+    render(<DutyHistoryPanel soldierId="s1" canManage={true} isActive={true} onDecided={onDecided} />);
+    fireEvent.click(await screen.findByText("טיוטה"));
+    fireEvent.click(await screen.findByTestId("accept-draft-dr1"));
+    await screen.findByText("שגיאה באישור הצעת השיבוץ");
+    expect(onDecided).not.toHaveBeenCalled();
   });
 });
 

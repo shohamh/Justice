@@ -752,6 +752,10 @@ export default function LazyHierarchyTree({
   useEffect(() => {
     let lastReset = 0;
     const resetBranches = () => {
+      // visibilitychange also fires when the page is hidden, including while
+      // the document unloads on navigation; a reset then starts a fetch that
+      // the unload immediately aborts. Only refresh on the way back in.
+      if (document.visibilityState !== "visible") return;
       const now = Date.now();
       if (now - lastReset < 1000) return;
       lastReset = now;

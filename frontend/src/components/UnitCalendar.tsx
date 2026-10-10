@@ -21,7 +21,7 @@ import { CalendarShift, getCalendarShifts } from "../api/calendar";
 import { loadCalendarData } from "../api/calendarData";
 import { listHolidays } from "../api/calendarHolidays";
 import { RangeEvent, getRanges, getMyRanges } from "../api/ranges";
-import { listDutyTypes } from "../api/dutyConfig";
+import { useDutyTypes } from "../hooks/useDutyTypes";
 import { RANGE_TYPE_LABELS } from "../utils/rangeLabels";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { useAuth } from "../auth/AuthContext";
@@ -113,7 +113,6 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   const [activeViewType, setActiveViewType] = useState("dayGridMonth");
   const [showHolidays, setShowHolidays] = useState(true);
   const [showOnlyMyDuties, setShowOnlyMyDuties] = useState(false);
-  const [allDutyTypes, setAllDutyTypes] = useState<{ id: string; name: string }[]>([]);
   const [holidaysByDate, setHolidaysByDate] = useState<Map<string, string>>(new Map());
 
   const dateRangeRef = useRef<{ from: string; to: string } | null>(null);
@@ -262,11 +261,15 @@ export default function UnitCalendar({ nodeId, nodeIds, soldierId, scope, highli
   // The duty-type filter should list every active duty type, not just the
   // ones that happen to have a shift in the currently-loaded date range —
   // a personal (soldierId) view can easily have zero shifts visible.
-  useEffect(() => {
-    listDutyTypes()
-      .then(types => setAllDutyTypes(types.filter(dt => dt.active).map(dt => ({ id: dt.id, name: dt.name }))))
-      .catch(() => setAllDutyTypes([]));
-  }, []);
+  // Shared query-cache entry: Home also reads the duty types, so the calendar
+  // reuses that request instead of sending its own.
+  const dutyTypesQuery = useDutyTypes();
+  const allDutyTypes = useMemo(
+    () => (dutyTypesQuery.data ?? [])
+      .filter((dt) => dt.active)
+      .map((dt) => ({ id: dt.id, name: dt.name })),
+    [dutyTypesQuery.data],
+  );
 
   // rangesEnabled starts out false/unknown until usePublicSettings resolves,
   // which usually happens after FullCalendar's initial datesSet already ran

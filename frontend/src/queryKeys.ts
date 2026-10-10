@@ -9,6 +9,7 @@ export const queryKeys = {
   effectiveDuties: (soldierId: string, params?: Record<string, unknown>) =>
     ["effectiveDuties", soldierId, params ?? {}] as const,
   dutyTypes: () => ["dutyTypes"] as const,
+  levelTypes: () => ["levelTypes"] as const,
   dutyLocations: () => ["dutyLocations"] as const,
   mySwaps: () => ["swaps", "mine"] as const,
   incomingSwaps: () => ["swaps", "incoming"] as const,
@@ -29,8 +30,10 @@ export const queryKeys = {
   pendingConstraintsCount: () => ["constraints", "pendingCount"] as const,
   pendingExemptionsCount: () => ["exemptions", "pendingCount"] as const,
   pendingFieldUpdatesCount: () => ["soldiers", "pendingFieldUpdatesCount"] as const,
-  navCounts: (scopeKey: string, hakpazaEnabled: boolean, pathname: string) =>
-    ["navigation", "counts", scopeKey, hakpazaEnabled, pathname] as const,
+  /** Prefix of every navCounts(scope, hakpazaEnabled) variant: use it after anything that changes approvals, incoming swaps or hakpaza. */
+  navCountsAll: () => ["navigation", "counts"] as const,
+  navCounts: (scopeKey: string, hakpazaEnabled: boolean) =>
+    ["navigation", "counts", scopeKey, hakpazaEnabled] as const,
   myConstraints: () => ["constraints", "mine"] as const,
   remainingConstraintDays: () => ["constraints", "remaining"] as const,
   myExemptionRequests: () => ["exemptionRequests", "mine"] as const,
@@ -69,6 +72,7 @@ export const queryKeys = {
   notificationPreferences: () => ["notifications", "preferences"] as const,
   commanderScopes: () => ["notifications", "commanderScopes"] as const,
   hierarchyTreeVisible: () => ["hierarchy", "tree", "visible"] as const,
+  notificationsUnreadCount: () => ["notifications", "unread-count"] as const,
   notificationsList: () => ["notifications", "list"] as const,
   notifications: (filter: string, offset: number) => ["notifications", "list", filter, offset] as const,
   announceScope: () => ["notifications", "announceScope"] as const,
@@ -94,6 +98,8 @@ export const queryKeys = {
   shiftTemplatesAll: () => ["shiftTemplates", "all"] as const,
   shiftsList: () => ["shifts", "list"] as const,
   shifts: (params?: Record<string, unknown>) => ["shifts", "list", params ?? {}] as const,
+  /** Prefix of every algorithmJobs(limit, offset) variant: use it after anything that changes a job. */
+  algorithmJobsAll: () => ["algorithm", "jobs"] as const,
   algorithmJobs: (limit: number, offset: number) => ["algorithm", "jobs", limit, offset] as const,
   algorithmJob: (jobId: string) => ["algorithm", "job", jobId] as const,
   soldierDetail: (soldierId: string) => ["soldiers", "detail", soldierId] as const,
@@ -107,6 +113,8 @@ export const queryKeys = {
       : (["potential", "burdenShareGap", authorizationScope, referenceDate] as const),
   burdenShareBreakdown: (soldierId: string) => ["scoring", "burdenShareBreakdown", soldierId] as const,
   inviteCodes: () => ["inviteCodes"] as const,
+  /** Every import-wizard query: session lists/details and the wizard's pickers. */
+  importAll: () => ["import"] as const,
   importSessionsList: () => ["import", "sessions"] as const,
   importSessions: (statusFilter?: string) => ["import", "sessions", statusFilter ?? "active"] as const,
   importSessionDetail: (sessionId: string) => ["import", "session", sessionId] as const,
@@ -139,6 +147,24 @@ export const queryKeys = {
   ineligibleSoldierCount: () => ["ranges", "ineligibleSoldiers", "count"] as const,
   adminIneligibleSoldierCount: (actorId: string | null, authorizationScope: string | null) =>
     ["ranges", "ineligibleSoldiers", "count", "admin", actorId, authorizationScope] as const,
+  // Root-level family prefixes: for bulk writes (e.g. an import confirm) that can touch any key in the family.
+  soldiersAll: () => ["soldiers"] as const,
+  hierarchyAll: () => ["hierarchy"] as const,
+  assignmentsAll: () => ["assignments"] as const,
+  effectiveDutiesAll: () => ["effectiveDuties"] as const,
+  shiftsAll: () => ["shifts"] as const,
+  swapsAll: () => ["swaps"] as const,
+  constraintsAll: () => ["constraints"] as const,
+  exemptionsAll: () => ["exemptions"] as const,
+  exemptionRequestsAll: () => ["exemptionRequests"] as const,
+  enrollmentAll: () => ["enrollment"] as const,
+  scoringAll: () => ["scoring"] as const,
+  potentialAll: () => ["potential"] as const,
+  commandDashboardAll: () => ["commandDashboard"] as const,
+  bugReportsAll: () => ["bugReports"] as const,
+  rankAdvancementAll: () => ["rankAdvancement"] as const,
+  requestsAll: () => ["requests"] as const,
+  soldierRangeStatusAll: () => ["soldierRangeStatus"] as const,
   rankLadder: () => ["rankAdvancement", "ladder"] as const,
   publicRankLadder: () => ["rankAdvancement", "ladder", "public"] as const,
 };

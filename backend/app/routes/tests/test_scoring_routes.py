@@ -50,3 +50,39 @@ def test_eligibility_groups_returns_summary_without_soldier_list(
 
     # Verify the soldier count is at least 1
     assert group["soldier_count"] >= 1
+
+
+def test_eligibility_groups_service_matches_fairness_components_projection(
+    admin_session: Session,
+):
+    """The lightweight grouping path must yield exactly the components the full
+    fairness view reports (same groups, order, counts), minus per-soldier detail."""
+    from app.services import scoring as svc
+
+    open_type = DutyType(name="שמירה", score_per_day=Decimal("1.00"), active=True)
+    gated_type = DutyType(
+        name="מבצעי",
+        score_per_day=Decimal("1.00"),
+        active=True,
+        requirements={"requires_mitvahim": True},
+    )
+    admin_session.add_all([open_type, gated_type])
+    admin_session.flush()
+    # Neither soldier has a recent mitvahim, so the gated type excludes both and
+    # they connect only through the open type; the third has no eligibility gap.
+    for number in ("elig_a", "elig_b", "elig_c"):
+        create_soldier(admin_session, personal_number=number)
+    admin_session.commit()
+
+    full = svc.fairness_components(admin_session)
+    expected = [
+        {
+            "duty_type_ids": c["duty_type_ids"],
+            "duty_type_names": c["duty_type_names"],
+            "soldier_count": c["soldier_count"],
+        }
+        for c in full["components"]
+    ]
+
+    assert expected, "fixture should produce at least one component"
+    assert svc.eligibility_groups(admin_session) == expected

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "../queryKeys";
@@ -12,7 +12,7 @@ import {
 } from "../api/bugReports";
 import { translateApiError } from "../utils/translateApiError";
 import BugReportCommentsPanel from "./BugReportCommentsPanel";
-import DocumentPreviewModal from "./DocumentPreviewModal";
+const DocumentPreviewModal = lazy(() => import("./DocumentPreviewModal"));
 import { createTemporaryBlobUrl, revokeBlobUrl } from "../utils/downloadFile";
 
 const SEVERITY_COLORS: Record<BugReportSeverity, string> = {
@@ -239,12 +239,14 @@ export default function BugReportMyReportsTab({ expandedId, onToggle }: BugRepor
         </ul>
       )}
       {previewImage && (
-        <DocumentPreviewModal
-          fileUrl={previewImage.url}
-          fileName={previewImage.name}
-          contentType="image/png"
-          onClose={() => setPreviewImage(null)}
-        />
+        <Suspense fallback={null}>
+          <DocumentPreviewModal
+            fileUrl={previewImage.url}
+            fileName={previewImage.name}
+            contentType="image/png"
+            onClose={() => setPreviewImage(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

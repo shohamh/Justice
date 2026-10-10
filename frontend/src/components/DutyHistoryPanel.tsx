@@ -127,6 +127,8 @@ interface Props {
   canViewExplanations?: boolean;
   isActive: boolean;
   initialTypes?: string[];
+  /** Called once after a decision (approve/reject/accept) succeeds; lets a query-aware parent refresh nav badge counts. */
+  onDecided?: () => void;
 }
 
 function EventCard({
@@ -529,7 +531,7 @@ function Timeline({
   );
 }
 
-export default function DutyHistoryPanel({ soldierId, soldierName, canManage, canViewExplanations = false, isActive, initialTypes }: Props) {
+export default function DutyHistoryPanel({ soldierId, soldierName, canManage, canViewExplanations = false, isActive, initialTypes, onDecided }: Props) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const publicSettings = usePublicSettings();
@@ -644,6 +646,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
       } else {
         await approveExemptionRequestCommanderStep(id);
       }
+      onDecided?.();
       await load();
     } catch {
       setMessage("שגיאה באישור בקשת הפטור");
@@ -653,6 +656,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
   async function handleRejectExemption(id: string, note: string) {
     try {
       await rejectExemptionRequest(id, note);
+      onDecided?.();
       await load();
     } catch {
       setMessage("שגיאה בדחיית בקשת הפטור");
@@ -662,6 +666,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
   async function handleApproveConstraint(id: string) {
     try {
       await approveConstraint(id);
+      onDecided?.();
       await load();
     } catch {
       setMessage("שגיאה באישור האילוץ");
@@ -671,6 +676,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
   async function handleRejectConstraint(id: string, note: string) {
     try {
       await rejectConstraint(id, note);
+      onDecided?.();
       await load();
     } catch {
       setMessage("שגיאה בדחיית האילוץ");
@@ -680,6 +686,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
   async function handleAcceptDraft(id: string) {
     try {
       await acceptProposalDirect(id);
+      onDecided?.();
       await load();
     } catch (err: unknown) {
       const httpStatus = (err as { response?: { status?: number } })?.response?.status;
@@ -694,6 +701,7 @@ export default function DutyHistoryPanel({ soldierId, soldierName, canManage, ca
   async function handleRejectDraft(id: string) {
     try {
       await rejectProposalDirect(id);
+      onDecided?.();
       await load();
     } catch (err: unknown) {
       const httpStatus = (err as { response?: { status?: number } })?.response?.status;

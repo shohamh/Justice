@@ -247,6 +247,8 @@ export default function HakpazaPage() {
       if (pulledSoldier) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.assignments(pulledSoldier.id, { date_from: today }) });
       }
+      // A new pending hakpaza moves the approvers' nav badge.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.navCountsAll() });
       setDone(true);
       setStep(5);
     } catch {

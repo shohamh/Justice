@@ -1,5 +1,15 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { render as rtlRender, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ShiftFormModal from "./ShiftFormModal";
+import { queryKeys } from "../queryKeys";
+
+// The modal invalidates cached algorithm job lists after a rerun, so it needs a client.
+let testClient: QueryClient;
+function render(ui: ReactElement) {
+  testClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(<QueryClientProvider client={testClient}>{ui}</QueryClientProvider>);
+}
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -321,6 +331,64 @@ test("rerun-algorithm button submits a job scoped to the existing shift", async 
     )
   );
   expect(await screen.findByText(/rerun_algorithm_success/)).toBeInTheDocument();
+});
+
+test("a successful rerun invalidates the algorithm job lists (nav badge)", async () => {
+  const existingShift = {
+    id: "shift-42",
+    duty_type_id: "d1",
+    duty_location_id: "l1",
+    start_date: "2026-07-01",
+    end_date: "2026-07-02",
+    required_count: 3,
+    notes: null,
+    assigned_count: 0,
+    reserve_assigned_count: 0,
+    fill_status: "empty" as const,
+    status: "active" as const,
+    node_quotas: [],
+  };
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} existing={existingShift} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+  const jobsKey = queryKeys.algorithmJobs(50, 0);
+  testClient.setQueryData(jobsKey, []);
+
+  fireEvent.click(await screen.findByText("shifts.rerun_algorithm"));
+
+  await waitFor(() => expect(testClient.getQueryState(jobsKey)?.isInvalidated).toBe(true));
+});
+
+test("a failed rerun does not invalidate the algorithm job lists", async () => {
+  const { submitJob } = await import("../api/algorithm");
+  vi.mocked(submitJob).mockRejectedValueOnce(new Error("boom"));
+  const existingShift = {
+    id: "shift-42",
+    duty_type_id: "d1",
+    duty_location_id: "l1",
+    start_date: "2026-07-01",
+    end_date: "2026-07-02",
+    required_count: 3,
+    notes: null,
+    assigned_count: 0,
+    reserve_assigned_count: 0,
+    fill_status: "empty" as const,
+    status: "active" as const,
+    node_quotas: [],
+  };
+  render(
+    <ShiftFormModal dutyTypes={dutyTypes} locations={locations} existing={existingShift} onSaved={() => {}} onClose={() => {}} />
+  );
+  await waitFor(() => expect(screen.getByText("shifts.quotas_title")).toBeInTheDocument());
+  const jobsKey = queryKeys.algorithmJobs(50, 0);
+  testClient.setQueryData(jobsKey, []);
+
+  fireEvent.click(await screen.findByText("shifts.rerun_algorithm"));
+  await waitFor(() => expect(submitJob).toHaveBeenCalled());
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  expect(testClient.getQueryState(jobsKey)?.isInvalidated).toBe(false);
 });
 
 test("asks before moving an edited shift start past its end date", async () => {

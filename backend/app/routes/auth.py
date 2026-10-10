@@ -5,6 +5,7 @@ import time
 import uuid
 from datetime import UTC, date, datetime as _dt, timedelta as _td
 
+import redis
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from typing import Annotated, Literal
 from limits import parse as parse_rate_limit
@@ -14,8 +15,15 @@ from sqlalchemy import select, update as sa_update, case as sa_case
 from sqlalchemy.orm import Session
 
 from app.audit.writer import write_audit
+from app.auth import refresh_revocation
 from app.auth.deps import get_current_user
-from app.auth.jwt_tokens import InvalidToken, decode_token, issue_access_token, issue_refresh_token
+from app.auth.jwt_tokens import (
+    InvalidToken,
+    decode_token,
+    issue_access_token,
+    issue_refresh_token,
+    token_persists,
+)
 from app.auth.password import hash_password, verify_password
 from app.db.models import ExemptionRequestFile, ExemptionType, HierarchyNode, Soldier
 from app.db.session import get_session
@@ -42,10 +50,16 @@ _LOCKOUT_THRESHOLD = 10
 _LOCKOUT_MINUTES = 15
 
 
+def refresh_cookie_max_age(settings, persist: bool) -> int | None:
+    """Cookie Max-Age: the remembered lifetime when persistent, else a session cookie."""
+    return settings.refresh_token_days * 24 * 3600 if persist else None
+
+
 class LoginRequest(BaseModel):
     personal_number: str = Field(pattern=r"^[0-9]{7,8}$")
     password: str = Field(min_length=1, max_length=200)
-    remember_me: bool = False
+    # Remembered by default; only an explicit false gives a session login.
+    remember_me: bool = True
 
 
 class LoginResponse(BaseModel):
@@ -149,8 +163,24 @@ def _enforce_invite_code_guess_limit(request: Request) -> None:
     """
     limit = parse_rate_limit(get_settings().invite_code_rate_limit)
     identifier = get_remote_address(request)
-    if not limiter.limiter.hit(limit, "invite-code-guess", identifier):
-        reset_time, _ = limiter.limiter.get_window_stats(limit, "invite-code-guess", identifier)
+    try:
+        allowed = limiter.limiter.hit(limit, "invite-code-guess", identifier)
+        if not allowed:
+            reset_time, _ = limiter.limiter.get_window_stats(
+                limit, "invite-code-guess", identifier
+            )
+    except redis.RedisError:
+        # These calls bypass slowapi's own error handling, so mirror it: switch
+        # the limiter to its in-memory fallback (per process) instead of a 500.
+        # The decorated routes probe Redis and flip it back once it recovers.
+        _logger.warning("invite-code guess limiter: Redis unavailable, using in-memory fallback")
+        limiter._storage_dead = True
+        allowed = limiter.limiter.hit(limit, "invite-code-guess", identifier)
+        if not allowed:
+            reset_time, _ = limiter.limiter.get_window_stats(
+                limit, "invite-code-guess", identifier
+            )
+    if not allowed:
         retry_after = max(0, int(reset_time - time.time()))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -181,6 +211,28 @@ def _warn_if_insecure_cookie_mismatch(request: Request, settings) -> None:
             "Set COOKIE_SECURE=false for non-HTTPS environments.",
             request.url.scheme,
         )
+
+
+def _revoke_presented_refresh_cookie(request: Request) -> None:
+    """Revoke the refresh token this browser presented (its jti and login session).
+
+    Used by logout, and by login/registration right before a new session's cookie
+    replaces it: a restore refresh for the previous cookie that is answered after
+    the new login would otherwise leave the previous user's rotated cookie as the
+    browser's last Set-Cookie, and the next refresh would silently run as that
+    user. With the old session revoked, that refresh 401s and the user is sent to
+    /login instead. A missing, expired, garbage or non-refresh cookie has nothing
+    to revoke. Never raises: ``revoke`` logs and fails open on store errors.
+    """
+    cookie = request.cookies.get("refresh_token")
+    if not cookie:
+        return
+    try:
+        payload = decode_token(cookie)
+    except InvalidToken:
+        return
+    if payload.get("type") == "refresh":
+        refresh_revocation.revoke(payload)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -271,7 +323,9 @@ def login(
         bump_token_version(soldier)
 
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
+    refresh = issue_refresh_token(
+        user_id=soldier.id, token_version=soldier.token_version, persist=body.remember_me
+    )
 
     write_audit(
         session,
@@ -282,11 +336,13 @@ def login(
         context={**_client_context(request), **({"method": "activation_code"} if activation_consumed else {})},
     )
     session.commit()
+    # Only after the credentials were accepted: a failed attempt never revokes.
+    _revoke_presented_refresh_cookie(request)
 
     response.set_cookie(
         key="refresh_token",
         value=refresh,
-        max_age=settings.refresh_token_days * 24 * 3600 if body.remember_me else None,
+        max_age=refresh_cookie_max_age(settings, body.remember_me),
         httponly=True,
         secure=get_settings().cookie_secure,
         samesite="strict",
@@ -310,6 +366,10 @@ def refresh(
         ) from exc
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="wrong_token_type")
+    # Revoked at logout (this exact token, or its login session). Fails open if
+    # Redis is down -- see app.auth.refresh_revocation.
+    if refresh_revocation.is_revoked(payload):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="token_revoked")
 
     soldier = session.get(Soldier, uuid.UUID(payload["sub"]))
     if soldier is None or soldier.left_at is not None:
@@ -324,11 +384,21 @@ def refresh(
     settings = get_settings()
     _warn_if_insecure_cookie_mismatch(request, settings)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
+    # Rotation keeps the login session id so a logout of this session also
+    # revokes the rotated token. Legacy tokens (no sid) start a new session.
+    sid = payload.get("sid")
+    # A session (non-remember-me) login stays a session cookie; old tokens persist.
+    persist = token_persists(payload)
+    refresh = issue_refresh_token(
+        user_id=soldier.id,
+        token_version=soldier.token_version,
+        session_id=sid if isinstance(sid, str) and sid else None,
+        persist=persist,
+    )
     response.set_cookie(
         key="refresh_token",
         value=refresh,
-        max_age=settings.refresh_token_days * 24 * 3600,
+        max_age=refresh_cookie_max_age(settings, persist),
         httponly=True,
         secure=settings.cookie_secure,
         samesite="strict",
@@ -338,7 +408,19 @@ def refresh(
 
 
 @router.post("/logout")
-def logout(response: Response, user: Soldier = Depends(get_current_user)) -> dict[str, str]:
+def logout(
+    request: Request, response: Response, user: Soldier = Depends(get_current_user)
+) -> dict[str, str]:
+    """Log out this browser: revoke its refresh token server-side, delete the cookie.
+
+    Revocation is per token/session (jti + sid), never a token_version bump,
+    so the user's other devices stay signed in. A missing, expired, garbage or
+    non-refresh cookie has nothing to revoke and is not an error. The cookie is
+    revoked even if it belongs to a different user than the access token: this
+    browser is logging out and is about to drop that cookie anyway. A store
+    failure is logged inside ``revoke`` and never fails the logout.
+    """
+    _revoke_presented_refresh_cookie(request)
     response.delete_cookie(key="refresh_token", path="/api/auth")
     return {"status": "ok"}
 
@@ -495,11 +577,22 @@ async def register(
         if sso_context is not None and detail in oidc_reg.COLLISION_DETAILS:
             detail = SSO_REGISTRATION_REFUSED  # never say which value collided
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+    # Registration signs the new soldier in: retire the session this browser had.
+    _revoke_presented_refresh_cookie(request)
     access = issue_access_token(user_id=soldier.id, role=soldier.role)
-    refresh = issue_refresh_token(user_id=soldier.id, token_version=soldier.token_version)
+    # Invite-code registration is always remembered. An SSO registration follows the
+    # choice bound into its (hash-verified) context cookie token at /oidc/start.
+    persist = (
+        oidc_reg.token_remembers(request.cookies.get(oidc_reg.REGISTRATION_COOKIE))
+        if sso_context is not None
+        else True
+    )
+    refresh = issue_refresh_token(
+        user_id=soldier.id, token_version=soldier.token_version, persist=persist
+    )
     response.set_cookie(
         key="refresh_token", value=refresh,
-        max_age=settings.refresh_token_days * 24 * 3600,
+        max_age=refresh_cookie_max_age(settings, persist),
         httponly=True, secure=get_settings().cookie_secure, samesite="strict", path="/api/auth",
     )
     if sso_context is not None:

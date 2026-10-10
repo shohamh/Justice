@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { queryKeys } from "../queryKeys";
 import ImportSessionReviewPage from "./ImportSessionReviewPage";
 import * as importSessionsApi from "../api/importSessions";
 import * as hierarchyApi from "../api/hierarchy";
@@ -154,10 +155,13 @@ function makeDraftDetail(overrides: Partial<SessionDetail> = {}): SessionDetail 
   };
 }
 
+let lastQueryClient: QueryClient;
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  lastQueryClient = queryClient;
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
@@ -237,6 +241,69 @@ describe("ImportSessionReviewPage", () => {
     expect(await screen.findByText(/נוצרו: 2/)).toBeInTheDocument();
     expect(screen.getByText(/עודכנו: 1/)).toBeInTheDocument();
     expect(screen.getByText(/דולגו: 0/)).toBeInTheDocument();
+  });
+
+  it("invalidates every cached data family the import can change after confirming, but not unrelated ones", async () => {
+    renderPage();
+    await screen.findByDisplayValue("יוסי כהן");
+    const affected: (readonly unknown[])[] = [
+      queryKeys.soldierRoster(),
+      queryKeys.soldierDetail("sol-1"),
+      queryKeys.hierarchyBranch("scope", null),
+      queryKeys.hierarchySearch("scope", "q"),
+      queryKeys.hierarchyTree(),
+      queryKeys.dutyTypes(),
+      queryKeys.dutyLocations(),
+      queryKeys.shiftTemplatesAll(),
+      queryKeys.shifts({ a: 1 }),
+      queryKeys.assignments("sol-1"),
+      queryKeys.effectiveDuties("sol-1"),
+      queryKeys.exemptionTypes(),
+      queryKeys.myExemptions("sol-1"),
+      queryKeys.myExemptionRequests(),
+      queryKeys.myConstraints(),
+      queryKeys.mySwaps(),
+      queryKeys.pendingEnrollments(),
+      queryKeys.pendingFieldUpdates(),
+      queryKeys.systemSettings(),
+      queryKeys.transparency(),
+      queryKeys.breakdown("sol-1"),
+      queryKeys.potentialByNode("n1", "2026-01-01"),
+      queryKeys.ranges(),
+      queryKeys.rangeLocations(),
+      queryKeys.ineligibleSoldierCount(),
+      queryKeys.navCounts("scope", false),
+      queryKeys.commandDashboardSoldiers(),
+      queryKeys.myBugReports(),
+      queryKeys.rankLadder(),
+      queryKeys.importSessions("active"),
+    ];
+    const unrelated: (readonly unknown[])[] = [
+      queryKeys.algorithmJobs(50, 0),
+      queryKeys.notificationsUnreadCount(),
+      queryKeys.levelTypes(),
+    ];
+    for (const key of [...affected, ...unrelated]) lastQueryClient.setQueryData(key, []);
+    // The wizard's own pickers are mounted (active), so invalidation shows up as a
+    // refetch: a second import must see the duty types and nodes the first created.
+    await waitFor(() => expect(importSessionsApi.listDutyTypesForImport).toHaveBeenCalled());
+    await waitFor(() => expect(importSessionsApi.listNodesForImport).toHaveBeenCalled());
+    const dutyTypeFetches = vi.mocked(importSessionsApi.listDutyTypesForImport).mock.calls.length;
+    const nodeFetches = vi.mocked(importSessionsApi.listNodesForImport).mock.calls.length;
+
+    fireEvent.click(screen.getByText("אשר וייבא"));
+    await screen.findByText(/נוצרו: 2/);
+    await waitFor(() => {
+      expect(vi.mocked(importSessionsApi.listDutyTypesForImport).mock.calls.length).toBeGreaterThan(dutyTypeFetches);
+      expect(vi.mocked(importSessionsApi.listNodesForImport).mock.calls.length).toBeGreaterThan(nodeFetches);
+    });
+
+    for (const key of affected) {
+      expect(lastQueryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(true);
+    }
+    for (const key of unrelated) {
+      expect(lastQueryClient.getQueryState(key)?.isInvalidated, JSON.stringify(key)).toBe(false);
+    }
   });
 
   it("picking an existing node for the unresolved soldier row saves a name mapping and reparses", async () => {

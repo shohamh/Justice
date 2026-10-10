@@ -63,7 +63,6 @@ def test_test_app_sets_testing_flag_only_for_its_context(monkeypatch) -> None:
 def test_test_client_isolates_client_and_rate_limit_state(monkeypatch) -> None:
     """Catch a session-scoped client that retains one test's mutable process state."""
     import app.main as main
-
     from app.rate_limit import limiter
 
     monkeypatch.setattr(main, "_fail_orphaned_algorithm_jobs", lambda: None)
@@ -120,6 +119,47 @@ def test_test_lifespan_recovers_orphaned_jobs_before_worker_suppression(monkeypa
         pass
 
     assert recoveries == ["recovered"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_production_lifespan_registers_transparency_worker_only_when_enabled(
+    monkeypatch, enabled: bool,
+) -> None:
+    from fastapi import FastAPI
+
+    import app.main as main
+
+    monkeypatch.delenv("JUSTICE_TESTING", raising=False)
+    monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(
+        transparency_read_model_enabled=enabled,
+    ))
+    monkeypatch.setattr(main, "_fail_orphaned_algorithm_jobs", lambda: None)
+    started_workers: list[str] = []
+
+    async def wait_for_shutdown(name: str) -> None:
+        started_workers.append(name)
+        await asyncio.Event().wait()
+
+    for worker_name in (
+        "run_email_worker",
+        "run_swap_expiry_worker",
+        "run_range_reminder_worker",
+        "run_range_attendance_worker",
+        "run_duty_eligibility_worker",
+        "run_rank_advancement_worker",
+        "run_hr_sync_worker",
+        "run_qualification_expiry_worker",
+        "run_score_projection_revalidation_worker",
+        "run_transparency_read_model_worker",
+    ):
+        monkeypatch.setattr(main, worker_name, lambda name=worker_name: wait_for_shutdown(name))
+
+    async with main.lifespan(FastAPI()):
+        await asyncio.sleep(0)
+
+    assert ("run_transparency_read_model_worker" in started_workers) is enabled
+    assert "run_email_worker" in started_workers
 
 
 @pytest.mark.parametrize("fixture_invocation", [1, 2])

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Fuse from "fuse.js";
 import { useAuth } from "../auth/AuthContext";
 import { queryKeys } from "../queryKeys";
@@ -44,6 +44,7 @@ export default function AskSwapModal({
 }) {
   const { t } = useTranslation();
   const { enrollmentPending } = useAuth();
+  const queryClient = useQueryClient();
   const [openToMarketplace, setOpenToMarketplace] = useState(editingSwap?.open_to_marketplace ?? false);
   const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
   const [reason, setReason] = useState("");
@@ -107,6 +108,7 @@ export default function AskSwapModal({
         };
         await createSwap(input);
       }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.navCountsAll() });
       onCreated();
     } catch (err: unknown) {
       setError(extractErrorMessage(err, t, "שגיאה בשמירת בקשת ההחלפה"));

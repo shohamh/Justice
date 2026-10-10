@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import event
+from sqlalchemy import event, select
 
 from app.db.models import (
     DutyLocation,
     DutyType,
     ExemptionType,
     ScoreAdjustment,
+    Soldier,
     SoldierExemption,
     SoldierScoreProjection,
     SwapCandidate,
@@ -91,6 +92,33 @@ def test_alerts_reads_only_score_and_display_soldier_columns(admin_session):
     soldier_reads = [statement for statement in statements if "from soldiers" in statement]
     assert soldier_reads
     assert all("soldiers.password_hash" not in statement for statement in soldier_reads)
+
+
+def test_alerts_reads_soldiers_as_rows_not_orm_entities(admin_session):
+    """An organization-wide scope reads ~20k soldiers; hydrating them as ORM
+    entities dominated the request, so alerts must read plain column rows."""
+    node = create_node(admin_session, level="unit", name="alerts_row_read_test")
+    soldier = create_soldier(admin_session, personal_number="7949003", hierarchy_node_id=node.id)
+    soldier_id, node_id = soldier.id, node.id
+    _add_score_adjustment(admin_session, soldier_id, "-4.00")
+    admin_session.commit()
+    admin_session.expunge_all()
+
+    loaded_entities = []
+
+    def _on_load(target, _context):
+        loaded_entities.append(target)
+
+    event.listen(Soldier, "load", _on_load)
+    try:
+        result = alerts(admin_session, subtree_ids=[node_id])
+    finally:
+        event.remove(Soldier, "load", _on_load)
+
+    assert [alert["soldier_id"] for alert in result if alert["severity"] == "warning"] == [
+        soldier_id
+    ]
+    assert loaded_entities == []
 
 
 def test_summary_cards_counts_pending_approval_swaps(admin_session):
@@ -448,6 +476,49 @@ def test_alerts_candidate_sieve_excludes_out_of_scope_and_inactive_soldiers(admi
     }
 
 
+def test_alerts_scope_subquery_matches_id_array_path_and_binds_no_id_arrays(admin_session):
+    """The alerts reads filter by a soldier-scope subquery instead of binding every
+    soldier id as an array; both forms must select the same soldiers."""
+    from app.services.commander_dashboard import _soon_expiring_exemptions
+
+    node = create_node(admin_session, level="unit", name="alerts_scope_parity_test")
+    other_node = create_node(admin_session, level="unit", name="alerts_scope_parity_other")
+    today = date.today()
+    below = create_soldier(admin_session, personal_number="alerts-parity-below", hierarchy_node_id=node.id)
+    expiring = create_soldier(admin_session, personal_number="alerts-parity-expiring", hierarchy_node_id=node.id)
+    outside = create_soldier(admin_session, personal_number="alerts-parity-out", hierarchy_node_id=other_node.id)
+    inactive = create_soldier(admin_session, personal_number="alerts-parity-inactive", hierarchy_node_id=node.id)
+    inactive.left_at = today
+    for soldier in (below, outside, inactive):
+        _add_score_adjustment(admin_session, soldier.id, "-100.00")
+    for soldier in (expiring, outside, inactive):
+        _grant_exemption(admin_session, soldier.id, end_date=today + timedelta(days=2))
+    admin_session.commit()
+
+    in_scope_rows = [below, expiring]
+    soldier_ids = {soldier.id for soldier in in_scope_rows}
+    scope = select(Soldier.id).where(Soldier.hierarchy_node_id.in_([node.id]), Soldier.left_at.is_(None))
+    assert score_projection.commander_alert_warning_scores(
+        admin_session, soldiers=in_scope_rows, as_of=today, soldier_id_scope=scope
+    ) == score_projection.commander_alert_warning_scores(
+        admin_session, soldiers=in_scope_rows, as_of=today
+    )
+    window = {"start": today, "end": today + timedelta(days=7)}
+    assert sorted(
+        _soon_expiring_exemptions(admin_session, soldier_ids, soldier_id_scope=scope, **window)
+    ) == sorted(_soon_expiring_exemptions(admin_session, soldier_ids, **window))
+
+    result, statements = _capture_selects(
+        admin_session, lambda: alerts(admin_session, subtree_ids=[node.id])
+    )
+
+    assert {(alert["soldier_id"], alert["severity"]) for alert in result} == {
+        (below.id, "warning"),
+        (expiring.id, "info"),
+    }
+    assert not any("uuid[]" in statement for statement in statements)
+
+
 def test_alerts_expiring_exemption_is_returned_without_a_score_warning(admin_session):
     node = create_node(admin_session, level="unit", name="alerts_expiring_score_independent_test")
     soldier = create_soldier(
@@ -680,3 +751,39 @@ def test_potential_counts_no_scope_has_zero_counts_without_query(admin_session):
     )
     assert [item["count"] for item in result] == [0, 0, 0, 0, 0]
     assert statements == []
+
+
+def test_alerts_exemption_alert_carries_name_when_soldier_joins_scope_mid_request(
+    admin_session, monkeypatch
+):
+    """A soldier moved into the subtree after the soldier-rows statement but before
+    the exemption statement must not yield an info alert with an empty name."""
+    from app.services import commander_dashboard
+
+    node = create_node(admin_session, level="unit", name="alerts_drift_node")
+    other_node = create_node(admin_session, level="unit", name="alerts_drift_other")
+    today = date.today()
+    early = create_soldier(admin_session, personal_number="alerts-drift-early", hierarchy_node_id=node.id)
+    late = create_soldier(admin_session, personal_number="alerts-drift-late", hierarchy_node_id=other_node.id)
+    outside = create_soldier(admin_session, personal_number="alerts-drift-out", hierarchy_node_id=other_node.id)
+    for soldier in (early, late, outside):
+        _grant_exemption(admin_session, soldier.id, end_date=today + timedelta(days=2))
+    admin_session.commit()
+
+    original = commander_dashboard.commander_alert_warning_scores
+
+    def move_late_soldier_in(*args, **kwargs):
+        result = original(*args, **kwargs)
+        late.hierarchy_node_id = node.id  # lands between the two statements
+        admin_session.flush()
+        return result
+
+    monkeypatch.setattr(commander_dashboard, "commander_alert_warning_scores", move_late_soldier_in)
+
+    result = alerts(admin_session, subtree_ids=[node.id])
+
+    info = {a["soldier_id"]: a["soldier_name"] for a in result if a["severity"] == "info"}
+    assert all(info.values()), info
+    assert outside.id not in info
+    assert info[early.id] == early.full_name
+    assert info.get(late.id, late.full_name) == late.full_name

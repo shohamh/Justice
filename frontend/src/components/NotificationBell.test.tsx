@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import NotificationBell from "./NotificationBell";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
+import { queryKeys } from "../queryKeys";
 import * as notificationsApi from "../api/notifications";
 import * as swapsApi from "../api/swaps";
 import * as rangesApi from "../api/ranges";
@@ -28,8 +29,11 @@ vi.mock("../api/bugReports", async (importOriginal) => ({
   listComments: vi.fn().mockResolvedValue([]),
 }));
 
+let lastQueryClient: QueryClient;
+
 function renderBell() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  lastQueryClient = queryClient;
   return render(
     <MemoryRouter>
       <QueryClientProvider client={queryClient}>
@@ -140,6 +144,60 @@ describe("NotificationBell unread count error", () => {
   });
 });
 
+describe("NotificationBell unread count polling", () => {
+  afterEach(() => {
+    focusManager.setFocused(undefined);
+    vi.useRealTimers();
+  });
+
+  it("requests the unread count once on mount", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({ items: [], total: 0 });
+    renderBell();
+    expect(await screen.findByText("2")).toBeInTheDocument();
+    expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1);
+  });
+
+  it("polls every 30 s while the tab is visible", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({ items: [], total: 0 });
+    renderBell();
+    await waitFor(() => expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1));
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
+
+    expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not poll while the tab is hidden", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({ items: [], total: 0 });
+    renderBell();
+    await waitFor(() => expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1));
+
+    focusManager.setFocused(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(65_000); });
+
+    expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1);
+  });
+
+  it("decrements the badge locally when a notification is marked read", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{ ...baseNotification, id: "n1", title: "Announcement", type: "announcement" }],
+      total: 1,
+    });
+    vi.mocked(notificationsApi.markRead).mockResolvedValue({ ...baseNotification, id: "n1", title: "Announcement", type: "announcement", is_read: true });
+    renderBell();
+    expect(await screen.findByText("2")).toBeInTheDocument();
+    (await screen.findByTestId("notification-bell")).click();
+    await screen.findByText("Announcement");
+
+    screen.getByLabelText("notifications.mark_read").click();
+
+    expect(await screen.findByText("1")).toBeInTheDocument();
+    expect(notificationsApi.getUnreadCount).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("NotificationBell quick decisions", () => {
   it("always shows mark-read and dismiss buttons regardless of type", async () => {
     vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
@@ -167,6 +225,21 @@ describe("NotificationBell quick decisions", () => {
     await waitFor(() => expect(swapsApi.soldierApproveSwap).toHaveBeenCalledWith("req1"));
   });
 
+  it("invalidates the nav counts after a swap decision from the bell", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{ ...baseNotification, id: "n1", title: "Swap offer", type: "swap_offer_incoming", reference_type: "swap_request", reference_id: "req1" }],
+      total: 1,
+    });
+    vi.mocked(swapsApi.soldierRejectSwap).mockResolvedValue({} as never);
+    renderBell();
+    const navKey = queryKeys.navCounts("scope", false);
+    lastQueryClient.setQueryData(navKey, { approvals: 0, hakpaza: 0, incoming_swaps: 1 });
+    (await screen.findByTestId("notification-bell")).click();
+    await screen.findByText("Swap offer");
+    screen.getByLabelText("notifications.reject").click();
+    await waitFor(() => expect(lastQueryClient.getQueryState(navKey)?.isInvalidated).toBe(true));
+  });
+
   it("shows approve/reject for range_excusal_pending and calls decideRangeExcusal with metadata.event_id", async () => {
     vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
       items: [{
@@ -181,6 +254,26 @@ describe("NotificationBell quick decisions", () => {
     await screen.findByText("Excusal pending");
     screen.getByLabelText("notifications.reject").click();
     await waitFor(() => expect(rangesApi.decideRangeExcusal).toHaveBeenCalledWith("evt1", "req1", false));
+  });
+
+  it("invalidates the ineligible-soldier count after an excusal decision", async () => {
+    vi.mocked(notificationsApi.listNotifications).mockResolvedValue({
+      items: [{
+        ...baseNotification, id: "n1", title: "Excusal pending", type: "range_excusal_pending",
+        reference_type: "range_excusal_request", reference_id: "req1", metadata: { event_id: "evt1" },
+      }],
+      total: 1,
+    });
+    vi.mocked(rangesApi.decideRangeExcusal).mockResolvedValue({} as never);
+    renderBell();
+    const planningKey = [...queryKeys.ineligibleSoldierCount(), "planning", "scope"];
+    lastQueryClient.setQueryData(planningKey, { count: 4 });
+    (await screen.findByTestId("notification-bell")).click();
+    await screen.findByText("Excusal pending");
+
+    screen.getByLabelText("notifications.approve").click();
+
+    await waitFor(() => expect(lastQueryClient.getQueryState(planningKey)?.isInvalidated).toBe(true));
   });
 });
 vi.mock('../api/client', () => ({

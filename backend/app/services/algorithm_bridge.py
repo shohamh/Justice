@@ -6,6 +6,7 @@ import logging
 import math
 import threading
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -132,9 +133,15 @@ def _is_cancellation_requested(job_id: uuid.UUID) -> bool:
 
 
 def _clear_cancellation_request(job_id: uuid.UUID) -> None:
+    import redis
+
     from app.redis_client import get_redis
 
-    get_redis().delete(f"{_CANCEL_KEY_PREFIX}{job_id}")
+    try:
+        get_redis().delete(f"{_CANCEL_KEY_PREFIX}{job_id}")
+    except redis.RedisError:
+        # Runs in the job runner's cleanup; the flag expires via its TTL anyway.
+        _logger.warning("[job %s] could not clear the Redis cancel flag", job_id, exc_info=True)
 
 
 def _watch_job_cancel_requested(job_id: uuid.UUID, cancel_event: threading.Event) -> None:
@@ -143,8 +150,18 @@ def _watch_job_cancel_requested(job_id: uuid.UUID, cancel_event: threading.Event
     directly from that hot loop would add a network round-trip to every
     check inside the solve; this thread absorbs that cost at a coarse
     interval instead, so the solver itself never talks to Redis."""
+    import redis
+
     while not cancel_event.wait(timeout=_CANCEL_POLL_SECONDS):
-        if _is_cancellation_requested(job_id):
+        try:
+            requested = _is_cancellation_requested(job_id)
+        except redis.RedisError:
+            # A Redis stall now raises (1s socket timeout, app.redis_client)
+            # instead of blocking; keep watching on the next interval rather
+            # than letting the error end this thread and drop remote cancels.
+            _logger.warning("[job %s] Redis cancel-flag poll failed; retrying", job_id, exc_info=True)
+            continue
+        if requested:
             _logger.warning("[job %s] cancel_event set via Redis cancel request", job_id)
             cancel_event.set()
             return
@@ -288,7 +305,7 @@ def _soldier_scope(column, soldier_ids: set[uuid.UUID] | None):
 
 
 def exempted_duty_type_ids_by_soldier(
-    session: Session, *, as_of: date
+    session: Session, *, as_of: date, soldiers: Sequence[Soldier] | None = None
 ) -> dict[uuid.UUID, set[uuid.UUID]]:
     """Per-soldier duty-type ids the soldier is exempt from at `as_of`.
 
@@ -297,6 +314,10 @@ def exempted_duty_type_ids_by_soldier(
     exclusions — without loading any duty-day scores. Callers that only need
     exemption scope (e.g. fairness grouping) avoid the full canonical scoring
     expansion this way.
+
+    ``soldiers`` lets a caller that already loaded the active roster reuse it
+    for the eligibility-exclusion pass instead of re-reading every Soldier row
+    (about 0.7 s at 20k soldiers). Defaults to all soldiers without ``left_at``.
     """
     etid_to_dtids: dict[uuid.UUID, set[uuid.UUID]] = {}
     for etid, dtid in session.execute(
@@ -336,12 +357,13 @@ def exempted_duty_type_ids_by_soldier(
         except Exception:
             return default
 
-    soldiers = (
-        session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
-    )
+    if soldiers is None:
+        soldiers = (
+            session.execute(select(Soldier).where(Soldier.left_at.is_(None))).scalars().all()
+        )
     eligibility_exclusions = compute_eligibility_exclusions(
         session,
-        soldiers,
+        list(soldiers),
         mitvahim_months=_setting_int("eligibility.mitvahim_months", 6),
         alal_months=_setting_int("eligibility.alal_months", 3),
         reference_date=as_of,

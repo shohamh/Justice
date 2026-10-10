@@ -127,6 +127,7 @@ export default function BugReportTrigger() {
     queryKey: queryKeys.myBugReportsUnseenCount(),
     queryFn: getMyBugReportsUnseenCount,
     refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   });
   const unseenCount = unseenQuery.data?.count ?? 0;
 

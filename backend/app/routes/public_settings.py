@@ -9,6 +9,7 @@ from app.auth.deps import require_password_changed
 from app.db.models import Soldier, SystemSetting
 from app.db.session import get_session
 from app.services.settings_loader import FAIRNESS_RESET_DATE_KEY
+from app.settings import get_settings
 
 router = APIRouter(prefix="/settings/public", tags=["settings"])
 
@@ -24,6 +25,9 @@ _PUBLIC_KEYS = {
 }
 
 
+ERROR_LOG_SOURCE_KEY = "errors.log_source_configured"
+
+
 class PublicSettingsOut(BaseModel):
     settings: dict
 
@@ -34,7 +38,11 @@ def get_public_settings(
     user: Soldier = Depends(require_password_changed),
 ) -> PublicSettingsOut:
     rows = session.execute(select(SystemSetting)).scalars().all()
-    return PublicSettingsOut(settings={r.key: r.value for r in rows if r.key in _PUBLIC_KEYS})
+    settings = {r.key: r.value for r in rows if r.key in _PUBLIC_KEYS}
+    # Derived from deployment config, not stored: lets the UI skip admin error-log
+    # calls (which answer 503 by design) when no log source is configured.
+    settings[ERROR_LOG_SOURCE_KEY] = bool(get_settings().loki_url.strip())
+    return PublicSettingsOut(settings=settings)
 
 
 class RegistrationPublicSettingsOut(BaseModel):

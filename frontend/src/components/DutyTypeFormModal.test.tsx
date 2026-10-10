@@ -1,5 +1,8 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import DutyTypeFormModal from "./DutyTypeFormModal";
+import { queryKeys } from "../queryKeys";
 import {
   listExemptionTypes,
   getAllExemptionDutyTypeMaps,
@@ -59,6 +62,10 @@ const existingDutyType: DutyType = {
   eligible_node_ids: null,
 };
 
+function renderModal(ui: ReactElement, queryClient = new QueryClient()) {
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
 beforeEach(() => {
   vi.mocked(listExemptionTypes).mockReset().mockResolvedValue([]);
   vi.mocked(getAllExemptionDutyTypeMaps).mockReset().mockResolvedValue({});
@@ -73,7 +80,7 @@ describe("DutyTypeFormModal - create-only exemption review gate", () => {
     vi.mocked(listExemptionTypes).mockResolvedValue([
       { id: "et1", name: "רפואי", description: null, active: true },
     ]);
-    render(<DutyTypeFormModal onSaved={vi.fn()} onClose={vi.fn()} />);
+    renderModal(<DutyTypeFormModal onSaved={vi.fn()} onClose={vi.fn()} />);
 
     const submitBtn = await screen.findByRole("button", { name: /הוסף|שמור/ });
     expect(submitBtn).toBeDisabled();
@@ -88,7 +95,7 @@ describe("DutyTypeFormModal - create-only exemption review gate", () => {
     vi.mocked(listExemptionTypes).mockResolvedValue([
       { id: "et1", name: "רפואי", description: null, active: true },
     ]);
-    render(<DutyTypeFormModal onSaved={vi.fn()} onClose={vi.fn()} />);
+    renderModal(<DutyTypeFormModal onSaved={vi.fn()} onClose={vi.fn()} />);
 
     const submitBtn = await screen.findByRole("button", { name: /הוסף|שמור/ });
     expect(submitBtn).toBeDisabled();
@@ -103,7 +110,7 @@ describe("DutyTypeFormModal - create-only exemption review gate", () => {
     vi.mocked(listExemptionTypes).mockResolvedValue([
       { id: "et1", name: "רפואי", description: null, active: true },
     ]);
-    render(<DutyTypeFormModal initial={existingDutyType} onSaved={vi.fn()} onClose={vi.fn()} />);
+    renderModal(<DutyTypeFormModal initial={existingDutyType} onSaved={vi.fn()} onClose={vi.fn()} />);
 
     const submitBtn = await screen.findByRole("button", { name: /הוסף|שמור/ });
     // No review section, no confirmation checkbox required — edit keeps today's behavior.
@@ -117,7 +124,7 @@ describe("DutyTypeFormModal - create-only exemption review gate", () => {
     ]);
     vi.mocked(getAllExemptionDutyTypeMaps).mockResolvedValue({ et1: ["dt-old"] });
 
-    render(<DutyTypeFormModal onSaved={vi.fn()} onClose={vi.fn()} />);
+    renderModal(<DutyTypeFormModal onSaved={vi.fn()} onClose={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText(/שם/), { target: { value: "תורנות חדשה" } });
     fireEvent.change(screen.getByLabelText(/duty_config.is_external/), { target: { value: "false" } });
@@ -132,5 +139,20 @@ describe("DutyTypeFormModal - create-only exemption review gate", () => {
     await waitFor(() =>
       expect(setExemptionDutyTypes).toHaveBeenCalledWith("et1", ["dt-old", "dt-new"])
     );
+  });
+
+  it("invalidates the shared duty-types cache after a save, so inline-created types show up elsewhere", async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(queryKeys.dutyTypes(), [existingDutyType]);
+    const onSaved = vi.fn();
+    renderModal(<DutyTypeFormModal onSaved={onSaved} onClose={vi.fn()} />, queryClient);
+
+    fireEvent.change(screen.getByLabelText(/שם/), { target: { value: "תורנות חדשה" } });
+    fireEvent.change(screen.getByLabelText(/duty_config.is_external/), { target: { value: "false" } });
+    fireEvent.click(await screen.findByLabelText(/עברתי על הרשימה ומאשר/));
+    fireEvent.click(await screen.findByRole("button", { name: /הוסף|שמור/ }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(queryClient.getQueryState(queryKeys.dutyTypes())?.isInvalidated).toBe(true);
   });
 });

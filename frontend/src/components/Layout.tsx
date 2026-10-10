@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CircleUser, Settings, HelpCircle, Sun, Moon, Monitor, LogOut } from "lucide-react";
@@ -6,9 +6,10 @@ import { useAuth } from "../auth/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
 import NotificationBell from "./NotificationBell";
 import UnifiedNav from "./UnifiedNav";
-import HelpModal from "./HelpModal";
+const HelpModal = lazy(() => import("./HelpModal"));
 import HeaderSearch from "./HeaderSearch";
 import { usePublicSettings } from "../hooks/usePublicSettings";
+import { useErrorLogSourceConfigured } from "../hooks/useErrorLogSource";
 import JusticeLogo from "./JusticeLogo";
 import BugReportTrigger from "./BugReportTrigger";
 import { getAdminBugReportUnreadCount, getAdminErrorUnreadCount } from "../api/bugReports";
@@ -24,8 +25,16 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
     theme === "dark" ? "מצב תאורה: כהה (לחץ למעבר לפי מערכת)" :
     "מצב תאורה: לפי מערכת (לחץ למעבר לבהיר)";
   const isAdmin = user?.role === "admin";
-  const errorUnread = useQuery({ queryKey: ["admin-errors-unread"], queryFn: getAdminErrorUnreadCount, enabled: isAdmin, refetchInterval: 30000 });
-  const bugUnread = useQuery({ queryKey: ["admin-bug-reports-unread"], queryFn: getAdminBugReportUnreadCount, enabled: isAdmin, refetchInterval: 30000 });
+  const errorLogConfigured = useErrorLogSourceConfigured();
+  const errorUnread = useQuery({
+    queryKey: ["admin-errors-unread"],
+    queryFn: getAdminErrorUnreadCount,
+    enabled: isAdmin && errorLogConfigured === true,
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+  const bugUnread = useQuery({ queryKey: ["admin-bug-reports-unread"], queryFn: getAdminBugReportUnreadCount, enabled: isAdmin, refetchInterval: 30000, refetchIntervalInBackground: false });
   const adminUnread = (errorUnread.data ?? 0) + (bugUnread.data ?? 0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTab, setHelpTab] = useState<string | undefined>(undefined);
@@ -42,7 +51,7 @@ export default function Layout({ children }: { children: ReactNode | ((openHelp:
     <div className="h-[100dvh] flex flex-col md:mr-24 dark:bg-gray-900 dark:text-gray-100">
       <UnifiedNav />
       <BugReportTrigger />
-      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} hakpazaEnabled={hakpazaEnabled} initialTab={helpTab} />}
+      {helpOpen && <Suspense fallback={null}><HelpModal onClose={() => setHelpOpen(false)} gimelimEnabled={gimelimEnabled} hakpazaEnabled={hakpazaEnabled} initialTab={helpTab} /></Suspense>}
       <header className="bg-white shadow-sm border-b dark:bg-gray-800 dark:border-gray-700">
         <div className="px-2 py-2 sm:px-4 sm:py-3 flex items-center justify-between gap-1">
           {/* Left side (DOM order): profile icon + optional gear icon + theme toggle.

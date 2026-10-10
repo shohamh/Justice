@@ -56,6 +56,18 @@ export function dateToLocalIso(d: Date): string {
 }
 
 /**
+ * Local calendar day (yyyy-mm-dd) of an API timestamp. Timestamps with a time
+ * part are instants, so they are converted to the browser's local day (slicing
+ * the ISO string would show the UTC day, i.e. yesterday between 00:00 and
+ * 03:00 Israel time). Bare dates (yyyy-mm-dd) are returned unchanged.
+ */
+export function timestampToLocalIso(value: string): string {
+  if (!value.includes("T")) return value.slice(0, 10);
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value.slice(0, 10) : dateToLocalIso(d);
+}
+
+/**
  * True if `dateIso` (yyyy-mm-dd) is strictly before today's local date.
  * Mirrors the backend's `start_date < date.today()` rule for personal
  * constraints, so the same case can be caught client-side before submit.

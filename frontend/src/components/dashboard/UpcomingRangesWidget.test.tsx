@@ -1,10 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import UpcomingRangesWidget from "./UpcomingRangesWidget";
 import { RangeEvent } from "../../api/ranges";
+import { dateToLocalIso } from "../../utils/formatDate";
+
+// Instants straddling local/UTC midnight (2026-10-09T21:30Z is already 2026-10-10 in Asia/Jerusalem).
+const NOW_INSTANTS = ["2026-10-09T21:30:00Z", "2026-10-09T12:00:00Z", "2026-10-10T00:00:00Z"];
 
 describe("UpcomingRangesWidget", () => {
-  it("renders only future range events, sorted by date", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each(NOW_INSTANTS)("renders only future range events, sorted by date (now=%s)", (nowIso) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date(nowIso) });
     const today = new Date();
     const future1 = new Date(today);
     future1.setDate(future1.getDate() + 5);
@@ -14,9 +23,9 @@ describe("UpcomingRangesWidget", () => {
     past.setDate(past.getDate() - 1);
 
     const ranges: RangeEvent[] = [
-      { id: "1", hierarchy_node_id: "n1", range_type: "laser", date: future1.toISOString().slice(0, 10), location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
-      { id: "2", hierarchy_node_id: "n1", range_type: "live", date: future2.toISOString().slice(0, 10), location: "מטווח ב", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
-      { id: "3", hierarchy_node_id: "n1", range_type: "alal", date: past.toISOString().slice(0, 10), location: "מטווח ג", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
+      { id: "1", hierarchy_node_id: "n1", range_type: "laser", date: dateToLocalIso(future1), location: "מטווח א", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
+      { id: "2", hierarchy_node_id: "n1", range_type: "live", date: dateToLocalIso(future2), location: "מטווח ב", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
+      { id: "3", hierarchy_node_id: "n1", range_type: "alal", date: dateToLocalIso(past), location: "מטווח ג", required_count: 1, reserve_count: 0, status: "planned", assignments: [], assigned_to_me: true },
     ];
 
     render(<UpcomingRangesWidget ranges={ranges} onOpenRange={() => {}} />);

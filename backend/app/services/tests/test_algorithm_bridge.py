@@ -739,3 +739,53 @@ def test_cross_replica_cancel_request_converges_via_independent_threads():
         watcher.join(timeout=1.0)
     finally:
         _cancel_events.pop(str(job_id), None)
+
+
+class _FlakyRedis:
+    """exists() times out on the first call (as with the 1s socket timeout on a
+    stalled Redis), then reports the cancel flag."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def exists(self, *keys):
+        import redis
+
+        self.calls += 1
+        if self.calls == 1:
+            raise redis.TimeoutError("Timeout reading from socket")
+        return 1
+
+
+def test_watch_job_cancel_requested_survives_a_redis_error(monkeypatch, caplog):
+    from app import redis_client
+
+    flaky = _FlakyRedis()
+    monkeypatch.setattr(redis_client, "get_redis", lambda: flaky)
+    job_id = uuid.uuid4()
+    cancel_event = threading.Event()
+    watcher = threading.Thread(
+        target=_watch_job_cancel_requested, args=(job_id, cancel_event), daemon=True,
+    )
+    with caplog.at_level("WARNING"):
+        watcher.start()
+        # First poll (~0.5s) errors, the next poll (~1.0s) sees the flag.
+        assert cancel_event.wait(timeout=3.0) is True
+        watcher.join(timeout=1.0)
+    assert not watcher.is_alive()
+    assert flaky.calls == 2  # kept the poll interval: no busy-loop after the error
+    assert any("cancel" in rec.getMessage().lower() and "redis" in rec.getMessage().lower() for rec in caplog.records)
+
+
+def test_clear_cancellation_request_tolerates_a_redis_error(monkeypatch):
+    import redis
+
+    from app import redis_client
+    from app.services.algorithm_bridge import _clear_cancellation_request
+
+    class _Down:
+        def delete(self, *keys):
+            raise redis.TimeoutError("Timeout reading from socket")
+
+    monkeypatch.setattr(redis_client, "get_redis", lambda: _Down())
+    _clear_cancellation_request(uuid.uuid4())  # must not raise; the flag expires via its TTL

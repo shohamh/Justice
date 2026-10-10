@@ -14,7 +14,7 @@ export function useAdminIneligibleSoldierCount({ actorId, authorizationScope, en
     queryKey: queryKeys.adminIneligibleSoldierCount(actorId, authorizationScope),
     queryFn: () => getIneligibleSoldierCount("commander"),
     enabled: enabled && actorId !== null && authorizationScope !== null,
-    staleTime: 5_000,
+    staleTime: 60_000,
     retry: false,
   });
 }

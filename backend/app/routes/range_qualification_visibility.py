@@ -234,7 +234,7 @@ def get_ineligible_soldier_count(
     user: Soldier = Depends(require_password_changed),
 ) -> IneligibleSoldierCountOut:
     roots = _resolve_roots(session, user=user, audience=audience)
-    count = svc.count_ineligible_soldiers(session, roots=roots, as_of=date_type.today())
+    count = svc.count_ineligible_soldiers_coalesced(session, roots=roots, as_of=date_type.today())
     return IneligibleSoldierCountOut(count=count)
 
 

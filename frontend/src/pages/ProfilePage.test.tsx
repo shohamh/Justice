@@ -17,7 +17,11 @@ vi.mock("../components/Layout", () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../components/ExemptionsPanel", () => ({
-  default: () => <div data-testid="exemptions-panel" />,
+  default: ({ onDecided }: { onDecided?: () => void }) => (
+    <div data-testid="exemptions-panel">
+      <button type="button" data-testid="exemptions-panel-decided" onClick={onDecided} />
+    </div>
+  ),
 }));
 
 const mockUseAuth = vi.fn();
@@ -95,6 +99,20 @@ beforeEach(() => {
   vi.mocked(listFieldUpdates).mockResolvedValue([]);
   vi.mocked(submitFieldUpdate).mockReset();
   vi.mocked(submitFieldUpdate).mockResolvedValue({} as never);
+});
+
+describe("ProfilePage exemption decisions", () => {
+  it("invalidates the nav counts when the embedded exemptions panel reports a decision", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { id: "u1", full_name: "חייל", role: "soldier", is_commander: false, is_duty_manager: false },
+      refreshMe: vi.fn().mockResolvedValue(undefined),
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    renderProfilePage(qc);
+    fireEvent.click(await screen.findByTestId("exemptions-panel-decided"));
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["navigation", "counts"] });
+  });
 });
 
 describe("ProfilePage notification preferences", () => {

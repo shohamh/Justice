@@ -27,6 +27,7 @@ import Combobox from "../components/Combobox";
 import { parseRankSelectionId, rankSelectionId } from "../constants/ranks";
 import DateInput from "../components/DateInput";
 import { usePublicSettings } from "../hooks/usePublicSettings";
+import { useInvalidateNavCounts } from "../hooks/useInvalidateNavCounts";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
 import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 import MessageDialog from "../components/MessageDialog";
@@ -53,6 +54,7 @@ export default function ProfilePage() {
   const location = useLocation();
   const { user, refreshMe } = useAuth();
   const queryClient = useQueryClient();
+  const invalidateNavCounts = useInvalidateNavCounts();
   const publicSettings = usePublicSettings();
   const telegramEnabled = publicSettings?.["telegram.enabled"] === true;
 
@@ -422,7 +424,7 @@ export default function ProfilePage() {
         </Link>
         {user?.id && (
           <div className="pt-4 border-t">
-            <ExemptionsPanel soldierId={user.id} canManage={false} canApproveDutyManagerStep={false} />
+            <ExemptionsPanel soldierId={user.id} canManage={false} canApproveDutyManagerStep={false} onDecided={invalidateNavCounts} />
           </div>
         )}
       </section>

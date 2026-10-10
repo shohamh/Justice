@@ -28,7 +28,7 @@ import { getTransparencyAuthorizationScope } from "../api/auth";
 import { isCommandScopeAvailable } from "../auth/dashboardRoles";
 import { usePublicSettings } from "../hooks/usePublicSettings";
 import { EffectiveDuty, listEffectiveDuties } from "../api/assignments";
-import { listDutyTypes, listLocations } from "../api/dutyConfig";
+import { listLocations } from "../api/dutyConfig";
 import { listMySwaps, listPendingSwaps } from "../api/swaps";
 import { listPendingEnrollments } from "../api/enrollment";
 import { SettingsMap, getSystemSettings } from "../api/systemSettings";
@@ -48,6 +48,7 @@ import {
 } from "../api/commanderDashboard";
 import { getPotentialSummary as getNodePotentialSummary, type PotentialSummary } from "../api/potential";
 import { useLevelTypes } from "../hooks/useLevelTypes";
+import { useDutyTypes } from "../hooks/useDutyTypes";
 import { useAdminIneligibleSoldierCount } from "../hooks/useAdminIneligibleSoldierCount";
 import { useDashboardIdleGate } from "../hooks/useDashboardIdleGate";
 
@@ -143,7 +144,7 @@ export default function HomePage() {
   });
   const duties = useMemo(() => dutiesQuery.data ?? [], [dutiesQuery.data]);
 
-  const typesQuery = useQuery({ queryKey: queryKeys.dutyTypes(), queryFn: listDutyTypes });
+  const typesQuery = useDutyTypes();
   const typeNames = Object.fromEntries(
     (Array.isArray(typesQuery.data) ? typesQuery.data : []).map((t) => [t.id, t.name]),
   );
@@ -164,6 +165,12 @@ export default function HomePage() {
   const primaryDataReady =
     authorizationScope !== null && primaryReadyScope === authorizationScope;
   const secondaryReadsReady = useDashboardIdleGate(primaryDataReady, authorizationScope);
+  // The command dashboard opens with ~11 reads at once, more than the browser's
+  // six connections per host (HTTP/1.1), so the pending-approval counts waited
+  // ~0.8 s in the browser queue for ~40 ms of server work. Panels further down
+  // (upcoming, potential, own potential, upcoming ranges) wait for a second idle
+  // window instead, leaving the first burst to alerts, approvals and the calendar.
+  const lowerPanelReadsReady = useDashboardIdleGate(secondaryReadsReady, authorizationScope);
 
   const adminIneligibleSoldierCountQuery = useAdminIneligibleSoldierCount({
     actorId: user?.role === "admin" ? user.id : null,
@@ -235,14 +242,14 @@ export default function HomePage() {
   const commandUpcomingQuery = useQuery({
     queryKey: [...queryKeys.commandDashboardUpcoming(), authorizationScope],
     queryFn: getCommandUpcoming,
-    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: lowerPanelReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const commandUpcoming = commandUpcomingQuery.data ?? null;
 
   const commandPotentialQuery = useQuery({
     queryKey: [...queryKeys.commandDashboardPotential(), authorizationScope],
     queryFn: getCommandPotential,
-    enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+    enabled: lowerPanelReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
   });
   const commandPotential = commandPotentialQuery.data ?? null;
 
@@ -250,7 +257,7 @@ export default function HomePage() {
     queries: commandNodesOwnedByUser.map((node) => ({
       queryKey: [...queryKeys.commandDashboardOwnPotential(node.id), "summary", authorizationScope],
       queryFn: () => getNodePotentialSummary(node.id),
-      enabled: secondaryReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
+      enabled: lowerPanelReadsReady && commandScopeAvailable && primaryReadyScope === authorizationScope && authorizationScope !== null,
     })),
   });
 
@@ -286,7 +293,7 @@ export default function HomePage() {
     }, pageParam),
     getNextPageParam: lastPage => lastPage.next_cursor ?? undefined,
     enabled:
-      secondaryReadsReady &&
+      (commandScopeAvailable ? lowerPanelReadsReady : secondaryReadsReady) &&
       primaryReadyScope === authorizationScope &&
       authorizationScope !== null &&
       !!user?.hierarchy_node_id &&

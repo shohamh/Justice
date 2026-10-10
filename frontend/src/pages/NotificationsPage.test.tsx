@@ -8,6 +8,7 @@ import "../i18n";
 import NotificationsPage from "./NotificationsPage";
 import { BugReportModalProvider } from "../contexts/BugReportModalContext";
 import { listNotifications } from "../api/notifications";
+import { queryKeys } from "../queryKeys";
 import * as swapsApi from "../api/swaps";
 import * as rangesApi from "../api/ranges";
 import * as bugReportsApi from "../api/bugReports";
@@ -29,6 +30,9 @@ vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ loggedIn: true }) }));
 vi.mock("../api/notifications", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/notifications")>()),
   listNotifications: vi.fn(),
+  markRead: vi.fn().mockResolvedValue(undefined),
+  markAllRead: vi.fn().mockResolvedValue(undefined),
+  deleteNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../api/swaps");
@@ -41,8 +45,7 @@ vi.mock("../api/bugReports", async (importOriginal) => ({
   listComments: vi.fn().mockResolvedValue([]),
 }));
 
-function renderPage() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPage(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <MemoryRouter>
       <QueryClientProvider client={queryClient}>
@@ -92,6 +95,21 @@ describe("NotificationsPage", () => {
 
     expect(await screen.findByText("opened from notifications page")).toBeInTheDocument();
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["mark read", "סמן כנקרא"],
+    ["dismiss", "מחק"],
+  ])("%s invalidates the bell's unread-count query", async (_name, label) => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(queryKeys.notificationsUnreadCount(), { count: 3 });
+    renderPage(queryClient);
+
+    fireEvent.click(await screen.findByLabelText(label));
+
+    await waitFor(() =>
+      expect(queryClient.getQueryState(queryKeys.notificationsUnreadCount())?.isInvalidated).toBe(true),
+    );
   });
 
   it("always shows mark-read and dismiss buttons regardless of type", async () => {
@@ -162,6 +180,28 @@ describe("NotificationsPage", () => {
     fireEvent.click(screen.getByLabelText("אשר"));
 
     await waitFor(() => expect(swapsApi.soldierApproveSwap).toHaveBeenCalledWith("req1"));
+  });
+
+  it("invalidates the nav counts after a swap decision", async () => {
+    vi.mocked(listNotifications).mockResolvedValue({
+      items: [{
+        id: "notification-1", soldier_id: "soldier-1", title: "הצעת החלפה",
+        body: null, type: "swap_offer_incoming", reference_type: "swap_request", reference_id: "req1",
+        is_read: false, created_at: "2026-08-03T12:00:00Z", metadata: null,
+      }],
+      total: 1,
+    });
+    vi.mocked(swapsApi.soldierApproveSwap).mockResolvedValue({} as never);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const navKey = queryKeys.navCounts("scope", false);
+    queryClient.setQueryData(navKey, { approvals: 0, hakpaza: 0, incoming_swaps: 1 });
+
+    renderPage(queryClient);
+
+    await screen.findByText("הצעת החלפה נכנסת");
+    fireEvent.click(screen.getByLabelText("אשר"));
+
+    await waitFor(() => expect(queryClient.getQueryState(navKey)?.isInvalidated).toBe(true));
   });
 
   it("shows a load-error alert and suppresses the empty-state copy when the notifications query fails", async () => {

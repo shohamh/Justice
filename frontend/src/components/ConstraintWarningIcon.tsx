@@ -1,5 +1,5 @@
 import type { PersonalConstraintWarning } from "../api/assignments";
-import { formatDate } from "../utils/formatDate";
+import { formatDate, timestampToLocalIso } from "../utils/formatDate";
 import Tooltip from "./Tooltip";
 
 interface Props {
@@ -21,7 +21,7 @@ export default function ConstraintWarningIcon({ warning }: Props) {
           {warning.decided_by && (
             <p className="mt-1 text-gray-400 dark:text-gray-500">
               אושר ע&quot;י {warning.decided_by}
-              {warning.decided_at ? ` · ${formatDate(warning.decided_at.split('T')[0])}` : ""}
+              {warning.decided_at ? ` · ${formatDate(timestampToLocalIso(warning.decided_at))}` : ""}
             </p>
           )}
         </>

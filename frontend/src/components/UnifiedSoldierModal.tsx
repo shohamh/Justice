@@ -15,6 +15,7 @@ import DateInput from "../components/DateInput";
 import { useAuth } from "../auth/AuthContext";
 import { formatDate } from "../utils/formatDate";
 import { useModalBackClose } from "../hooks/useModalBackClose";
+import { useInvalidateNavCounts } from "../hooks/useInvalidateNavCounts";
 import { getSoldierRangeStatus } from "../api/rangeStatus";
 import { formatRangeStatus } from "../utils/rangeEligibilityExplanation";
 import { parseRankSelectionId, rankSelectionId, RankTrack } from "../constants/ranks";
@@ -89,9 +90,11 @@ export default function UnifiedSoldierModal({ soldier, score, onClose, onRefresh
 
   useEffect(() => { setSoldierData(soldier); }, [soldier]);
 
+  const invalidateNavCounts = useInvalidateNavCounts();
   const [tab, setTab] = useState<TabKey>(initialTab ?? "details");
   const { data: rangeStatus } = useQuery({
     queryKey: ["soldierRangeStatus", soldierData.id],
+    staleTime: 0,
     queryFn: () => getSoldierRangeStatus(soldierData.id),
     enabled: tab === "profile" && !isPublic,
   });
@@ -315,6 +318,7 @@ export default function UnifiedSoldierModal({ soldier, score, onClose, onRefresh
 
   async function handleApprove(id: string) {
     await approveConstraint(id);
+    invalidateNavCounts();
     await refreshConstraints();
   }
 
@@ -330,6 +334,7 @@ export default function UnifiedSoldierModal({ soldier, score, onClose, onRefresh
       return;
     }
 
+    invalidateNavCounts();
     setRejectingConstraintId(null);
     setConstraints((previous) => previous.filter((constraint) => constraint.id !== id));
     try {
@@ -804,7 +809,7 @@ export default function UnifiedSoldierModal({ soldier, score, onClose, onRefresh
         )}
 
         {tab === "exemptions" && (
-          <ExemptionsPanel soldierId={soldier.id} canManage={canManageExemptions} canApproveDutyManagerStep={canManage} />
+          <ExemptionsPanel soldierId={soldier.id} canManage={canManageExemptions} canApproveDutyManagerStep={canManage} onDecided={invalidateNavCounts} />
         )}
 
         {tab === "constraints" && (
@@ -890,6 +895,7 @@ export default function UnifiedSoldierModal({ soldier, score, onClose, onRefresh
             canViewExplanations={canViewAll}
             isActive={tab === "duty_history"}
             initialTypes={initialHistoryTypes}
+            onDecided={invalidateNavCounts}
           />
         )}
 

@@ -12,6 +12,7 @@ from app.db.models import (
     DutyLocation,
     DutyType,
     ScoreProjectionDirtyBucket,
+    Soldier,
     SoldierQuarterScoreProjection,
     SoldierScoreProjection,
 )
@@ -136,6 +137,32 @@ def test_commander_score_totals_healthy_read_keeps_bucket_pairs_in_postgres(admi
     assert result.diagnostics.used_projection is True
     assert result.diagnostics.matched_soldiers == 1
     assert pair_queries == []
+
+
+def test_commander_score_totals_projection_path_accepts_column_rows(admin_session):
+    """The dashboard passes ``select(Soldier.id, ...)`` Rows, not ORM entities."""
+    soldier = _seed_commander_score_history(admin_session)
+    rebuild_projection_bucket(admin_session, soldier.id, date(2026, 7, 1))
+    _enable_commander_projection_rollout(admin_session, backfill_complete=True)
+
+    entity_result = commander_score_totals(
+        admin_session, soldiers=[soldier], canonical_diagnostic_compare=True
+    )
+    rows = admin_session.execute(
+        select(Soldier.id, Soldier.full_name, Soldier.enrolled_at).where(Soldier.id == soldier.id)
+    ).all()
+    assert rows and not isinstance(rows[0], Soldier)
+    row_result = commander_score_totals(
+        admin_session, soldiers=rows, canonical_diagnostic_compare=True
+    )
+
+    assert entity_result.diagnostics.used_projection is True
+    assert row_result.diagnostics.used_projection is True
+    assert row_result.diagnostics.fallback_reason is None
+    assert row_result.diagnostics.matched_soldiers == 1
+    assert row_result.score_by_soldier == entity_result.score_by_soldier == {
+        soldier.id: Decimal("7.500000")
+    }
 
 
 @pytest.mark.parametrize("defect", ["stale_version", "dirty_marker"])
